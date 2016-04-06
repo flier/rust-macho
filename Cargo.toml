@@ -1,0 +1,11 @@
+[package]
+name = "macho"
+version = "0.1.0"
+authors = ["Flier Lu <flier.lu@nexusguard.com>"]
+
+[dependencies]
+byteorder = "0.5"
+log = "0.3"
+
+[dev-dependencies]
+env_logger = "0.3"

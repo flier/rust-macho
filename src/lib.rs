@@ -2,7 +2,6 @@
 extern crate log;
 extern crate byteorder;
 
-mod raw;
 mod consts;
 mod loader;
 

@@ -222,17 +222,49 @@ pub mod tests {
 
     use std::io::Cursor;
 
-    use super::UniversalFile;
+    use super::super::*;
 
     include!("testdata.rs");
 
     #[test]
-    fn test_load() {
+    fn test_parse_mach_header() {
         let _ = env_logger::init();
 
-        let mut header = mach_header_new();
+        let mut header = test_mach_header_new();
 
         let mut cursor = Cursor::new(header);
+
         let file = UniversalFile::load(&mut cursor).unwrap();
+
+        assert_eq!(file.files.len(), 1);
+
+        let file = &file.files[0];
+
+        assert_eq!(file.header.magic, MH_MAGIC_64);
+        assert_eq!(file.header.cputype, CPU_TYPE_X86_64);
+        assert_eq!(file.header.cpusubtype, 0x80000003);
+        assert_eq!(file.header.filetype, MH_EXECUTE);
+        assert_eq!(file.header.ncmds, 15);
+        assert_eq!(file.header.sizeofcmds, 2080);
+        assert_eq!(file.header.flags, 0x00a18085);
+        assert_eq!(file.header.reserved, 0);
+
+        assert_eq!(file.commands.len(), 15);
+        assert_eq!(file.commands.iter().map(|cmd| cmd.cmd).collect::<Vec<u32>>(),
+                   vec![LC_SEGMENT_64,
+                        LC_SEGMENT_64,
+                        LC_SEGMENT_64,
+                        LC_SEGMENT_64,
+                        LC_DYLD_INFO_ONLY,
+                        LC_SYMTAB,
+                        LC_DYSYMTAB,
+                        LC_LOAD_DYLINKER,
+                        LC_UUID,
+                        LC_VERSION_MIN_MACOSX,
+                        LC_SOURCE_VERSION,
+                        LC_MAIN,
+                        LC_LOAD_DYLIB,
+                        LC_FUNCTION_STARTS,
+                        LC_DATA_IN_CODE]);
     }
 }

@@ -162,7 +162,8 @@ trait ReadStringExt : io::Read {
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
         let mut buf = Vec::new();
 
-        buf.resize(len, 0);
+        buf.resize(len + 1, 0);
+        buf.truncate(len);
 
         try!(self.read_exact(buf.as_mut()));
 
@@ -445,7 +446,7 @@ pub struct MachFile {
 
 #[derive(Debug, Default,  Clone)]
 pub struct UniversalFile {
-    pub files: Vec<MachFile>,
+    pub files: Vec<Box<MachFile>>,
 }
 
 impl UniversalFile {
@@ -486,10 +487,10 @@ impl<A: MachArch, O: ByteOrder> MachLoader<A, O> {
         debug!("parsed {} load commands", commands.len());
 
         Ok(UniversalFile {
-            files: vec![MachFile {
+            files: vec![Box::new(MachFile {
                             header: header,
                             commands: commands,
-                        }],
+                        })],
         })
     }
 }
@@ -501,6 +502,7 @@ pub mod tests {
     use std::io::Cursor;
 
     use super::super::*;
+    use super::Section64;
 
     include!("testdata.rs");
 
@@ -508,9 +510,7 @@ pub mod tests {
     fn test_parse_mach_header() {
         let _ = env_logger::init();
 
-        let mut header = test_mach_header_new();
-
-        let mut cursor = Cursor::new(header);
+        let mut cursor = Cursor::new(test_mach_header_new());
 
         let file = UniversalFile::load(&mut cursor).unwrap();
 
@@ -543,5 +543,71 @@ pub mod tests {
                         LC_LOAD_DYLIB,
                         LC_FUNCTION_STARTS,
                         LC_DATA_IN_CODE]);
+    }
+
+    #[test]
+    fn test_parse_segments() {
+        let _ = env_logger::init();
+
+        let mut cursor = Cursor::new(test_mach_header_new());
+
+        let file = UniversalFile::load(&mut cursor).unwrap();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[0] {
+           assert_eq!(segname, SEG_PAGEZERO);
+           assert_eq!(vmaddr, 0);
+           assert_eq!(vmsize, 0x0000000100000000);
+           assert_eq!(fileoff, 0);
+           assert_eq!(filesize, 0);
+           assert_eq!(maxprot, 0);
+           assert_eq!(initprot, 0);
+           assert_eq!(flags, 0);
+           assert!(sections.is_empty());
+        }
+
+        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[1] {
+           assert_eq!(segname, SEG_TEXT);
+           assert_eq!(vmaddr, 0x0000000100000000);
+           assert_eq!(vmsize, 0x00000000001e3000);
+           assert_eq!(fileoff, 0);
+           assert_eq!(filesize, 0x1e3000);
+           assert_eq!(maxprot, 7);
+           assert_eq!(initprot, 5);
+           assert_eq!(flags, 0);
+           assert_eq!(sections.len(), 8);
+
+           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(), 
+                      vec![SECT_TEXT, "__stubs", "__stub_helper", "__gcc_except_tab", "__const", "__cstring", "__unwind_info", "__eh_frame"]);
+        }
+
+        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[2] {
+           assert_eq!(segname, SEG_DATA);
+           assert_eq!(vmaddr, 0x00000001001e3000);
+           assert_eq!(vmsize, 0x0000000000013000);
+           assert_eq!(fileoff, 0x1e3000);
+           assert_eq!(filesize, 0x12000);
+           assert_eq!(maxprot, 7);
+           assert_eq!(initprot, 3);
+           assert_eq!(flags, 0);
+           assert_eq!(sections.len(),10);
+
+           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(), 
+                      vec!["__nl_symbol_ptr", "__got", "__la_symbol_ptr", "__mod_init_func", "__const", 
+                           SECT_DATA, "__thread_vars", "__thread_data", SECT_COMMON, SECT_BSS]);
+        }
+
+        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[3] {
+           assert_eq!(segname, SEG_LINKEDIT);
+           assert_eq!(vmaddr, 0x00000001001f6000);
+           assert_eq!(vmsize, 0x000000000017a000);
+           assert_eq!(fileoff, 0x1f5000);
+           assert_eq!(filesize, 0x1790b4);
+           assert_eq!(maxprot, 7);
+           assert_eq!(initprot, 1);
+           assert_eq!(flags, 0);
+           assert!(sections.is_empty());
+        }
     }
 }

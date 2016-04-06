@@ -225,55 +225,18 @@ pub const LC_ENCRYPTION_INFO_64: u32 = 0x2C; /* 64-bit encrypted segment informa
 pub const LC_LINKER_OPTION: u32 = 0x2D; /* linker options in MH_OBJECT files */
 pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2E; /* optimization hints in MH_OBJECT files */
 
-pub fn load_cmd_name(cmd: u32) -> &'static str {
-    match cmd {
-        LC_SEGMENT => "LC_SEGMENT",
-        LC_SYMTAB => "LC_SYMTAB",
-        LC_SYMSEG => "LC_SYMSEG",
-        LC_THREAD => "LC_THREAD",
-        LC_UNIXTHREAD => "LC_UNIXTHREAD",
-        LC_LOADFVMLIB => "LC_LOADFVMLIB",
-        LC_IDFVMLIB => "LC_IDFVMLIB",
-        LC_IDENT => "LC_IDENT",
-        LC_FVMFILE => "LC_FVMFILE",
-        LC_PREPAGE => "LC_PREPAGE",
-        LC_DYSYMTAB => "LC_DYSYMTAB",
-        LC_LOAD_DYLIB => "LC_LOAD_DYLIB",
-        LC_ID_DYLIB => "LC_ID_DYLIB",
-        LC_LOAD_DYLINKER => "LC_LOAD_DYLINKER",
-        LC_ID_DYLINKER => "LC_ID_DYLINKER",
-        LC_PREBOUND_DYLIB => "LC_PREBOUND_DYLIB",
-        LC_ROUTINES => "LC_ROUTINES",
-        LC_SUB_FRAMEWORK => "LC_SUB_FRAMEWORK",
-        LC_SUB_UMBRELLA => "LC_SUB_UMBRELLA",
-        LC_SUB_CLIENT => "LC_SUB_CLIENT",
-        LC_SUB_LIBRARY => "LC_SUB_LIBRARY",
-        LC_TWOLEVEL_HINTS => "LC_TWOLEVEL_HINTS",
-        LC_PREBIND_CKSUM => "LC_PREBIND_CKSUM",
-        LC_LOAD_WEAK_DYLIB => "LC_LOAD_WEAK_DYLIB",
-        LC_SEGMENT_64 => "LC_SEGMENT_64",
-        LC_ROUTINES_64 => "LC_ROUTINES_64",
-        LC_UUID => "LC_UUID",
-        LC_RPATH => "LC_RPATH",
-        LC_CODE_SIGNATURE => "LC_CODE_SIGNATURE",
-        LC_SEGMENT_SPLIT_INFO => "LC_SEGMENT_SPLIT_INFO",
-        LC_REEXPORT_DYLIB => "LC_REEXPORT_DYLIB",
-        LC_LAZY_LOAD_DYLIB => "LC_LAZY_LOAD_DYLIB",
-        LC_ENCRYPTION_INFO => "LC_ENCRYPTION_INFO",
-        LC_DYLD_INFO => "LC_DYLD_INFO",
-        LC_DYLD_INFO_ONLY => "LC_DYLD_INFO_ONLY",
-        LC_LOAD_UPWARD_DYLIB => "LC_LOAD_UPWARD_DYLIB",
-        LC_VERSION_MIN_MACOSX => "LC_VERSION_MIN_MACOSX",
-        LC_VERSION_MIN_IPHONEOS => "LC_VERSION_MIN_IPHONEOS",
-        LC_FUNCTION_STARTS => "LC_FUNCTION_STARTS",
-        LC_DYLD_ENVIRONMENT => "LC_DYLD_ENVIRONMENT",
-        LC_MAIN => "LC_MAIN",
-        LC_DATA_IN_CODE => "LC_DATA_IN_CODE",
-        LC_SOURCE_VERSION => "LC_SOURCE_VERSION",
-        LC_DYLIB_CODE_SIGN_DRS => "LC_DYLIB_CODE_SIGN_DRS",
-        LC_ENCRYPTION_INFO_64 => "LC_ENCRYPTION_INFO_64",
-        LC_LINKER_OPTION => "LC_LINKER_OPTION",
-        LC_LINKER_OPTIMIZATION_HINT => "LC_LINKER_OPTIMIZATION_HINT",
-        _ => "LC_COMMAND",
-    }
-}
+// Constants for the flags field of the segment_command
+
+/// the file contents for this segment is for the high part of the VM space,
+/// the low part is zero filled (for stacks in core files)
+pub const SG_HIGHVM: u32 = 0x1;
+/// this segment is the VM that is allocated by a fixed VM library,
+/// for overlap checking in the link editor
+pub const SG_FVMLIB: u32 = 0x2;
+/// this segment has nothing that was relocated in it and nothing relocated to it,
+/// that is it maybe safely replaced without relocation
+pub const SG_NORELOC: u32 = 0x4;
+/// This segment is protected.  If the segment starts at file offset 0,
+/// the first page of the segment is not protected.
+/// All other pages of the segment are protected.
+pub const SG_PROTECTED_VERSION_1: u32 = 0x8;

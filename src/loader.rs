@@ -1,39 +1,43 @@
-use std::str;
-use std::string;
 use std::ffi::CStr;
-use std::io;
-use std::io::{BufRead, Seek, SeekFrom};
+use std::io::{Read, BufRead, Seek, SeekFrom};
 use std::convert::From;
 use std::marker::PhantomData;
 
 use byteorder::{ByteOrder, BigEndian, LittleEndian, ReadBytesExt, NativeEndian};
+use uuid::Uuid;
 
 use consts::*;
 
 #[derive(Debug)]
 pub enum Error {
-    StrFromUtf8(str::Utf8Error),
-    StringFromUtf8(string::FromUtf8Error),
-    Read(io::Error),
-    Load,
-    Format,
+    Utf8Error(::std::str::Utf8Error),
+    FromUtf8Error(::std::string::FromUtf8Error),
+    UuidParseError(::uuid::ParseError),
+    IoError(::std::io::Error),
+    LoadError,
 }
 
-impl From<str::Utf8Error> for Error {
-    fn from(err: str::Utf8Error) -> Self {
-        Error::StrFromUtf8(err)
+impl From<::std::str::Utf8Error> for Error {
+    fn from(err: ::std::str::Utf8Error) -> Self {
+        Error::Utf8Error(err)
     }
 }
 
-impl From<string::FromUtf8Error> for Error {
-    fn from(err: string::FromUtf8Error) -> Self {
-        Error::StringFromUtf8(err)
+impl From<::std::string::FromUtf8Error> for Error {
+    fn from(err: ::std::string::FromUtf8Error) -> Self {
+        Error::FromUtf8Error(err)
     }
 }
 
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Read(err)
+impl From<::uuid::ParseError> for Error {
+    fn from(err: ::uuid::ParseError) -> Self {
+        Error::UuidParseError(err)
+    }
+}
+
+impl From<::std::io::Error> for Error {
+    fn from(err: ::std::io::Error) -> Self {
+        Error::IoError(err)
     }
 }
 
@@ -150,15 +154,22 @@ pub enum LoadCommand {
         /// sections
         sections: Vec<Section64>,
     },
+    // The uuid load command contains a single 128-bit unique random number that
+    // identifies an object produced by the static link editor.
+    //
+    Uuid {
+        /// the 128-bit uuid
+        uuid: Uuid,
+    },
     Command {
-        /// type of load command 
+        /// type of load command
         cmd: u32,
         /// command in bytes
         payload: Vec<u8>,
     },
 }
 
-trait ReadStringExt : io::Read {
+trait ReadStringExt : Read {
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
         let mut buf = Vec::new();
 
@@ -171,7 +182,7 @@ trait ReadStringExt : io::Read {
     }
 }
 
-impl<R: io::Read + ?Sized> ReadStringExt for R {}
+impl<R: Read + ?Sized> ReadStringExt for R {}
 
 impl LoadCommand {
     fn parse<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<LoadCommand> {
@@ -235,6 +246,13 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
+            LC_UUID => {
+                let mut uuid = [0; 16];
+
+                try!(buf.read_exact(&mut uuid[..]));
+
+                LoadCommand::Uuid { uuid: try!(Uuid::from_bytes(&uuid[..])) }
+            }
             _ => {
                 let mut payload = Vec::new();
 
@@ -264,6 +282,7 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::Uuid {..} => LC_UUID,
             &LoadCommand::Command {cmd, ..} => cmd,
         }
     }
@@ -271,7 +290,6 @@ impl LoadCommand {
     fn name(&self) -> &'static str {
         Self::cmd_name(self.cmd())
     }
-
 
     pub fn cmd_name(cmd: u32) -> &'static str {
         match cmd {
@@ -462,7 +480,7 @@ impl UniversalFile {
             MH_CIGAM => MachLoader::<Arch32, BigEndian>::parse(buf),
             MH_MAGIC_64 => MachLoader::<Arch64, LittleEndian>::parse(buf),
             MH_CIGAM_64 => MachLoader::<Arch64, BigEndian>::parse(buf),
-            _ => Err(Error::Load),
+            _ => Err(Error::LoadError),
         }
     }
 }
@@ -565,6 +583,8 @@ pub mod tests {
            assert_eq!(initprot, 0);
            assert_eq!(flags, 0);
            assert!(sections.is_empty());
+        } else {
+            panic!();
         }
 
         if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[1] {
@@ -578,9 +598,12 @@ pub mod tests {
            assert_eq!(flags, 0);
            assert_eq!(sections.len(), 8);
 
-           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(), 
+           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(),
                       vec![SECT_TEXT, "__stubs", "__stub_helper", "__gcc_except_tab", "__const", "__cstring", "__unwind_info", "__eh_frame"]);
+        } else {
+            panic!();
         }
+
 
         if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[2] {
            assert_eq!(segname, SEG_DATA);
@@ -593,10 +616,13 @@ pub mod tests {
            assert_eq!(flags, 0);
            assert_eq!(sections.len(),10);
 
-           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(), 
-                      vec!["__nl_symbol_ptr", "__got", "__la_symbol_ptr", "__mod_init_func", "__const", 
+           assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(),
+                      vec!["__nl_symbol_ptr", "__got", "__la_symbol_ptr", "__mod_init_func", "__const",
                            SECT_DATA, "__thread_vars", "__thread_data", SECT_COMMON, SECT_BSS]);
+        } else {
+            panic!();
         }
+
 
         if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[3] {
            assert_eq!(segname, SEG_LINKEDIT);
@@ -608,6 +634,26 @@ pub mod tests {
            assert_eq!(initprot, 1);
            assert_eq!(flags, 0);
            assert!(sections.is_empty());
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_commands() {
+        let _ = env_logger::init();
+
+        let mut cursor = Cursor::new(test_mach_header_new());
+
+        let file = UniversalFile::load(&mut cursor).unwrap();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::Uuid {ref uuid} = file.commands[8] {
+            assert_eq!(uuid.hyphenated().to_string(),
+                       "92e3cf1f-20da-3373-a98c-851366d353bf");
+        } else {
+            panic!();
         }
     }
 }

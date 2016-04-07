@@ -251,6 +251,46 @@ pub enum LoadCommand {
         /// the 128-bit uuid
         uuid: Uuid,
     },
+
+    // The linkedit_data_command contains the offsets and sizes of a blob
+    // of data in the __LINKEDIT segment.
+    //
+    CodeSignature {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
+    SegmentSplitInfo {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
+    FunctionStarts {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
+    DataInCode {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
+    DylibCodeSignDrs {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
+    LinkerOptimizationHint {
+        // file offset of data in __LINKEDIT segment
+        dataoff: u32,
+        // file size of data in __LINKEDIT segment
+        datasize: u32,
+    },
     // The version_min_command contains the min OS version on which this
     // binary was built to run.
     //
@@ -368,6 +408,43 @@ impl LoadCommand {
 
                 LoadCommand::Uuid { uuid: try!(Uuid::from_bytes(&uuid[..])) }
             }
+            LC_CODE_SIGNATURE => {
+                LoadCommand::CodeSignature {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_SEGMENT_SPLIT_INFO => {
+                LoadCommand::SegmentSplitInfo {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_FUNCTION_STARTS => {
+                LoadCommand::FunctionStarts {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_DATA_IN_CODE => {
+                LoadCommand::DataInCode {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_DYLIB_CODE_SIGN_DRS => {
+                LoadCommand::DylibCodeSignDrs {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_LINKER_OPTIMIZATION_HINT => {
+                LoadCommand::LinkerOptimizationHint {
+                    dataoff: try!(buf.read_u32::<O>()),
+                    datasize: try!(buf.read_u32::<O>()),
+                }
+            }
+
             LC_VERSION_MIN_MACOSX |
             LC_VERSION_MIN_IPHONEOS |
             LC_VERSION_MIN_WATCHOS |
@@ -417,6 +494,12 @@ impl LoadCommand {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
             &LoadCommand::Uuid {..} => LC_UUID,
+            &LoadCommand::CodeSignature {..} => LC_CODE_SIGNATURE,
+            &LoadCommand::SegmentSplitInfo {..} => LC_SEGMENT_SPLIT_INFO,
+            &LoadCommand::FunctionStarts {..} => LC_FUNCTION_STARTS,
+            &LoadCommand::DataInCode {..} => LC_DATA_IN_CODE,
+            &LoadCommand::DylibCodeSignDrs {..} => LC_DYLIB_CODE_SIGN_DRS,
+            &LoadCommand::LinkerOptimizationHint {..} => LC_LINKER_OPTIMIZATION_HINT,
             &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
             &LoadCommand::EntryPoint {..} => LC_MAIN,
             &LoadCommand::SourceVersion {..} => LC_SOURCE_VERSION,
@@ -832,6 +915,27 @@ pub mod tests {
         if let LoadCommand::SourceVersion{version} = file.commands[10] {
             assert_eq!(version.0, 0);
             assert_eq!(version.to_string(), "0.0.0.0.0");
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_link_edit_data_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::FunctionStarts{dataoff, datasize} = file.commands[13] {
+            assert_eq!(dataoff, 0x1fec50);
+            assert_eq!(datasize, 8504);
+        } else {
+            panic!();
+        }
+
+        if let LoadCommand::DataInCode{dataoff, datasize} = file.commands[14] {
+            assert_eq!(dataoff, 0x200d88);
+            assert_eq!(datasize, 0);
         } else {
             panic!();
         }

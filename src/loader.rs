@@ -112,6 +112,12 @@ impl VersionTag {
     }
 }
 
+impl Into<u32> for VersionTag {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
 impl ::std::fmt::Display for VersionTag {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         if self.release() == 0 {
@@ -119,6 +125,33 @@ impl ::std::fmt::Display for VersionTag {
         } else {
             write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
         }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct SourceVersionTag(u64);
+
+impl Into<u64> for SourceVersionTag {
+    fn into(self) -> u64 {
+        self.0
+    }
+}
+
+impl Into<(u32, u32, u32, u32, u32)> for SourceVersionTag {
+    fn into(self) -> (u32, u32, u32, u32, u32) {
+        (((self.0 >> 40) & 0xFFF) as u32,
+         ((self.0 >> 30) & 0x3FF) as u32,
+         ((self.0 >> 20) & 0x3FF) as u32,
+         ((self.0 >> 10) & 0x3FF) as u32,
+         (self.0 & 0x3FF) as u32)
+    }
+}
+
+impl ::std::fmt::Display for SourceVersionTag {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        let (a, b, c, d, e) = Self::into(*self);
+
+        write!(f, "{}.{}.{}.{}.{}", a, b, c, d, e)
     }
 }
 
@@ -226,6 +259,12 @@ pub enum LoadCommand {
         version: VersionTag,
         sdk: VersionTag,
     },
+    // The source_version_command is an optional load command containing
+    // the version of the sources used to build the binary.
+    //
+    SourceVersion {
+        version: SourceVersionTag,
+    },
     Command {
         /// type of load command
         cmd: u32,
@@ -328,6 +367,9 @@ impl LoadCommand {
                     sdk: VersionTag(try!(buf.read_u32::<O>())),
                 }
             }
+            LC_SOURCE_VERSION => {
+                LoadCommand::SourceVersion { version: SourceVersionTag(try!(buf.read_u64::<O>())) }
+            }
             _ => {
                 let mut payload = Vec::new();
 
@@ -359,6 +401,7 @@ impl LoadCommand {
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
             &LoadCommand::Uuid {..} => LC_UUID,
             &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
+            &LoadCommand::SourceVersion {..} => LC_SOURCE_VERSION,
             &LoadCommand::Command {cmd, ..} => cmd,
         }
     }
@@ -622,7 +665,7 @@ pub mod tests {
 
         assert_eq!(file.header.magic, MH_MAGIC_64);
         assert_eq!(file.header.cputype, CPU_TYPE_X86_64);
-        assert_eq!(file.header.cpusubtype, 0x80000003);
+        assert_eq!(file.header.cpusubtype, 0x80000003u64 as i32);
         assert_eq!(file.header.filetype, MH_EXECUTE);
         assert_eq!(file.header.ncmds, 15);
         assert_eq!(file.header.sizeofcmds, 2080);
@@ -739,10 +782,24 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::VersionMin{ target, version, sdk} = file.commands[9] {
+        if let LoadCommand::VersionMin{target, version, sdk} = file.commands[9] {
             assert_eq!(target, BuildTarget::MacOsX);
             assert_eq!(version.to_string(), "10.11");
             assert_eq!(sdk.to_string(), "10.11");
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_source_version_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::SourceVersion{version} = file.commands[10] {
+            assert_eq!(version.0, 0);
+            assert_eq!(version.to_string(), "0.0.0.0.0");
         } else {
             panic!();
         }

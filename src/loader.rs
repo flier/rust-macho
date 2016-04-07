@@ -245,6 +245,56 @@ pub enum LoadCommand {
         sections: Vec<Section64>,
     },
 
+    // Dynamicly linked shared libraries are identified by two things.  The
+    // pathname (the name of the library as found for execution), and the
+    // compatibility version number.  The pathname must match and the compatibility
+    // number in the user of the library must be greater than or equal to the
+    // library being used.  The time stamp is used to record the time a library was
+    // built and copied into user so it can be use to determined if the library used
+    // at runtime is exactly the same as used to built the program.
+    //
+    //
+    IdDyLib {
+        /// library's path name
+        name: String,
+        /// library's build time stamp
+        timestamp: u32,
+        /// library's current version number
+        current_version: u32,
+        /// library's compatibility vers number
+        compatibility_version: u32,
+    },
+    LoadDyLib {
+        /// library's path name
+        name: String,
+        /// library's build time stamp
+        timestamp: u32,
+        /// library's current version number
+        current_version: u32,
+        /// library's compatibility vers number
+        compatibility_version: u32,
+    },
+    LoadWeakDyLib {
+        /// library's path name
+        name: String,
+        /// library's build time stamp
+        timestamp: u32,
+        /// library's current version number
+        current_version: u32,
+        /// library's compatibility vers number
+        compatibility_version: u32,
+    },
+    ReexportDyLib {
+        /// library's path name
+        name: String,
+        /// library's build time stamp
+        timestamp: u32,
+        /// library's current version number
+        current_version: u32,
+        /// library's compatibility vers number
+        compatibility_version: u32,
+    },
+
     // A program that uses a dynamic linker contains a dylinker_command to identify
     // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
     // contains a dylinker_command to identify the dynamic linker (LC_ID_DYLINKER).
@@ -695,6 +745,63 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
+            LC_ID_DYLIB => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+                let timestamp = try!(buf.read_u32::<O>());
+                let current_version = try!(buf.read_u32::<O>());
+                let compatibility_version = try!(buf.read_u32::<O>());
+                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+
+                LoadCommand::IdDyLib {
+                    name: name,
+                    timestamp: timestamp,
+                    current_version: current_version,
+                    compatibility_version: compatibility_version,
+                }
+            }
+            LC_LOAD_DYLIB => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+                let timestamp = try!(buf.read_u32::<O>());
+                let current_version = try!(buf.read_u32::<O>());
+                let compatibility_version = try!(buf.read_u32::<O>());
+                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+
+                LoadCommand::LoadDyLib {
+                    name: name,
+                    timestamp: timestamp,
+                    current_version: current_version,
+                    compatibility_version: compatibility_version,
+                }
+            }
+            LC_LOAD_WEAK_DYLIB => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+                let timestamp = try!(buf.read_u32::<O>());
+                let current_version = try!(buf.read_u32::<O>());
+                let compatibility_version = try!(buf.read_u32::<O>());
+                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+
+                LoadCommand::LoadWeakDyLib {
+                    name: name,
+                    timestamp: timestamp,
+                    current_version: current_version,
+                    compatibility_version: compatibility_version,
+                }
+            }
+            LC_REEXPORT_DYLIB => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+                let timestamp = try!(buf.read_u32::<O>());
+                let current_version = try!(buf.read_u32::<O>());
+                let compatibility_version = try!(buf.read_u32::<O>());
+                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+
+                LoadCommand::ReexportDyLib {
+                    name: name,
+                    timestamp: timestamp,
+                    current_version: current_version,
+                    compatibility_version: compatibility_version,
+                }
+            }
+
             LC_ID_DYLINKER => {
                 let off = try!(buf.read_u32::<O>()) as usize;
 
@@ -864,6 +971,10 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::IdDyLib {..} => LC_ID_DYLIB,
+            &LoadCommand::LoadDyLib {..} => LC_LOAD_DYLIB,
+            &LoadCommand::LoadWeakDyLib {..} => LC_LOAD_WEAK_DYLIB,
+            &LoadCommand::ReexportDyLib {..} => LC_REEXPORT_DYLIB,
             &LoadCommand::IdDyLinker {..} => LC_ID_DYLINKER,
             &LoadCommand::LoadDyLinker {..} => LC_LOAD_DYLINKER,
             &LoadCommand::DyLdEnv {..} => LC_DYLD_ENVIRONMENT,

@@ -618,6 +618,15 @@ Load command 14
 const LC_DATA_IN_CODE_DATA: [u8; 0x10] = [0x29, 0x0, 0x0, 0x0, 0x10, 0x0, 0x0, 0x0, 0x88, 0xd,
                                           0x20, 0x0, 0x0, 0x0, 0x0, 0x0];
 
+pub static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
+pub static HELLO_WORLD_LC: &'static str = include_str!("../test/helloworld.lc");
+pub static HELLO_UNIVERSAL_BIN: &'static [u8] = include_bytes!("../test/helloworld.universal");
+pub static HELLO_UNIVERSAL_LC: &'static str = include_str!("../test/helloworld.universal.lc");
+pub static HELLO_OBJC_BIN: &'static [u8] = include_bytes!("../test/helloobjc");
+pub static HELLO_OBJC_LC: &'static str = include_str!("../test/helloobjc.lc");
+pub static HELLO_RUST_BIN: &'static [u8] = include_bytes!("../test/hellorust");
+pub static HELLO_RUST_LC: &'static str = include_str!("../test/hellorust.lc");
+
 pub fn prepare_test_mach_header() -> Vec<u8> {
     let mut header = Vec::new();
 

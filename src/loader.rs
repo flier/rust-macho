@@ -818,12 +818,7 @@ impl LoadCommand {
         Ok(cmd)
     }
 
-    fn read_lc_string<O: ByteOrder>(buf: &mut Cursor<&[u8]>,
-                                    cur: usize,
-                                    off: usize)
-                                    -> Result<String> {
-        buf.consume(off - cur);
-
+    fn read_lc_string<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<String> {
         let mut s = Vec::new();
 
         try!(buf.read_until(0, &mut s));
@@ -834,7 +829,9 @@ impl LoadCommand {
     fn read_dylinker<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<String> {
         let off = try!(buf.read_u32::<O>()) as usize;
 
-        Ok(try!(Self::read_lc_string::<O>(buf, 12, off)))
+        buf.consume(off - 12);
+
+        Ok(try!(Self::read_lc_string::<O>(buf)))
     }
 
     fn read_dylib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<DyLib> {
@@ -842,10 +839,11 @@ impl LoadCommand {
         let timestamp = try!(buf.read_u32::<O>());
         let current_version = try!(buf.read_u32::<O>());
         let compatibility_version = try!(buf.read_u32::<O>());
-        let name = try!(Self::read_lc_string::<O>(buf, 24, off));
+
+        buf.consume(off - 24);
 
         Ok(DyLib {
-            name: name,
+            name: try!(Self::read_lc_string::<O>(buf)),
             timestamp: timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),

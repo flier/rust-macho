@@ -524,17 +524,25 @@ pub mod tests {
 
     include!("testdata.rs");
 
+    macro_rules! setup_test_universal_file {
+        () => ({
+            let _ = env_logger::init();
+
+            let mut cursor = Cursor::new(prepare_test_mach_header());
+
+            let file = UniversalFile::load(&mut cursor).unwrap();
+
+            assert_eq!(file.files.len(), 1);
+
+            file
+        })
+    }
+
     #[test]
     fn test_parse_mach_header() {
-        let _ = env_logger::init();
+        let file = setup_test_universal_file!();
 
-        let mut cursor = Cursor::new(test_mach_header_new());
-
-        let file = UniversalFile::load(&mut cursor).unwrap();
-
-        assert_eq!(file.files.len(), 1);
-
-        let file = &file.files[0];
+        let file = file.files[0].as_ref();
 
         assert_eq!(file.header.magic, MH_MAGIC_64);
         assert_eq!(file.header.cputype, CPU_TYPE_X86_64);
@@ -565,11 +573,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_segments() {
-        let _ = env_logger::init();
-
-        let mut cursor = Cursor::new(test_mach_header_new());
-
-        let file = UniversalFile::load(&mut cursor).unwrap();
+        let file = setup_test_universal_file!();
 
         let file = file.files[0].as_ref();
 
@@ -640,12 +644,8 @@ pub mod tests {
     }
 
     #[test]
-    fn test_parse_commands() {
-        let _ = env_logger::init();
-
-        let mut cursor = Cursor::new(test_mach_header_new());
-
-        let file = UniversalFile::load(&mut cursor).unwrap();
+    fn test_parse_uuid_command() {
+        let file = setup_test_universal_file!();
 
         let file = file.files[0].as_ref();
 

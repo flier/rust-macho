@@ -249,7 +249,7 @@ pub enum LoadCommand {
     // "stab" style symbol table information as described in the header files
     // <nlist.h> and <stab.h>.
     //
-    SymbolTable {
+    SymTab {
         /// symbol table offset
         symoff: u32,
         /// number of symbol table entries
@@ -258,6 +258,150 @@ pub enum LoadCommand {
         stroff: u32,
         /// string table size in bytes
         strsize: u32,
+    },
+
+    // This is the second set of the symbolic information which is used to support
+    // the data structures for the dynamically link editor.
+    //
+    // The original set of symbolic information in the symtab_command which contains
+    // the symbol and string tables must also be present when this load command is
+    // present.  When this load command is present the symbol table is organized
+    // into three groups of symbols:
+    //  local symbols (static and debugging symbols) - grouped by module
+    //  defined external symbols - grouped by module (sorted by name if not lib)
+    //  undefined external symbols (sorted by name if MH_BINDATLOAD is not set,
+    //                      and in order the were seen by the static
+    //                  linker if MH_BINDATLOAD is set)
+    // In this load command there are offsets and counts to each of the three groups
+    // of symbols.
+    //
+    // This load command contains a the offsets and sizes of the following new
+    // symbolic information tables:
+    //  table of contents
+    //  module table
+    //  reference symbol table
+    //  indirect symbol table
+    // The first three tables above (the table of contents, module table and
+    // reference symbol table) are only present if the file is a dynamically linked
+    // shared library.  For executable and object modules, which are files
+    // containing only one module, the information that would be in these three
+    // tables is determined as follows:
+    //  table of contents - the defined external symbols are sorted by name
+    //  module table - the file contains only one module so everything in the
+    //             file is part of the module.
+    //  reference symbol table - is the defined and undefined external symbols
+    //
+    // For dynamically linked shared library files this load command also contains
+    // offsets and sizes to the pool of relocation entries for all sections
+    // separated into two groups:
+    //  external relocation entries
+    //  local relocation entries
+    // For executable and object modules the relocation entries continue to hang
+    // off the section structures.
+    //
+    DySymTab {
+        // The symbols indicated by symoff and nsyms of the LC_SYMTAB load command
+        // are grouped into the following three groups:
+        //    local symbols (further grouped by the module they are from)
+        //    defined external symbols (further grouped by the module they are from)
+        //    undefined symbols
+        //
+        // The local symbols are used only for debugging.  The dynamic binding
+        // process may have to use them to indicate to the debugger the local
+        // symbols for a module that is being bound.
+        //
+        // The last two groups are used by the dynamic binding process to do the
+        // binding (indirectly through the module table and the reference symbol
+        // table when this is a dynamically linked shared library file).
+        //
+        ilocalsym: u32, // index to local symbols
+        nlocalsym: u32, // number of local symbols
+
+        iextdefsym: u32, // index to externally defined symbols
+        nextdefsym: u32, // number of externally defined symbols
+
+        iundefsym: u32, // index to undefined symbols
+        nundefsym: u32, // number of undefined symbols
+
+        // For the for the dynamic binding process to find which module a symbol
+        // is defined in the table of contents is used (analogous to the ranlib
+        // structure in an archive) which maps defined external symbols to modules
+        // they are defined in.  This exists only in a dynamically linked shared
+        // library file.  For executable and object modules the defined external
+        // symbols are sorted by name and is use as the table of contents.
+        //
+        tocoff: u32, // file offset to table of contents
+        ntoc: u32, // number of entries in table of contents
+
+        // To support dynamic binding of "modules" (whole object files) the symbol
+        // table must reflect the modules that the file was created from.  This is
+        // done by having a module table that has indexes and counts into the merged
+        // tables for each module.  The module structure that these two entries
+        // refer to is described below.  This exists only in a dynamically linked
+        // shared library file.  For executable and object modules the file only
+        // contains one module so everything in the file belongs to the module.
+        //
+        modtaboff: u32, // file offset to module table
+        nmodtab: u32, // number of module table entries
+
+        // To support dynamic module binding the module structure for each module
+        // indicates the external references (defined and undefined) each module
+        // makes.  For each module there is an offset and a count into the
+        // reference symbol table for the symbols that the module references.
+        // This exists only in a dynamically linked shared library file.  For
+        // executable and object modules the defined external symbols and the
+        // undefined external symbols indicates the external references.
+        //
+        extrefsymoff: u32, // offset to referenced symbol table
+        nextrefsyms: u32, // number of referenced symbol table entries
+
+        // The sections that contain "symbol pointers" and "routine stubs" have
+        // indexes and (implied counts based on the size of the section and fixed
+        // size of the entry) into the "indirect symbol" table for each pointer
+        // and stub.  For every section of these two types the index into the
+        // indirect symbol table is stored in the section header in the field
+        // reserved1.  An indirect symbol table entry is simply a 32bit index into
+        // the symbol table to the symbol that the pointer or stub is referring to.
+        // The indirect symbol table is ordered to match the entries in the section.
+        //
+        indirectsymoff: u32, // file offset to the indirect symbol table
+        nindirectsyms: u32, // number of indirect symbol table entries
+
+        // To support relocating an individual module in a library file quickly the
+        // external relocation entries for each module in the library need to be
+        // accessed efficiently.  Since the relocation entries can't be accessed
+        // through the section headers for a library file they are separated into
+        // groups of local and external entries further grouped by module.  In this
+        // case the presents of this load command who's extreloff, nextrel,
+        // locreloff and nlocrel fields are non-zero indicates that the relocation
+        // entries of non-merged sections are not referenced through the section
+        // structures (and the reloff and nreloc fields in the section headers are
+        // set to zero).
+        //
+        // Since the relocation entries are not accessed through the section headers
+        // this requires the r_address field to be something other than a section
+        // offset to identify the item to be relocated.  In this case r_address is
+        // set to the offset from the vmaddr of the first LC_SEGMENT command.
+        // For MH_SPLIT_SEGS images r_address is set to the the offset from the
+        // vmaddr of the first read-write LC_SEGMENT command.
+        //
+        // The relocation entries are grouped by module and the module table
+        // entries have indexes and counts into them for the group of external
+        // relocation entries for that the module.
+        //
+        // For sections that are merged across modules there must not be any
+        // remaining external relocation entries for them (for merged sections
+        // remaining relocation entries must be local).
+        //
+        extreloff: u32, // offset to external relocation entries
+        nextrel: u32, // number of external relocation entries
+
+        // All the local relocation entries are grouped together (they are not
+        // grouped by their module since they are only used if the object is moved
+        // from it staticly link edited address).
+        //
+        locreloff: u32, // offset to local relocation entries
+        nlocrel: u32, // number of local relocation entries
     },
 
     // The uuid load command contains a single 128-bit unique random number that
@@ -531,11 +675,33 @@ impl LoadCommand {
                 }
             }
             LC_SYMTAB => {
-                LoadCommand::SymbolTable {
+                LoadCommand::SymTab {
                     symoff: try!(buf.read_u32::<O>()),
                     nsyms: try!(buf.read_u32::<O>()),
                     stroff: try!(buf.read_u32::<O>()),
                     strsize: try!(buf.read_u32::<O>()),
+                }
+            }
+            LC_DYSYMTAB => {
+                LoadCommand::DySymTab {
+                    ilocalsym: try!(buf.read_u32::<O>()),
+                    nlocalsym: try!(buf.read_u32::<O>()),
+                    iextdefsym: try!(buf.read_u32::<O>()),
+                    nextdefsym: try!(buf.read_u32::<O>()),
+                    iundefsym: try!(buf.read_u32::<O>()),
+                    nundefsym: try!(buf.read_u32::<O>()),
+                    tocoff: try!(buf.read_u32::<O>()),
+                    ntoc: try!(buf.read_u32::<O>()),
+                    modtaboff: try!(buf.read_u32::<O>()),
+                    nmodtab: try!(buf.read_u32::<O>()),
+                    extrefsymoff: try!(buf.read_u32::<O>()),
+                    nextrefsyms: try!(buf.read_u32::<O>()),
+                    indirectsymoff: try!(buf.read_u32::<O>()),
+                    nindirectsyms: try!(buf.read_u32::<O>()),
+                    extreloff: try!(buf.read_u32::<O>()),
+                    nextrel: try!(buf.read_u32::<O>()),
+                    locreloff: try!(buf.read_u32::<O>()),
+                    nlocrel: try!(buf.read_u32::<O>()),
                 }
             }
             LC_UUID => {
@@ -644,7 +810,8 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
-            &LoadCommand::SymbolTable {..} => LC_SYMTAB,
+            &LoadCommand::SymTab {..} => LC_SYMTAB,
+            &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
             &LoadCommand::Uuid {..} => LC_UUID,
             &LoadCommand::CodeSignature {..} => LC_CODE_SIGNATURE,
             &LoadCommand::SegmentSplitInfo {..} => LC_SEGMENT_SPLIT_INFO,
@@ -1017,16 +1184,56 @@ pub mod tests {
     }
 
     #[test]
-    fn test_parse_symbol_table_command() {
+    fn test_parse_symtab_command() {
         let file = setup_test_universal_file!();
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::SymbolTable {symoff, nsyms, stroff, strsize} = file.commands[5] {
+        if let LoadCommand::SymTab {symoff, nsyms, stroff, strsize} = file.commands[5] {
             assert_eq!(symoff, 0x200d88);
             assert_eq!(nsyms, 36797);
             assert_eq!(stroff, 0x290bf4);
             assert_eq!(strsize, 906432);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_dysymtab_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::DySymTab {
+            ilocalsym, nlocalsym,
+            iextdefsym, nextdefsym,
+            iundefsym, nundefsym,
+            tocoff, ntoc,
+            modtaboff, nmodtab,
+            extrefsymoff, nextrefsyms,
+            indirectsymoff, nindirectsyms,
+            extreloff, nextrel,
+            locreloff, nlocrel
+        } = file.commands[6] {
+            assert_eq!(ilocalsym, 0);
+            assert_eq!(nlocalsym, 35968);
+            assert_eq!(iextdefsym, 35968);
+            assert_eq!(nextdefsym, 746);
+            assert_eq!(iundefsym, 36714);
+            assert_eq!(nundefsym, 83);
+            assert_eq!(tocoff, 0);
+            assert_eq!(ntoc, 0);
+            assert_eq!(modtaboff, 0);
+            assert_eq!(nmodtab, 0);
+            assert_eq!(extrefsymoff, 0);
+            assert_eq!(nextrefsyms, 0);
+            assert_eq!(indirectsymoff, 2689368);
+            assert_eq!(nindirectsyms, 167);
+            assert_eq!(extreloff, 0);
+            assert_eq!(nextrel, 0);
+            assert_eq!(locreloff, 0);
+            assert_eq!(nlocrel, 0);
         } else {
             panic!();
         }
@@ -1067,7 +1274,13 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::DyldInfo{rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size, lazy_bind_off, lazy_bind_size, export_off, export_size} = file.commands[4] {
+        if let LoadCommand::DyldInfo{
+            rebase_off, rebase_size,
+            bind_off, bind_size,
+            weak_bind_off, weak_bind_size,
+            lazy_bind_off, lazy_bind_size,
+            export_off, export_size
+        } = file.commands[4] {
             assert_eq!(rebase_off, 0x1f5000);
             assert_eq!(rebase_size, 3368);
             assert_eq!(bind_off, 0x1f5d28);

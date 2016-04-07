@@ -95,6 +95,63 @@ pub struct MachHeader {
     pub flags: u32,
 }
 
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct VersionTag(u32);
+
+impl VersionTag {
+    pub fn major(self) -> u32 {
+        self.0 >> 16
+    }
+
+    pub fn minor(self) -> u32 {
+        (self.0 >> 8) & 0xFF
+    }
+
+    pub fn release(self) -> u32 {
+        self.0 & 0xFF
+    }
+}
+
+impl ::std::fmt::Display for VersionTag {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        if self.release() == 0 {
+            write!(f, "{}.{}", self.major(), self.minor())
+        } else {
+            write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BuildTarget {
+    MacOsX,
+    IPhoneOs,
+    WatchOs,
+    TvOs,
+}
+
+impl From<u32> for BuildTarget {
+    fn from(cmd: u32) -> Self {
+        match cmd {
+            LC_VERSION_MIN_MACOSX => BuildTarget::MacOsX,
+            LC_VERSION_MIN_IPHONEOS => BuildTarget::IPhoneOs,
+            LC_VERSION_MIN_WATCHOS => BuildTarget::WatchOs,
+            LC_VERSION_MIN_TVOS => BuildTarget::TvOs,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Into<u32> for BuildTarget {
+    fn into(self) -> u32 {
+        match self {
+            BuildTarget::MacOsX => LC_VERSION_MIN_MACOSX,
+            BuildTarget::IPhoneOs => LC_VERSION_MIN_IPHONEOS,
+            BuildTarget::WatchOs => LC_VERSION_MIN_WATCHOS,
+            BuildTarget::TvOs => LC_VERSION_MIN_TVOS,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
@@ -160,6 +217,14 @@ pub enum LoadCommand {
     Uuid {
         /// the 128-bit uuid
         uuid: Uuid,
+    },
+    // The version_min_command contains the min OS version on which this
+    // binary was built to run.
+    //
+    VersionMin {
+        target: BuildTarget,
+        version: VersionTag,
+        sdk: VersionTag,
     },
     Command {
         /// type of load command
@@ -253,6 +318,16 @@ impl LoadCommand {
 
                 LoadCommand::Uuid { uuid: try!(Uuid::from_bytes(&uuid[..])) }
             }
+            LC_VERSION_MIN_MACOSX |
+            LC_VERSION_MIN_IPHONEOS |
+            LC_VERSION_MIN_WATCHOS |
+            LC_VERSION_MIN_TVOS => {
+                LoadCommand::VersionMin {
+                    target: BuildTarget::from(cmd),
+                    version: VersionTag(try!(buf.read_u32::<O>())),
+                    sdk: VersionTag(try!(buf.read_u32::<O>())),
+                }
+            }
             _ => {
                 let mut payload = Vec::new();
 
@@ -283,6 +358,7 @@ impl LoadCommand {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
             &LoadCommand::Uuid {..} => LC_UUID,
+            &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
             &LoadCommand::Command {cmd, ..} => cmd,
         }
     }
@@ -652,6 +728,21 @@ pub mod tests {
         if let LoadCommand::Uuid {ref uuid} = file.commands[8] {
             assert_eq!(uuid.hyphenated().to_string(),
                        "92e3cf1f-20da-3373-a98c-851366d353bf");
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_min_version_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::VersionMin{ target, version, sdk} = file.commands[9] {
+            assert_eq!(target, BuildTarget::MacOsX);
+            assert_eq!(version.to_string(), "10.11");
+            assert_eq!(sdk.to_string(), "10.11");
         } else {
             panic!();
         }

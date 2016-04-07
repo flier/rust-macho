@@ -7,4 +7,4 @@ mod consts;
 mod loader;
 
 pub use consts::*;
-pub use loader::{Error, UniversalFile, LoadCommand};
+pub use loader::{Error, UniversalFile, LoadCommand, BuildTarget, VersionTag};

@@ -136,7 +136,7 @@ pub const MH_CANONICAL: u32 = 0x4000;
 pub const MH_WEAK_DEFINES: u32 = 0x8000;
 /// the final linked image uses weak symbols
 pub const MH_BINDS_TO_WEAK: u32 = 0x10000;
-/// When this bit is set, all stacks in the task will be given stack execution privilege. 
+/// When this bit is set, all stacks in the task will be given stack execution privilege.
 /// Only used in MH_EXECUTE filetypes.
 pub const MH_ALLOW_STACK_EXECUTION: u32 = 0x20000;
 /// When this bit is set, the binary declares it is safe for use in processes with uid zero
@@ -148,7 +148,7 @@ pub const MH_NO_REEXPORTED_DYLIBS: u32 = 0x100000;
 /// When this bit is set, the OS will load the main executable at a random address.  Only used in MH_EXECUTE filetypes.
 pub const MH_PIE: u32 = 0x200000;
 /// Only for use on dylibs.  When linking against a dylib that has this bit set,
-/// the static linker will automatically not create a LC_LOAD_DYLIB load command 
+/// the static linker will automatically not create a LC_LOAD_DYLIB load command
 /// to the dylib if no symbols are being referenced from the dylib.
 pub const MH_DEAD_STRIPPABLE_DYLIB: u32 = 0x400000;
 /// Contains a section of type S_THREAD_LOCAL_VARIABLES
@@ -171,59 +171,112 @@ pub const MH_APP_EXTENSION_SAFE: u32 = 0x02000000;
 pub const LC_REQ_DYLD: u32 = 0x80000000;
 
 // Constants for the cmd field of all load commands, the type
-pub const LC_SEGMENT: u32 = 0x1; /* segment of this file to be mapped */
-pub const LC_SYMTAB: u32 = 0x2; /* link-edit stab symbol table info */
-pub const LC_SYMSEG: u32 = 0x3; /* link-edit gdb symbol table info (obsolete) */
-pub const LC_THREAD: u32 = 0x4; /* thread */
-pub const LC_UNIXTHREAD: u32 = 0x5; /* unix thread (includes a stack) */
-pub const LC_LOADFVMLIB: u32 = 0x6; /* load a specified fixed VM shared library */
-pub const LC_IDFVMLIB: u32 = 0x7; /* fixed VM shared library identification */
-pub const LC_IDENT: u32 = 0x8; /* object identification info (obsolete) */
-pub const LC_FVMFILE: u32 = 0x9; /* fixed VM file inclusion (internal use) */
-pub const LC_PREPAGE: u32 = 0xa;     /* prepage command (internal use) */
-pub const LC_DYSYMTAB: u32 = 0xb; /* dynamic link-edit symbol table info */
-pub const LC_LOAD_DYLIB: u32 = 0xc; /* load a dynamically linked shared library */
-pub const LC_ID_DYLIB: u32 = 0xd; /* dynamically linked shared lib ident */
-pub const LC_LOAD_DYLINKER: u32 = 0xe;    /* load a dynamic linker */
-pub const LC_ID_DYLINKER: u32 = 0xf; /* dynamic linker identification */
-pub const LC_PREBOUND_DYLIB: u32 = 0x10;  /* modules prebound for a dynamically */
+// segment of this file to be mapped
+
+pub const LC_SEGMENT: u32 = 0x1;
+/// link-edit stab symbol table info
+pub const LC_SYMTAB: u32 = 0x2;
+/// link-edit gdb symbol table info (obsolete)
+pub const LC_SYMSEG: u32 = 0x3;
+/// thread
+pub const LC_THREAD: u32 = 0x4;
+/// unix thread (includes a stack)
+pub const LC_UNIXTHREAD: u32 = 0x5;
+/// load a specified fixed VM shared library
+pub const LC_LOADFVMLIB: u32 = 0x6;
+/// fixed VM shared library identification
+pub const LC_IDFVMLIB: u32 = 0x7;
+/// object identification info (obsolete)
+pub const LC_IDENT: u32 = 0x8;
+/// fixed VM file inclusion (internal use)
+pub const LC_FVMFILE: u32 = 0x9;
+/// prepage command (internal use)
+pub const LC_PREPAGE: u32 = 0xa;
+/// dynamic link-edit symbol table info
+pub const LC_DYSYMTAB: u32 = 0xb;
+/// load a dynamically linked shared library
+pub const LC_LOAD_DYLIB: u32 = 0xc;
+/// dynamically linked shared lib ident
+pub const LC_ID_DYLIB: u32 = 0xd;
+/// load a dynamic linker
+pub const LC_LOAD_DYLINKER: u32 = 0xe;
+/// dynamic linker identification
+pub const LC_ID_DYLINKER: u32 = 0xf;
+/// modules prebound for a dynamically
+pub const LC_PREBOUND_DYLIB: u32 = 0x10;
 
 // linked shared library
-pub const LC_ROUTINES: u32 = 0x11;    /* image routines */
-pub const LC_SUB_FRAMEWORK: u32 = 0x12;   /* sub framework */
-pub const LC_SUB_UMBRELLA: u32 = 0x13;    /* sub umbrella */
-pub const LC_SUB_CLIENT: u32 = 0x14;    /* sub client */
-pub const LC_SUB_LIBRARY: u32 = 0x15;    /* sub library */
-pub const LC_TWOLEVEL_HINTS: u32 = 0x16;  /* two-level namespace lookup hints */
-pub const LC_PREBIND_CKSUM: u32 = 0x17;  /* prebind checksum */
+//
+// image routines
+
+pub const LC_ROUTINES: u32 = 0x11;
+/// sub framework
+pub const LC_SUB_FRAMEWORK: u32 = 0x12;
+/// sub umbrella
+pub const LC_SUB_UMBRELLA: u32 = 0x13;
+/// sub client
+pub const LC_SUB_CLIENT: u32 = 0x14;
+/// sub library
+pub const LC_SUB_LIBRARY: u32 = 0x15;
+/// two-level namespace lookup hints
+pub const LC_TWOLEVEL_HINTS: u32 = 0x16;
+/// prebind checksum
+pub const LC_PREBIND_CKSUM: u32 = 0x17;
 
 // load a dynamically linked shared library that is allowed to be missing
 // (all symbols are weak imported).
 //
 pub const LC_LOAD_WEAK_DYLIB: u32 = (0x18 | LC_REQ_DYLD);
-pub const LC_SEGMENT_64: u32 = 0x19;    /* 64-bit segment of this file to be mapped */
-pub const LC_ROUTINES_64: u32 = 0x1a;    /* 64-bit image routines */
-pub const LC_UUID: u32 = 0x1b;    /* the uuid */
-pub const LC_RPATH: u32 = (0x1c | LC_REQ_DYLD);    /* runpath additions */
-pub const LC_CODE_SIGNATURE: u32 = 0x1d;  /* local of code signature */
-pub const LC_SEGMENT_SPLIT_INFO: u32 = 0x1e; /* local of info to split segments */
-pub const LC_REEXPORT_DYLIB: u32 = (0x1f | LC_REQ_DYLD); /* load and re-export dylib */
-pub const LC_LAZY_LOAD_DYLIB: u32 = 0x20; /* delay load of dylib until first use */
-pub const LC_ENCRYPTION_INFO: u32 = 0x21; /* encrypted segment information */
-pub const LC_DYLD_INFO: u32 = 0x22;    /* compressed dyld information */
-pub const LC_DYLD_INFO_ONLY: u32 = (0x22 | LC_REQ_DYLD);    /* compressed dyld information only */
-pub const LC_LOAD_UPWARD_DYLIB: u32 = (0x23 | LC_REQ_DYLD); /* load upward dylib */
-pub const LC_VERSION_MIN_MACOSX: u32 = 0x24;   /* build for MacOSX min OS version */
-pub const LC_VERSION_MIN_IPHONEOS: u32 = 0x25; /* build for iPhoneOS min OS version */
-pub const LC_FUNCTION_STARTS: u32 = 0x26; /* compressed table of function start addresses */
-pub const LC_DYLD_ENVIRONMENT: u32 = 0x27; /* string for dyld to treat like environment variable */
-pub const LC_MAIN: u32 = (0x28 | LC_REQ_DYLD); /* replacement for LC_UNIXTHREAD */
-pub const LC_DATA_IN_CODE: u32 = 0x29; /* table of non-instructions in __text */
-pub const LC_SOURCE_VERSION: u32 = 0x2A; /* source version used to build binary */
-pub const LC_DYLIB_CODE_SIGN_DRS: u32 = 0x2B; /* Code signing DRs copied from linked dylibs */
-pub const LC_ENCRYPTION_INFO_64: u32 = 0x2C; /* 64-bit encrypted segment information */
-pub const LC_LINKER_OPTION: u32 = 0x2D; /* linker options in MH_OBJECT files */
-pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2E; /* optimization hints in MH_OBJECT files */
+/// 64-bit segment of this file to be mapped
+pub const LC_SEGMENT_64: u32 = 0x19;
+/// 64-bit image routines
+pub const LC_ROUTINES_64: u32 = 0x1a;
+/// the uuid
+pub const LC_UUID: u32 = 0x1b;
+/// runpath additions
+pub const LC_RPATH: u32 = (0x1c | LC_REQ_DYLD);
+/// local of code signature
+pub const LC_CODE_SIGNATURE: u32 = 0x1d;
+/// local of info to split segments
+pub const LC_SEGMENT_SPLIT_INFO: u32 = 0x1e;
+/// load and re-export dylib
+pub const LC_REEXPORT_DYLIB: u32 = (0x1f | LC_REQ_DYLD);
+/// delay load of dylib until first use
+pub const LC_LAZY_LOAD_DYLIB: u32 = 0x20;
+/// encrypted segment information
+pub const LC_ENCRYPTION_INFO: u32 = 0x21;
+/// compressed dyld information
+pub const LC_DYLD_INFO: u32 = 0x22;
+/// compressed dyld information only
+pub const LC_DYLD_INFO_ONLY: u32 = (0x22 | LC_REQ_DYLD);
+/// load upward dylib
+pub const LC_LOAD_UPWARD_DYLIB: u32 = (0x23 | LC_REQ_DYLD);
+/// build for MacOSX min OS version
+pub const LC_VERSION_MIN_MACOSX: u32 = 0x24;
+/// build for iPhoneOS min OS version
+pub const LC_VERSION_MIN_IPHONEOS: u32 = 0x25;
+/// compressed table of function start addresses
+pub const LC_FUNCTION_STARTS: u32 = 0x26;
+/// string for dyld to treat like environment variable
+pub const LC_DYLD_ENVIRONMENT: u32 = 0x27;
+/// replacement for LC_UNIXTHREAD
+pub const LC_MAIN: u32 = (0x28 | LC_REQ_DYLD);
+/// table of non-instructions in __text
+pub const LC_DATA_IN_CODE: u32 = 0x29;
+/// source version used to build binary
+pub const LC_SOURCE_VERSION: u32 = 0x2A;
+/// Code signing DRs copied from linked dylibs
+pub const LC_DYLIB_CODE_SIGN_DRS: u32 = 0x2B;
+/// 64-bit encrypted segment information
+pub const LC_ENCRYPTION_INFO_64: u32 = 0x2C;
+/// linker options in MH_OBJECT files
+pub const LC_LINKER_OPTION: u32 = 0x2D;
+/// optimization hints in MH_OBJECT files
+pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2E;
+/// build for AppleTV min OS version
+pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
+/// build for Watch min OS version
+pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 
 // Constants for the flags field of the segment_command
 
@@ -412,7 +465,7 @@ pub static SECT_ICON_HEADER: &'static str = "__header";
 /// the icons in tiff format
 pub static SECT_ICON_TIFF: &'static str = "__tiff";
 
-/// the segment containing all structs created and maintained by the link editor.  
+/// the segment containing all structs created and maintained by the link editor.
 /// Created with -seglinkedit option to ld(1) for MH_EXECUTE and FVMLIB file types only
 pub static SEG_LINKEDIT: &'static str = "__LINKEDIT";
 

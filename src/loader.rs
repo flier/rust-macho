@@ -259,6 +259,17 @@ pub enum LoadCommand {
         version: VersionTag,
         sdk: VersionTag,
     },
+    // The entry_point_command is a replacement for thread_command.
+    // It is used for main executables to specify the location (file offset)
+    // of main().  If -stack_size was used at link time, the stacksize
+    // field will contain the stack size need for the main thread.
+    //
+    EntryPoint {
+        // file (__TEXT) offset of main()
+        entryoff: u64,
+        // if not zero, initial stack size
+        stacksize: u64,
+    },
     // The source_version_command is an optional load command containing
     // the version of the sources used to build the binary.
     //
@@ -367,6 +378,12 @@ impl LoadCommand {
                     sdk: VersionTag(try!(buf.read_u32::<O>())),
                 }
             }
+            LC_MAIN => {
+                LoadCommand::EntryPoint {
+                    entryoff: try!(buf.read_u64::<O>()),
+                    stacksize: try!(buf.read_u64::<O>()),
+                }
+            }
             LC_SOURCE_VERSION => {
                 LoadCommand::SourceVersion { version: SourceVersionTag(try!(buf.read_u64::<O>())) }
             }
@@ -401,6 +418,7 @@ impl LoadCommand {
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
             &LoadCommand::Uuid {..} => LC_UUID,
             &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
+            &LoadCommand::EntryPoint {..} => LC_MAIN,
             &LoadCommand::SourceVersion {..} => LC_SOURCE_VERSION,
             &LoadCommand::Command {cmd, ..} => cmd,
         }
@@ -786,6 +804,20 @@ pub mod tests {
             assert_eq!(target, BuildTarget::MacOsX);
             assert_eq!(version.to_string(), "10.11");
             assert_eq!(sdk.to_string(), "10.11");
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_main_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::EntryPoint{entryoff, stacksize} = file.commands[11] {
+            assert_eq!(entryoff, 0x11400);
+            assert_eq!(stacksize, 0);
         } else {
             panic!();
         }

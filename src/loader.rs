@@ -120,11 +120,7 @@ impl Into<u32> for VersionTag {
 
 impl ::std::fmt::Display for VersionTag {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        if self.release() == 0 {
-            write!(f, "{}.{}", self.major(), self.minor())
-        } else {
-            write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
-        }
+        write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
     }
 }
 
@@ -186,6 +182,27 @@ impl Into<u32> for BuildTarget {
     }
 }
 
+// Dynamicly linked shared libraries are identified by two things.  The
+// pathname (the name of the library as found for execution), and the
+// compatibility version number.  The pathname must match and the compatibility
+// number in the user of the library must be greater than or equal to the
+// library being used.  The time stamp is used to record the time a library was
+// built and copied into user so it can be use to determined if the library used
+// at runtime is exactly the same as used to built the program.
+//
+//
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DyLib {
+    /// library's path name
+    name: String,
+    /// library's build time stamp
+    timestamp: u32,
+    /// library's current version number
+    current_version: VersionTag,
+    /// library's compatibility vers number
+    compatibility_version: VersionTag,
+}
+
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
     /// The segment load command indicates that a part of this file is to be
@@ -245,55 +262,16 @@ pub enum LoadCommand {
         sections: Vec<Section64>,
     },
 
-    // Dynamicly linked shared libraries are identified by two things.  The
-    // pathname (the name of the library as found for execution), and the
-    // compatibility version number.  The pathname must match and the compatibility
-    // number in the user of the library must be greater than or equal to the
-    // library being used.  The time stamp is used to record the time a library was
-    // built and copied into user so it can be use to determined if the library used
-    // at runtime is exactly the same as used to built the program.
+    // A dynamically linked shared library (filetype == MH_DYLIB in the mach header)
+    // contains a dylib_command (cmd == LC_ID_DYLIB) to identify the library.
+    // An object that uses a dynamically linked shared library also contains a
+    // dylib_command (cmd == LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB, or
+    // LC_REEXPORT_DYLIB) for each library it uses.
     //
-    //
-    IdDyLib {
-        /// library's path name
-        name: String,
-        /// library's build time stamp
-        timestamp: u32,
-        /// library's current version number
-        current_version: u32,
-        /// library's compatibility vers number
-        compatibility_version: u32,
-    },
-    LoadDyLib {
-        /// library's path name
-        name: String,
-        /// library's build time stamp
-        timestamp: u32,
-        /// library's current version number
-        current_version: u32,
-        /// library's compatibility vers number
-        compatibility_version: u32,
-    },
-    LoadWeakDyLib {
-        /// library's path name
-        name: String,
-        /// library's build time stamp
-        timestamp: u32,
-        /// library's current version number
-        current_version: u32,
-        /// library's compatibility vers number
-        compatibility_version: u32,
-    },
-    ReexportDyLib {
-        /// library's path name
-        name: String,
-        /// library's build time stamp
-        timestamp: u32,
-        /// library's current version number
-        current_version: u32,
-        /// library's compatibility vers number
-        compatibility_version: u32,
-    },
+    IdDyLib(DyLib),
+    LoadDyLib(DyLib),
+    LoadWeakDyLib(DyLib),
+    ReexportDyLib(DyLib),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
     // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
@@ -302,18 +280,9 @@ pub enum LoadCommand {
     // This struct is also used for the LC_DYLD_ENVIRONMENT load command and
     // contains string for dyld to treat like environment variable.
     //
-    IdDyLinker {
-        /// dynamic linker's path name
-        name: String,
-    },
-    LoadDyLinker {
-        /// dynamic linker's path name
-        name: String,
-    },
-    DyLdEnv {
-        /// environment variable.
-        name: String,
-    },
+    IdDyLinker(String),
+    LoadDyLinker(String),
+    DyLdEnv(String),
 
     // The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
     // "stab" style symbol table information as described in the header files
@@ -477,10 +446,7 @@ pub enum LoadCommand {
     // The uuid load command contains a single 128-bit unique random number that
     // identifies an object produced by the static link editor.
     //
-    Uuid {
-        /// the 128-bit uuid
-        uuid: Uuid,
-    },
+    Uuid(Uuid),
 
     // The linkedit_data_command contains the offsets and sizes of a blob
     // of data in the __LINKEDIT segment.
@@ -656,9 +622,7 @@ pub enum LoadCommand {
     // The source_version_command is an optional load command containing
     // the version of the sources used to build the binary.
     //
-    SourceVersion {
-        version: SourceVersionTag,
-    },
+    SourceVersion(SourceVersionTag),
     Command {
         /// type of load command
         cmd: u32,
@@ -745,78 +709,15 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
-            LC_ID_DYLIB => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-                let timestamp = try!(buf.read_u32::<O>());
-                let current_version = try!(buf.read_u32::<O>());
-                let compatibility_version = try!(buf.read_u32::<O>());
-                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+            LC_ID_DYLIB => LoadCommand::IdDyLib(try!(Self::read_dylib::<O>(buf))),
+            LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O>(buf))),
+            LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O>(buf))),
+            LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(try!(Self::read_dylib::<O>(buf))),
 
-                LoadCommand::IdDyLib {
-                    name: name,
-                    timestamp: timestamp,
-                    current_version: current_version,
-                    compatibility_version: compatibility_version,
-                }
-            }
-            LC_LOAD_DYLIB => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-                let timestamp = try!(buf.read_u32::<O>());
-                let current_version = try!(buf.read_u32::<O>());
-                let compatibility_version = try!(buf.read_u32::<O>());
-                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(try!(Self::read_dylinker::<O>(buf))),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(try!(Self::read_dylinker::<O>(buf))),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(try!(Self::read_dylinker::<O>(buf))),
 
-                LoadCommand::LoadDyLib {
-                    name: name,
-                    timestamp: timestamp,
-                    current_version: current_version,
-                    compatibility_version: compatibility_version,
-                }
-            }
-            LC_LOAD_WEAK_DYLIB => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-                let timestamp = try!(buf.read_u32::<O>());
-                let current_version = try!(buf.read_u32::<O>());
-                let compatibility_version = try!(buf.read_u32::<O>());
-                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
-
-                LoadCommand::LoadWeakDyLib {
-                    name: name,
-                    timestamp: timestamp,
-                    current_version: current_version,
-                    compatibility_version: compatibility_version,
-                }
-            }
-            LC_REEXPORT_DYLIB => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-                let timestamp = try!(buf.read_u32::<O>());
-                let current_version = try!(buf.read_u32::<O>());
-                let compatibility_version = try!(buf.read_u32::<O>());
-                let name = try!(Self::read_lc_string::<O>(buf, 12, off));
-
-                LoadCommand::ReexportDyLib {
-                    name: name,
-                    timestamp: timestamp,
-                    current_version: current_version,
-                    compatibility_version: compatibility_version,
-                }
-            }
-
-            LC_ID_DYLINKER => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-
-                LoadCommand::IdDyLinker { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
-            }
-            LC_LOAD_DYLINKER => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-
-                LoadCommand::LoadDyLinker { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
-            }
-            LC_DYLD_ENVIRONMENT => {
-                let off = try!(buf.read_u32::<O>()) as usize;
-
-                LoadCommand::DyLdEnv { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
-            }
             LC_SYMTAB => {
                 LoadCommand::SymTab {
                     symoff: try!(buf.read_u32::<O>()),
@@ -852,7 +753,7 @@ impl LoadCommand {
 
                 try!(buf.read_exact(&mut uuid[..]));
 
-                LoadCommand::Uuid { uuid: try!(Uuid::from_bytes(&uuid[..])) }
+                LoadCommand::Uuid(try!(Uuid::from_bytes(&uuid[..])))
             }
             LC_CODE_SIGNATURE => {
                 LoadCommand::CodeSignature {
@@ -922,7 +823,7 @@ impl LoadCommand {
                 }
             }
             LC_SOURCE_VERSION => {
-                LoadCommand::SourceVersion { version: SourceVersionTag(try!(buf.read_u64::<O>())) }
+                LoadCommand::SourceVersion(SourceVersionTag(try!(buf.read_u64::<O>())))
             }
             _ => {
                 let mut payload = Vec::new();
@@ -967,20 +868,41 @@ impl LoadCommand {
         unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const i8).to_str()))) }
     }
 
+    fn read_dylinker<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<String> {
+        let off = try!(buf.read_u32::<O>()) as usize;
+
+        Ok(try!(Self::read_lc_string::<O>(buf, 12, off)))
+    }
+
+    fn read_dylib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<DyLib> {
+        let off = try!(buf.read_u32::<O>()) as usize;
+        let timestamp = try!(buf.read_u32::<O>());
+        let current_version = try!(buf.read_u32::<O>());
+        let compatibility_version = try!(buf.read_u32::<O>());
+        let name = try!(Self::read_lc_string::<O>(buf, 24, off));
+
+        Ok(DyLib {
+            name: name,
+            timestamp: timestamp,
+            current_version: VersionTag(current_version),
+            compatibility_version: VersionTag(compatibility_version),
+        })
+    }
+
     fn cmd(&self) -> u32 {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
-            &LoadCommand::IdDyLib {..} => LC_ID_DYLIB,
-            &LoadCommand::LoadDyLib {..} => LC_LOAD_DYLIB,
-            &LoadCommand::LoadWeakDyLib {..} => LC_LOAD_WEAK_DYLIB,
-            &LoadCommand::ReexportDyLib {..} => LC_REEXPORT_DYLIB,
-            &LoadCommand::IdDyLinker {..} => LC_ID_DYLINKER,
-            &LoadCommand::LoadDyLinker {..} => LC_LOAD_DYLINKER,
-            &LoadCommand::DyLdEnv {..} => LC_DYLD_ENVIRONMENT,
+            &LoadCommand::IdDyLib(_) => LC_ID_DYLIB,
+            &LoadCommand::LoadDyLib(_) => LC_LOAD_DYLIB,
+            &LoadCommand::LoadWeakDyLib(_) => LC_LOAD_WEAK_DYLIB,
+            &LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
+            &LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
+            &LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
+            &LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
             &LoadCommand::SymTab {..} => LC_SYMTAB,
             &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
-            &LoadCommand::Uuid {..} => LC_UUID,
+            &LoadCommand::Uuid(_) => LC_UUID,
             &LoadCommand::CodeSignature {..} => LC_CODE_SIGNATURE,
             &LoadCommand::SegmentSplitInfo {..} => LC_SEGMENT_SPLIT_INFO,
             &LoadCommand::FunctionStarts {..} => LC_FUNCTION_STARTS,
@@ -990,7 +912,7 @@ impl LoadCommand {
             &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
             &LoadCommand::DyldInfo {..} => LC_DYLD_INFO_ONLY,
             &LoadCommand::EntryPoint {..} => LC_MAIN,
-            &LoadCommand::SourceVersion {..} => LC_SOURCE_VERSION,
+            &LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
             &LoadCommand::Command {cmd, ..} => cmd,
         }
     }
@@ -1382,7 +1304,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::LoadDyLinker {ref name} = file.commands[7] {
+        if let LoadCommand::LoadDyLinker(ref name) = file.commands[7] {
             assert_eq!(name, "/usr/lib/dyld");
         } else {
             panic!();
@@ -1451,7 +1373,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::Uuid {ref uuid} = file.commands[8] {
+        if let LoadCommand::Uuid(ref uuid) = file.commands[8] {
             assert_eq!(uuid.hyphenated().to_string(),
                        "92e3cf1f-20da-3373-a98c-851366d353bf");
         } else {
@@ -1467,8 +1389,8 @@ pub mod tests {
 
         if let LoadCommand::VersionMin{target, version, sdk} = file.commands[9] {
             assert_eq!(target, BuildTarget::MacOsX);
-            assert_eq!(version.to_string(), "10.11");
-            assert_eq!(sdk.to_string(), "10.11");
+            assert_eq!(version.to_string(), "10.11.0");
+            assert_eq!(sdk.to_string(), "10.11.0");
         } else {
             panic!();
         }
@@ -1503,6 +1425,22 @@ pub mod tests {
     }
 
     #[test]
+    fn test_load_dylib_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::LoadDyLib(ref dylib) = file.commands[12] {
+            assert_eq!(dylib.name, "/usr/lib/libSystem.B.dylib");
+            assert_eq!(dylib.timestamp, 0);
+            assert_eq!(dylib.current_version.to_string(), "1226.10.1");
+            assert_eq!(dylib.compatibility_version.to_string(), "1.0.0");
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
     fn test_parse_main_command() {
         let file = setup_test_universal_file!();
 
@@ -1522,7 +1460,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::SourceVersion{version} = file.commands[10] {
+        if let LoadCommand::SourceVersion(version) = file.commands[10] {
             assert_eq!(version.0, 0);
             assert_eq!(version.to_string(), "0.0.0.0.0");
         } else {

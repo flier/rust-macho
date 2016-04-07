@@ -1,5 +1,5 @@
 use std::ffi::CStr;
-use std::io::{Read, BufRead, Seek, SeekFrom};
+use std::io::{Read, BufRead, Seek, SeekFrom, Cursor};
 use std::convert::From;
 use std::marker::PhantomData;
 
@@ -633,7 +633,8 @@ trait ReadStringExt : Read {
 impl<R: Read + ?Sized> ReadStringExt for R {}
 
 impl LoadCommand {
-    fn parse<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<LoadCommand> {
+    fn parse<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LoadCommand> {
+        let begin = buf.position();
         let cmd = try!(buf.read_u32::<O>());
         let cmdsize = try!(buf.read_u32::<O>());
 
@@ -651,7 +652,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(try!(Section::parse::<T, O>(buf)));
+                    sections.push(try!(Section::parse::<Cursor<&[u8]>, O>(buf)));
                 }
 
                 LoadCommand::Segment {
@@ -679,7 +680,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(try!(Section64::parse::<T, O>(buf)));
+                    sections.push(try!(Section64::parse::<Cursor<&[u8]>, O>(buf)));
                 }
 
                 LoadCommand::Segment64 {
@@ -693,6 +694,21 @@ impl LoadCommand {
                     flags: flags,
                     sections: sections,
                 }
+            }
+            LC_ID_DYLINKER => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+
+                LoadCommand::IdDyLinker { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
+            }
+            LC_LOAD_DYLINKER => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+
+                LoadCommand::LoadDyLinker { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
+            }
+            LC_DYLD_ENVIRONMENT => {
+                let off = try!(buf.read_u32::<O>()) as usize;
+
+                LoadCommand::DyLdEnv { name: try!(Self::read_lc_string::<O>(buf, 12, off)) }
             }
             LC_SYMTAB => {
                 LoadCommand::SymTab {
@@ -823,7 +839,25 @@ impl LoadCommand {
 
         debug!("parsed {} command: {:?}", cmd.name(), cmd);
 
+        let read = (buf.position() - begin) as usize;
+
+        // skip the reserved or padding bytes
+        buf.consume(cmdsize as usize - read);
+
         Ok(cmd)
+    }
+
+    fn read_lc_string<O: ByteOrder>(buf: &mut Cursor<&[u8]>,
+                                    cur: usize,
+                                    off: usize)
+                                    -> Result<String> {
+        buf.consume(off - cur);
+
+        let mut s = Vec::new();
+
+        try!(buf.read_until(0, &mut s));
+
+        unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const i8).to_str()))) }
     }
 
     fn cmd(&self) -> u32 {
@@ -1031,7 +1065,7 @@ pub struct UniversalFile {
 }
 
 impl UniversalFile {
-    pub fn load<T: BufRead + Seek>(buf: &mut T) -> Result<UniversalFile> {
+    pub fn load(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
         let magic = try!(buf.read_u32::<NativeEndian>());
 
         try!(buf.seek(SeekFrom::Current(-4)));
@@ -1054,15 +1088,15 @@ pub struct MachLoader<A: MachArch, O: ByteOrder> {
 }
 
 impl<A: MachArch, O: ByteOrder> MachLoader<A, O> {
-    pub fn parse<T: BufRead>(buf: &mut T) -> Result<UniversalFile> {
-        let header = try!(A::parse_header::<T, O>(buf));
+    pub fn parse(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
+        let header = try!(A::parse_header::<Cursor<&[u8]>, O>(buf));
 
         debug!("parsed file header: {:?}", header);
 
         let mut commands = Vec::new();
 
         for _ in 0..header.ncmds as usize {
-            commands.push(try!(LoadCommand::parse::<T, O>(buf)));
+            commands.push(try!(LoadCommand::parse::<O>(buf)));
         }
 
         debug!("parsed {} load commands", commands.len());
@@ -1093,7 +1127,7 @@ pub mod tests {
 
             let header = prepare_test_mach_header();
 
-            let mut cursor = Cursor::new(header);
+            let mut cursor = Cursor::new(header.as_slice());
 
             let file = UniversalFile::load(&mut cursor).unwrap();
 
@@ -1203,6 +1237,19 @@ pub mod tests {
            assert_eq!(initprot, 1);
            assert_eq!(flags, 0);
            assert!(sections.is_empty());
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_load_dylinker_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::LoadDyLinker {ref name} = file.commands[7] {
+            assert_eq!(name, "/usr/lib/dyld");
         } else {
             panic!();
         }

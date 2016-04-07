@@ -203,6 +203,18 @@ pub struct DyLib {
     compatibility_version: VersionTag,
 }
 
+
+// The linkedit_data_command contains the offsets and sizes of a blob
+// of data in the __LINKEDIT segment.
+//
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct LinkEditData {
+    /// file offset of data in __LINKEDIT segment
+    dataoff: u32,
+    /// file size of data in __LINKEDIT segment
+    datasize: u32,
+}
+
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
     /// The segment load command indicates that a part of this file is to be
@@ -451,42 +463,13 @@ pub enum LoadCommand {
     // The linkedit_data_command contains the offsets and sizes of a blob
     // of data in the __LINKEDIT segment.
     //
-    CodeSignature {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
-    SegmentSplitInfo {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
-    FunctionStarts {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
-    DataInCode {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
-    DylibCodeSignDrs {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
-    LinkerOptimizationHint {
-        // file offset of data in __LINKEDIT segment
-        dataoff: u32,
-        // file size of data in __LINKEDIT segment
-        datasize: u32,
-    },
+    CodeSignature(LinkEditData),
+    SegmentSplitInfo(LinkEditData),
+    FunctionStarts(LinkEditData),
+    DataInCode(LinkEditData),
+    DylibCodeSignDrs(LinkEditData),
+    LinkerOptimizationHint(LinkEditData),
+
     // The version_min_command contains the min OS version on which this
     // binary was built to run.
     //
@@ -756,40 +739,20 @@ impl LoadCommand {
                 LoadCommand::Uuid(try!(Uuid::from_bytes(&uuid[..])))
             }
             LC_CODE_SIGNATURE => {
-                LoadCommand::CodeSignature {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
+                LoadCommand::CodeSignature(try!(Self::read_linkedit_data::<O>(buf)))
             }
             LC_SEGMENT_SPLIT_INFO => {
-                LoadCommand::SegmentSplitInfo {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
+                LoadCommand::SegmentSplitInfo(try!(Self::read_linkedit_data::<O>(buf)))
             }
             LC_FUNCTION_STARTS => {
-                LoadCommand::FunctionStarts {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
+                LoadCommand::FunctionStarts(try!(Self::read_linkedit_data::<O>(buf)))
             }
-            LC_DATA_IN_CODE => {
-                LoadCommand::DataInCode {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
-            }
+            LC_DATA_IN_CODE => LoadCommand::DataInCode(try!(Self::read_linkedit_data::<O>(buf))),
             LC_DYLIB_CODE_SIGN_DRS => {
-                LoadCommand::DylibCodeSignDrs {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
+                LoadCommand::DylibCodeSignDrs(try!(Self::read_linkedit_data::<O>(buf)))
             }
             LC_LINKER_OPTIMIZATION_HINT => {
-                LoadCommand::LinkerOptimizationHint {
-                    dataoff: try!(buf.read_u32::<O>()),
-                    datasize: try!(buf.read_u32::<O>()),
-                }
+                LoadCommand::LinkerOptimizationHint(try!(Self::read_linkedit_data::<O>(buf)))
             }
 
             LC_VERSION_MIN_MACOSX |
@@ -889,6 +852,13 @@ impl LoadCommand {
         })
     }
 
+    fn read_linkedit_data<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LinkEditData> {
+        Ok(LinkEditData {
+            dataoff: try!(buf.read_u32::<O>()),
+            datasize: try!(buf.read_u32::<O>()),
+        })
+    }
+
     fn cmd(&self) -> u32 {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
@@ -903,12 +873,12 @@ impl LoadCommand {
             &LoadCommand::SymTab {..} => LC_SYMTAB,
             &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
             &LoadCommand::Uuid(_) => LC_UUID,
-            &LoadCommand::CodeSignature {..} => LC_CODE_SIGNATURE,
-            &LoadCommand::SegmentSplitInfo {..} => LC_SEGMENT_SPLIT_INFO,
-            &LoadCommand::FunctionStarts {..} => LC_FUNCTION_STARTS,
-            &LoadCommand::DataInCode {..} => LC_DATA_IN_CODE,
-            &LoadCommand::DylibCodeSignDrs {..} => LC_DYLIB_CODE_SIGN_DRS,
-            &LoadCommand::LinkerOptimizationHint {..} => LC_LINKER_OPTIMIZATION_HINT,
+            &LoadCommand::CodeSignature(_) => LC_CODE_SIGNATURE,
+            &LoadCommand::SegmentSplitInfo(_) => LC_SEGMENT_SPLIT_INFO,
+            &LoadCommand::FunctionStarts(_) => LC_FUNCTION_STARTS,
+            &LoadCommand::DataInCode(_) => LC_DATA_IN_CODE,
+            &LoadCommand::DylibCodeSignDrs(_) => LC_DYLIB_CODE_SIGN_DRS,
+            &LoadCommand::LinkerOptimizationHint(_) => LC_LINKER_OPTIMIZATION_HINT,
             &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
             &LoadCommand::DyldInfo {..} => LC_DYLD_INFO_ONLY,
             &LoadCommand::EntryPoint {..} => LC_MAIN,
@@ -1432,7 +1402,7 @@ pub mod tests {
 
         if let LoadCommand::LoadDyLib(ref dylib) = file.commands[12] {
             assert_eq!(dylib.name, "/usr/lib/libSystem.B.dylib");
-            assert_eq!(dylib.timestamp, 0);
+            assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
             assert_eq!(dylib.compatibility_version.to_string(), "1.0.0");
         } else {
@@ -1474,14 +1444,14 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::FunctionStarts{dataoff, datasize} = file.commands[13] {
+        if let LoadCommand::FunctionStarts(LinkEditData{dataoff, datasize}) = file.commands[13] {
             assert_eq!(dataoff, 0x1fec50);
             assert_eq!(datasize, 8504);
         } else {
             panic!();
         }
 
-        if let LoadCommand::DataInCode{dataoff, datasize} = file.commands[14] {
+        if let LoadCommand::DataInCode(LinkEditData{dataoff, datasize}) = file.commands[14] {
             assert_eq!(dataoff, 0x200d88);
             assert_eq!(datasize, 0);
         } else {

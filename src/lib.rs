@@ -9,4 +9,5 @@ mod consts;
 mod loader;
 
 pub use consts::*;
-pub use loader::{Error, UniversalFile, LoadCommand, BuildTarget, VersionTag};
+pub use loader::{Error, UniversalFile, LoadCommand, SourceVersionTag, VersionTag, BuildTarget,
+                 DyLib, LinkEditData};

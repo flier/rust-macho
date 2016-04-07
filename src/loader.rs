@@ -244,6 +244,22 @@ pub enum LoadCommand {
         /// sections
         sections: Vec<Section64>,
     },
+
+    // The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
+    // "stab" style symbol table information as described in the header files
+    // <nlist.h> and <stab.h>.
+    //
+    SymbolTable {
+        /// symbol table offset
+        symoff: u32,
+        /// number of symbol table entries
+        nsyms: u32,
+        /// string table offset
+        stroff: u32,
+        /// string table size in bytes
+        strsize: u32,
+    },
+
     // The uuid load command contains a single 128-bit unique random number that
     // identifies an object produced by the static link editor.
     //
@@ -514,6 +530,14 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
+            LC_SYMTAB => {
+                LoadCommand::SymbolTable {
+                    symoff: try!(buf.read_u32::<O>()),
+                    nsyms: try!(buf.read_u32::<O>()),
+                    stroff: try!(buf.read_u32::<O>()),
+                    strsize: try!(buf.read_u32::<O>()),
+                }
+            }
             LC_UUID => {
                 let mut uuid = [0; 16];
 
@@ -620,6 +644,7 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::SymbolTable {..} => LC_SYMTAB,
             &LoadCommand::Uuid {..} => LC_UUID,
             &LoadCommand::CodeSignature {..} => LC_CODE_SIGNATURE,
             &LoadCommand::SegmentSplitInfo {..} => LC_SEGMENT_SPLIT_INFO,
@@ -986,6 +1011,22 @@ pub mod tests {
            assert_eq!(initprot, 1);
            assert_eq!(flags, 0);
            assert!(sections.is_empty());
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_symbol_table_command() {
+        let file = setup_test_universal_file!();
+
+        let file = file.files[0].as_ref();
+
+        if let LoadCommand::SymbolTable {symoff, nsyms, stroff, strsize} = file.commands[5] {
+            assert_eq!(symoff, 0x200d88);
+            assert_eq!(nsyms, 36797);
+            assert_eq!(stroff, 0x290bf4);
+            assert_eq!(strsize, 906432);
         } else {
             panic!();
         }

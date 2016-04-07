@@ -245,6 +245,26 @@ pub enum LoadCommand {
         sections: Vec<Section64>,
     },
 
+    // A program that uses a dynamic linker contains a dylinker_command to identify
+    // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
+    // contains a dylinker_command to identify the dynamic linker (LC_ID_DYLINKER).
+    // A file can have at most one of these.
+    // This struct is also used for the LC_DYLD_ENVIRONMENT load command and
+    // contains string for dyld to treat like environment variable.
+    //
+    IdDyLinker {
+        /// dynamic linker's path name
+        name: String,
+    },
+    LoadDyLinker {
+        /// dynamic linker's path name
+        name: String,
+    },
+    DyLdEnv {
+        /// environment variable.
+        name: String,
+    },
+
     // The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
     // "stab" style symbol table information as described in the header files
     // <nlist.h> and <stab.h>.
@@ -810,6 +830,9 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::IdDyLinker {..} => LC_ID_DYLINKER,
+            &LoadCommand::LoadDyLinker {..} => LC_LOAD_DYLINKER,
+            &LoadCommand::DyLdEnv {..} => LC_DYLD_ENVIRONMENT,
             &LoadCommand::SymTab {..} => LC_SYMTAB,
             &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
             &LoadCommand::Uuid {..} => LC_UUID,
@@ -1068,7 +1091,9 @@ pub mod tests {
         () => ({
             let _ = env_logger::init();
 
-            let mut cursor = Cursor::new(prepare_test_mach_header());
+            let header = prepare_test_mach_header();
+
+            let mut cursor = Cursor::new(header);
 
             let file = UniversalFile::load(&mut cursor).unwrap();
 

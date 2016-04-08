@@ -1,7 +1,11 @@
 [package]
 name = "macho"
 version = "0.1.0"
-authors = ["Flier Lu <flier.lu@nexusguard.com>"]
+authors = ["Flier Lu <flier.lu@gmail.com>"]
+description = "Mach-O File Format Parser for Rust"
+documentation = "http://flier.github.io/rust-macho/doc"
+homepage = "http://flier.github.io/rust-macho/"
+repository = "https://github.com/flier/rust-macho"
 
 [dependencies]
 log = "0.3"

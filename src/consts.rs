@@ -279,20 +279,21 @@ pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 
 // Constants for the flags field of the segment_command
-
-/// the file contents for this segment is for the high part of the VM space,
-/// the low part is zero filled (for stacks in core files)
-pub const SG_HIGHVM: u32 = 0x1;
-/// this segment is the VM that is allocated by a fixed VM library,
-/// for overlap checking in the link editor
-pub const SG_FVMLIB: u32 = 0x2;
-/// this segment has nothing that was relocated in it and nothing relocated to it,
-/// that is it maybe safely replaced without relocation
-pub const SG_NORELOC: u32 = 0x4;
-/// This segment is protected.  If the segment starts at file offset 0,
-/// the first page of the segment is not protected.
-/// All other pages of the segment are protected.
-pub const SG_PROTECTED_VERSION_1: u32 = 0x8;
+bitflags! { pub flags SegmentFlags: u32 {
+    /// the file contents for this segment is for the high part of the VM space,
+    /// the low part is zero filled (for stacks in core files)
+    const SG_HIGHVM = 0x1,
+    /// this segment is the VM that is allocated by a fixed VM library,
+    /// for overlap checking in the link editor
+    const SG_FVMLIB = 0x2,
+    /// this segment has nothing that was relocated in it and nothing relocated to it,
+    /// that is it maybe safely replaced without relocation
+    const SG_NORELOC = 0x4,
+    /// This segment is protected.  If the segment starts at file offset 0,
+    /// the first page of the segment is not protected.
+    /// All other pages of the segment are protected.
+    const SG_PROTECTED_VERSION_1 = 0x8,
+} }
 
 // The flags field of a section structure is separated into two parts a section
 // type and section attributes.  The section types are mutually exclusive (it
@@ -371,41 +372,42 @@ pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS: u32 = 0x15;
 // Constants for the section attributes part of the flags field of a section
 // structure.
 //
+bitflags! { pub flags SectionAttributes: u32 {
+    /// User setable attributes
+    const SECTION_ATTRIBUTES_USR = 0xff000000,
+    /// section contains only true machine instructions
+    const S_ATTR_PURE_INSTRUCTIONS = 0x80000000,
+    /// section contains coalesced symbols that are not to be in a ranlib table of contents
+    const S_ATTR_NO_TOC = 0x40000000,
+    /// ok to strip static symbols in this section in files with the MH_DYLDLINK flag
+    const S_ATTR_STRIP_STATIC_SYMS = 0x20000000,
+    /// no dead stripping
+    const S_ATTR_NO_DEAD_STRIP = 0x10000000,
+    /// blocks are live if they reference live blocks
+    const S_ATTR_LIVE_SUPPORT = 0x08000000,
+    /// Used with i386 code stubs written on by dyld
+    const S_ATTR_SELF_MODIFYING_CODE = 0x04000000,
 
-/// User setable attributes
-pub const SECTION_ATTRIBUTES_USR: u32 = 0xff000000;
-/// section contains only true machine instructions
-pub const S_ATTR_PURE_INSTRUCTIONS: u32 = 0x80000000;
-/// section contains coalesced symbols that are not to be in a ranlib table of contents
-pub const S_ATTR_NO_TOC: u32 = 0x40000000;
-/// ok to strip static symbols in this section in files with the MH_DYLDLINK flag
-pub const S_ATTR_STRIP_STATIC_SYMS: u32 = 0x20000000;
-/// no dead stripping
-pub const S_ATTR_NO_DEAD_STRIP: u32 = 0x10000000;
-/// blocks are live if they reference live blocks
-pub const S_ATTR_LIVE_SUPPORT: u32 = 0x08000000;
-/// Used with i386 code stubs written on by dyld
-pub const S_ATTR_SELF_MODIFYING_CODE: u32 = 0x04000000;
+    // If a segment contains any sections marked with S_ATTR_DEBUG then all
+    // sections in that segment must have this attribute.  No section other than
+    // a section marked with this attribute may reference the contents of this
+    // section.  A section with this attribute may contain no symbols and must have
+    // a section type S_REGULAR.  The static linker will not copy section contents
+    // from sections with this attribute into its output file.  These sections
+    // generally contain DWARF debugging info.
+    //
 
-// If a segment contains any sections marked with S_ATTR_DEBUG then all
-// sections in that segment must have this attribute.  No section other than
-// a section marked with this attribute may reference the contents of this
-// section.  A section with this attribute may contain no symbols and must have
-// a section type S_REGULAR.  The static linker will not copy section contents
-// from sections with this attribute into its output file.  These sections
-// generally contain DWARF debugging info.
-//
-
-/// a debug section
-pub const S_ATTR_DEBUG: u32 = 0x02000000;
-/// system setable attributes
-pub const SECTION_ATTRIBUTES_SYS: u32 = 0x00ffff00;
-/// section contains some machine instructions
-pub const S_ATTR_SOME_INSTRUCTIONS: u32 = 0x00000400;
-/// section has external relocation entries
-pub const S_ATTR_EXT_RELOC: u32 = 0x00000200;
-/// section has local relocation entries
-pub const S_ATTR_LOC_RELOC: u32 = 0x00000100;
+    /// a debug section
+    const S_ATTR_DEBUG = 0x02000000,
+    /// system setable attributes
+    const SECTION_ATTRIBUTES_SYS = 0x00ffff00,
+    /// section contains some machine instructions
+    const S_ATTR_SOME_INSTRUCTIONS = 0x00000400,
+    /// section has external relocation entries
+    const S_ATTR_EXT_RELOC = 0x00000200,
+    /// section has local relocation entries
+    const S_ATTR_LOC_RELOC = 0x00000100,
+} }
 
 // The names of segments and sections in them are mostly meaningless to the
 // link-editor.  But there are few things to support traditional UNIX
@@ -474,3 +476,74 @@ pub static SEG_UNIXSTACK: &'static str = "__UNIXSTACK";
 
 /// the segment for the self (dyld) modifing code stubs that has read, write and execute permissions
 pub static SEG_IMPORT: &'static str = "__IMPORT";
+
+
+// The following are used to encode rebasing information
+//
+
+pub const REBASE_TYPE_POINTER: u32 = 1;
+pub const REBASE_TYPE_TEXT_ABSOLUTE32: u32 = 2;
+pub const REBASE_TYPE_TEXT_PCREL32: u32 = 3;
+
+pub const REBASE_OPCODE_MASK: u32 = 0xF0;
+pub const REBASE_IMMEDIATE_MASK: u32 = 0x0F;
+
+pub const REBASE_OPCODE_DONE: u32 = 0x00;
+pub const REBASE_OPCODE_SET_TYPE_IMM: u32 = 0x10;
+pub const REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u32 = 0x20;
+pub const REBASE_OPCODE_ADD_ADDR_ULEB: u32 = 0x30;
+pub const REBASE_OPCODE_ADD_ADDR_IMM_SCALED: u32 = 0x40;
+pub const REBASE_OPCODE_DO_REBASE_IMM_TIMES: u32 = 0x50;
+pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES: u32 = 0x60;
+pub const REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: u32 = 0x70;
+pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: u32 = 0x80;
+
+
+// The following are used to encode binding information
+//
+pub const BIND_TYPE_POINTER: u32 = 1;
+pub const BIND_TYPE_TEXT_ABSOLUTE32: u32 = 2;
+pub const BIND_TYPE_TEXT_PCREL32: u32 = 3;
+
+pub const BIND_SPECIAL_DYLIB_SELF: u32 = 0;
+pub const BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE: u32 = -1;
+pub const BIND_SPECIAL_DYLIB_FLAT_LOOKUP: u32 = -2;
+
+pub const BIND_SYMBOL_FLAGS_WEAK_IMPORT: u32 = 0x1;
+pub const BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION: u32 = 0x8;
+
+pub const BIND_OPCODE_MASK: u32 = 0xF0;
+pub const BIND_IMMEDIATE_MASK: u32 = 0x0F;
+pub const BIND_OPCODE_DONE: u32 = 0x00;
+pub const BIND_OPCODE_SET_DYLIB_ORDINAL_IMM: u32 = 0x10;
+pub const BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB: u32 = 0x20;
+pub const BIND_OPCODE_SET_DYLIB_SPECIAL_IMM: u32 = 0x30;
+pub const BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM: u32 = 0x40;
+pub const BIND_OPCODE_SET_TYPE_IMM: u32 = 0x50;
+pub const BIND_OPCODE_SET_ADDEND_SLEB: u32 = 0x60;
+pub const BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u32 = 0x70;
+pub const BIND_OPCODE_ADD_ADDR_ULEB: u32 = 0x80;
+pub const BIND_OPCODE_DO_BIND: u32 = 0x90;
+pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: u32 = 0xA0;
+pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u32 = 0xB0;
+pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u32 = 0xC0;
+
+
+// The following are used on the flags byte of a terminal node
+// in the export information.
+//
+
+bitflags! { pub flags ExportSymbolFlags: u32 {
+    const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03,
+    const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00,
+    const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01,
+    const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04,
+    const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08,
+    const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10,
+}}
+
+pub const DICE_KIND_DATA: u16 = 0x0001;
+pub const DICE_KIND_JUMP_TABLE8: u16 = 0x0002;
+pub const DICE_KIND_JUMP_TABLE16: u16 = 0x0003;
+pub const DICE_KIND_JUMP_TABLE32: u16 = 0x0004;
+pub const DICE_KIND_ABS_JUMP_TABLE32: u16 = 0x0005;

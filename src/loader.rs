@@ -215,7 +215,7 @@ pub enum LoadCommand {
         /// initial VM protection
         initprot: vm_prot_t,
         /// flags
-        flags: u32,
+        flags: SegmentFlags,
         /// sections
         sections: Vec<Section>,
     },
@@ -240,7 +240,7 @@ pub enum LoadCommand {
         /// initial VM protection
         initprot: vm_prot_t,
         /// flags
-        flags: u32,
+        flags: SegmentFlags,
         /// sections
         sections: Vec<Section64>,
     },
@@ -713,7 +713,7 @@ impl LoadCommand {
                     filesize: filesize,
                     maxprot: maxprot,
                     initprot: initprot,
-                    flags: flags,
+                    flags: SegmentFlags::from_bits_truncate(flags),
                     sections: sections,
                 }
             }
@@ -741,7 +741,7 @@ impl LoadCommand {
                     filesize: filesize,
                     maxprot: maxprot,
                     initprot: initprot,
-                    flags: flags,
+                    flags: SegmentFlags::from_bits_truncate(flags),
                     sections: sections,
                 }
             }
@@ -1053,6 +1053,19 @@ impl LoadCommand {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct SectionFlags(u32);
+
+impl SectionFlags {
+    fn secttype(self) -> u32 {
+        self.0 & SECTION_TYPE
+    }
+
+    fn sectattrs(self) -> SectionAttributes {
+        SectionAttributes::from_bits_truncate(self.0 & SECTION_ATTRIBUTES)
+    }
+}
+
 // A segment is made up of zero or more sections.  Non-MH_OBJECT files have
 // all of their segments with the proper sections in each, and padded to the
 // specified segment alignment when produced by the link editor.  The first
@@ -1098,8 +1111,8 @@ pub struct Section {
     pub reloff: u32,
     /// number of relocation entries
     pub nreloc: u32,
-    /// flags (section type and attributes)
-    pub flags: u32,
+    // flags (section type and attributes)
+    pub flags: SectionFlags,
 }
 
 #[derive(Debug, Clone)]
@@ -1120,8 +1133,8 @@ pub struct Section64 {
     pub reloff: u32,
     /// number of relocation entries
     pub nreloc: u32,
-    /// flags (section type and attributes)
-    pub flags: u32,
+    // flags (section type and attributes)
+    pub flags: SectionFlags,
 }
 
 impl Section {
@@ -1135,7 +1148,7 @@ impl Section {
             align: try!(buf.read_u32::<O>()),
             reloff: try!(buf.read_u32::<O>()),
             nreloc: try!(buf.read_u32::<O>()),
-            flags: try!(buf.read_u32::<O>()),
+            flags: SectionFlags(try!(buf.read_u32::<O>())),
         };
 
         buf.consume(8);
@@ -1155,13 +1168,23 @@ impl Section64 {
             align: try!(buf.read_u32::<O>()),
             reloff: try!(buf.read_u32::<O>()),
             nreloc: try!(buf.read_u32::<O>()),
-            flags: try!(buf.read_u32::<O>()),
+            flags: SectionFlags(try!(buf.read_u32::<O>())),
         };
 
         buf.consume(12);
 
         Ok(section)
     }
+}
+
+// The LC_DATA_IN_CODE load commands uses a linkedit_data_command
+// to point to an array of data_in_code_entry entries. Each entry
+// describes a range of data in a code section.
+//
+pub struct DataInCodeEntry {
+    offset: u32, // from mach_header to start of data range
+    length: u16, // number of bytes in data range
+    kind: u16, // a DICE_KIND_* value
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1295,7 +1318,7 @@ pub mod tests {
            assert_eq!(filesize, 0);
            assert_eq!(maxprot, 0);
            assert_eq!(initprot, 0);
-           assert_eq!(flags, 0);
+           assert!(flags.is_empty());
            assert!(sections.is_empty());
         } else {
             panic!();
@@ -1309,7 +1332,7 @@ pub mod tests {
            assert_eq!(filesize, 0x1e3000);
            assert_eq!(maxprot, 7);
            assert_eq!(initprot, 5);
-           assert_eq!(flags, 0);
+           assert!(flags.is_empty());
            assert_eq!(sections.len(), 8);
 
            assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(),
@@ -1327,7 +1350,7 @@ pub mod tests {
            assert_eq!(filesize, 0x12000);
            assert_eq!(maxprot, 7);
            assert_eq!(initprot, 3);
-           assert_eq!(flags, 0);
+           assert!(flags.is_empty());
            assert_eq!(sections.len(),10);
 
            assert_eq!(sections.iter().map(|sec: &Section64| sec.sectname.clone()).collect::<Vec<String>>(),
@@ -1346,7 +1369,7 @@ pub mod tests {
            assert_eq!(filesize, 0x1790b4);
            assert_eq!(maxprot, 7);
            assert_eq!(initprot, 1);
-           assert_eq!(flags, 0);
+           assert!(flags.is_empty());
            assert!(sections.is_empty());
         } else {
             panic!();

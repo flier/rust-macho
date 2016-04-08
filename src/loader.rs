@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ffi::CStr;
 use std::io::{Read, BufRead, Seek, SeekFrom, Cursor};
 use std::convert::From;
@@ -609,6 +610,7 @@ pub enum LoadCommand {
     Command {
         /// type of load command
         cmd: u32,
+        /// 
         /// command in bytes
         payload: Vec<u8>,
     },
@@ -630,7 +632,7 @@ trait ReadStringExt : Read {
 impl<R: Read + ?Sized> ReadStringExt for R {}
 
 impl LoadCommand {
-    fn parse<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LoadCommand> {
+    fn parse<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
         let cmd = try!(buf.read_u32::<O>());
         let cmdsize = try!(buf.read_u32::<O>());
@@ -815,7 +817,7 @@ impl LoadCommand {
         // skip the reserved or padding bytes
         buf.consume(cmdsize as usize - read);
 
-        Ok(cmd)
+        Ok((cmd, cmdsize as usize))
     }
 
     fn read_lc_string<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<String> {
@@ -1003,6 +1005,10 @@ pub struct Section {
     pub nreloc: u32,
     // flags (section type and attributes)
     pub flags: SectionFlags,
+    /// reserved (for offset or index)
+    pub reserved1: u32,
+    /// reserved (for count or sizeof)
+    pub reserved2: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -1025,6 +1031,12 @@ pub struct Section64 {
     pub nreloc: u32,
     // flags (section type and attributes)
     pub flags: SectionFlags,
+    /// reserved (for offset or index)
+    pub reserved1: u32,
+    /// reserved (for count or sizeof)
+    pub reserved2: u32,
+    /// reserved 
+    pub reserved3: u32,
 }
 
 impl Section {
@@ -1039,9 +1051,9 @@ impl Section {
             reloff: try!(buf.read_u32::<O>()),
             nreloc: try!(buf.read_u32::<O>()),
             flags: SectionFlags(try!(buf.read_u32::<O>())),
+            reserved1: try!(buf.read_u32::<O>()),
+            reserved2: try!(buf.read_u32::<O>()),
         };
-
-        buf.consume(8);
 
         Ok(section)
     }
@@ -1059,9 +1071,10 @@ impl Section64 {
             reloff: try!(buf.read_u32::<O>()),
             nreloc: try!(buf.read_u32::<O>()),
             flags: SectionFlags(try!(buf.read_u32::<O>())),
+            reserved1: try!(buf.read_u32::<O>()),
+            reserved2: try!(buf.read_u32::<O>()),
+            reserved3: try!(buf.read_u32::<O>()),
         };
-
-        buf.consume(12);
 
         Ok(section)
     }
@@ -1072,15 +1085,112 @@ impl Section64 {
 // describes a range of data in a code section.
 //
 pub struct DataInCodeEntry {
-    offset: u32, // from mach_header to start of data range
-    length: u16, // number of bytes in data range
-    kind: u16, // a DICE_KIND_* value
+    pub offset: u32, // from mach_header to start of data range
+    pub length: u16, // number of bytes in data range
+    pub kind: u16, // a DICE_KIND_* value
+}
+
+#[derive(Debug, Clone)]
+pub struct MachCommand(LoadCommand, usize);
+
+impl fmt::Display for MachCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        match cmd {
+            &LoadCommand::Segment {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} => {
+                try!(write!(f, "      cmd {}\n", self.0.name()));
+                try!(write!(f, "  cmdsize {}\n", cmdsize));
+                try!(write!(f, "  segname {}\n", segname));
+                try!(write!(f, "   vmaddr 0x{:08x}\n", vmaddr));
+                try!(write!(f, "   vmsize 0x{:08x}\n", vmsize));
+                try!(write!(f, "  fileoff {}\n", fileoff));
+                try!(write!(f, " filesize {}\n", filesize));
+                try!(write!(f, "  maxprot 0x{:08x}\n", maxprot));
+                try!(write!(f, " initprot 0x{:08x}\n", initprot));
+                try!(write!(f, "   nsects {}\n", sections.len()));
+                try!(write!(f, "    flags 0x{:x}\n", flags.bits()));
+
+                for ref section in sections {
+                    try!(write!(f, "Section\n"));
+                    try!(write!(f, "  sectname {}\n", section.sectname));
+                    try!(write!(f, "   segname {}{}", section.segname, 
+                        if *segname != section.segname { " (does not match segment)\n" } else { "\n" }));
+                    try!(write!(f, "      addr 0x{:08x}\n", section.addr));
+                    try!(write!(f, "      size 0x{:08x}\n", section.size));
+                    try!(write!(f, "    offset {}\n", section.offset));
+                    try!(write!(f, "     align 2^{} ({})\n", section.align, 1<<section.align));
+                    try!(write!(f, "    reloff {}\n", section.reloff));
+                    try!(write!(f, "    nreloc {}\n", section.nreloc));
+                    try!(write!(f, "     flags 0x{:08x}\n", section.flags.0));
+                    try!(write!(f, " reserved1 {}{}", section.reserved1,
+                        match section.flags.secttype() {
+                            S_SYMBOL_STUBS |
+                            S_LAZY_SYMBOL_POINTERS |
+                            S_LAZY_DYLIB_SYMBOL_POINTERS |
+                            S_NON_LAZY_SYMBOL_POINTERS => {
+                                " (index into indirect symbol table)\n"
+                            }
+                            _ =>{
+                                "\n"
+                            }
+                        }));
+                    try!(write!(f, " reserved2 {}{}", section.reserved2,
+                        if section.flags.secttype() == S_SYMBOL_STUBS { " (size of stubs)\n" } else { "\n" }));
+                }
+            }
+            &LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} => {
+                try!(write!(f, "      cmd {}\n", self.0.name()));
+                try!(write!(f, "  cmdsize {}\n", cmdsize));
+                try!(write!(f, "  segname {}\n", segname));
+                try!(write!(f, "   vmaddr 0x{:016x}\n", vmaddr));
+                try!(write!(f, "   vmsize 0x{:016x}\n", vmsize));
+                try!(write!(f, "  fileoff {}\n", fileoff));
+                try!(write!(f, " filesize {}\n", filesize));
+                try!(write!(f, "  maxprot 0x{:08x}\n", maxprot));
+                try!(write!(f, " initprot 0x{:08x}\n", initprot));
+                try!(write!(f, "   nsects {}\n", sections.len()));
+                try!(write!(f, "    flags 0x{:x}\n", flags.bits()));
+
+                for ref section in sections {
+                    try!(write!(f, "Section\n"));
+                    try!(write!(f, "  sectname {}\n", section.sectname));
+                    try!(write!(f, "   segname {}{}", section.segname, 
+                        if *segname != section.segname { " (does not match segment)\n" } else { "\n" }));
+                    try!(write!(f, "      addr 0x{:016x}\n", section.addr));
+                    try!(write!(f, "      size 0x{:016x}\n", section.size));
+                    try!(write!(f, "    offset {}\n", section.offset));
+                    try!(write!(f, "     align 2^{} ({})\n", section.align, 1<<section.align));
+                    try!(write!(f, "    reloff {}\n", section.reloff));
+                    try!(write!(f, "    nreloc {}\n", section.nreloc));
+                    try!(write!(f, "     flags 0x{:08x}\n", section.flags.0));
+                    try!(write!(f, " reserved1 {}{}", section.reserved1,
+                        match section.flags.secttype() {
+                            S_SYMBOL_STUBS |
+                            S_LAZY_SYMBOL_POINTERS |
+                            S_LAZY_DYLIB_SYMBOL_POINTERS |
+                            S_NON_LAZY_SYMBOL_POINTERS => {
+                                " (index into indirect symbol table)\n"
+                            }
+                            _ =>{
+                                "\n"
+                            }
+                        }));
+                    try!(write!(f, " reserved2 {}{}", section.reserved2,
+                        if section.flags.secttype() == S_SYMBOL_STUBS { " (size of stubs)\n" } else { "\n" }));
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct MachFile {
     pub header: MachHeader,
-    pub commands: Vec<LoadCommand>,
+    pub commands: Vec<MachCommand>,
 }
 
 #[derive(Debug, Default,  Clone)]
@@ -1120,7 +1230,9 @@ impl<A: MachArch, O: ByteOrder> MachLoader<A, O> {
         let mut commands = Vec::new();
 
         for _ in 0..header.ncmds as usize {
-            commands.push(try!(LoadCommand::parse::<O>(buf)));
+            let (cmd, cmdsize) = try!(LoadCommand::parse::<O>(buf));
+
+            commands.push(MachCommand(cmd, cmdsize));
         }
 
         debug!("parsed {} load commands", commands.len());
@@ -1138,12 +1250,27 @@ impl<A: MachArch, O: ByteOrder> MachLoader<A, O> {
 pub mod tests {
     extern crate env_logger;
 
-    use std::io::Cursor;
+    use std::str;
+    use std::io::{Write, Cursor};
 
     use super::super::*;
     use super::Section64;
 
     include!("testdata.rs");
+
+    macro_rules! setup_test_file {
+        ($buf: expr) => ({
+            let _ = env_logger::init();
+
+            let mut cursor = Cursor::new($buf);
+
+            let file = UniversalFile::load(&mut cursor).unwrap();
+
+            assert_eq!(file.files.len(), 1);
+
+            file
+        })
+    }
 
     macro_rules! setup_test_universal_file {
         () => ({
@@ -1176,7 +1303,7 @@ pub mod tests {
         assert_eq!(file.header.flags, 0x00a18085);
 
         assert_eq!(file.commands.len(), 15);
-        assert_eq!(file.commands.iter().map(|cmd| cmd.cmd()).collect::<Vec<u32>>(),
+        assert_eq!(file.commands.iter().map(|cmd| cmd.0.cmd()).collect::<Vec<u32>>(),
                    vec![LC_SEGMENT_64,
                         LC_SEGMENT_64,
                         LC_SEGMENT_64,
@@ -1200,7 +1327,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[0] {
+        if let MachCommand(LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = file.commands[0] {
            assert_eq!(segname, SEG_PAGEZERO);
            assert_eq!(vmaddr, 0);
            assert_eq!(vmsize, 0x0000000100000000);
@@ -1214,7 +1341,7 @@ pub mod tests {
             panic!();
         }
 
-        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[1] {
+        if let MachCommand(LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = file.commands[1] {
            assert_eq!(segname, SEG_TEXT);
            assert_eq!(vmaddr, 0x0000000100000000);
            assert_eq!(vmsize, 0x00000000001e3000);
@@ -1232,7 +1359,7 @@ pub mod tests {
         }
 
 
-        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[2] {
+        if let MachCommand(LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = file.commands[2] {
            assert_eq!(segname, SEG_DATA);
            assert_eq!(vmaddr, 0x00000001001e3000);
            assert_eq!(vmsize, 0x0000000000013000);
@@ -1251,7 +1378,7 @@ pub mod tests {
         }
 
 
-        if let LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} = file.commands[3] {
+        if let MachCommand(LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = file.commands[3] {
            assert_eq!(segname, SEG_LINKEDIT);
            assert_eq!(vmaddr, 0x00000001001f6000);
            assert_eq!(vmsize, 0x000000000017a000);
@@ -1272,7 +1399,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::LoadDyLinker(ref name) = file.commands[7] {
+        if let MachCommand(LoadCommand::LoadDyLinker(ref name), cmdsize) = file.commands[7] {
             assert_eq!(name, "/usr/lib/dyld");
         } else {
             panic!();
@@ -1285,7 +1412,8 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::SymTab {symoff, nsyms, stroff, strsize} = file.commands[5] {
+        if let MachCommand(LoadCommand::SymTab {symoff, nsyms, stroff, strsize}, cmdsize) =
+               file.commands[5] {
             assert_eq!(symoff, 0x200d88);
             assert_eq!(nsyms, 36797);
             assert_eq!(stroff, 0x290bf4);
@@ -1301,7 +1429,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::DySymTab {
+        if let MachCommand(LoadCommand::DySymTab {
             ilocalsym, nlocalsym,
             iextdefsym, nextdefsym,
             iundefsym, nundefsym,
@@ -1311,7 +1439,8 @@ pub mod tests {
             indirectsymoff, nindirectsyms,
             extreloff, nextrel,
             locreloff, nlocrel
-        } = file.commands[6] {
+        },
+                           cmdsize) = file.commands[6] {
             assert_eq!(ilocalsym, 0);
             assert_eq!(nlocalsym, 35968);
             assert_eq!(iextdefsym, 35968);
@@ -1341,7 +1470,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::Uuid(ref uuid) = file.commands[8] {
+        if let MachCommand(LoadCommand::Uuid(ref uuid), cmdsize) = file.commands[8] {
             assert_eq!(uuid.hyphenated().to_string(),
                        "92e3cf1f-20da-3373-a98c-851366d353bf");
         } else {
@@ -1355,7 +1484,8 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::VersionMin{target, version, sdk} = file.commands[9] {
+        if let MachCommand(LoadCommand::VersionMin{target, version, sdk}, cmdsize) =
+               file.commands[9] {
             assert_eq!(target, BuildTarget::MacOsX);
             assert_eq!(version.to_string(), "10.11.0");
             assert_eq!(sdk.to_string(), "10.11.0");
@@ -1370,13 +1500,14 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::DyldInfo{
+        if let MachCommand(LoadCommand::DyldInfo{
             rebase_off, rebase_size,
             bind_off, bind_size,
             weak_bind_off, weak_bind_size,
             lazy_bind_off, lazy_bind_size,
             export_off, export_size
-        } = file.commands[4] {
+        },
+                           cmdsize) = file.commands[4] {
             assert_eq!(rebase_off, 0x1f5000);
             assert_eq!(rebase_size, 3368);
             assert_eq!(bind_off, 0x1f5d28);
@@ -1398,7 +1529,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::LoadDyLib(ref dylib) = file.commands[12] {
+        if let MachCommand(LoadCommand::LoadDyLib(ref dylib), cmdsize) = file.commands[12] {
             assert_eq!(dylib.name, "/usr/lib/libSystem.B.dylib");
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
@@ -1414,7 +1545,8 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::EntryPoint{entryoff, stacksize} = file.commands[11] {
+        if let MachCommand(LoadCommand::EntryPoint{entryoff, stacksize}, cmdsize) =
+               file.commands[11] {
             assert_eq!(entryoff, 0x11400);
             assert_eq!(stacksize, 0);
         } else {
@@ -1428,7 +1560,7 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::SourceVersion(version) = file.commands[10] {
+        if let MachCommand(LoadCommand::SourceVersion(version), cmdsize) = file.commands[10] {
             assert_eq!(version.0, 0);
             assert_eq!(version.to_string(), "0.0.0.0.0");
         } else {
@@ -1442,18 +1574,42 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let LoadCommand::FunctionStarts(LinkEditData{dataoff, datasize}) = file.commands[13] {
+        if let MachCommand(LoadCommand::FunctionStarts(LinkEditData{dataoff, datasize}), cmdsize) =
+               file.commands[13] {
             assert_eq!(dataoff, 0x1fec50);
             assert_eq!(datasize, 8504);
         } else {
             panic!();
         }
 
-        if let LoadCommand::DataInCode(LinkEditData{dataoff, datasize}) = file.commands[14] {
+        if let MachCommand(LoadCommand::DataInCode(LinkEditData{dataoff, datasize}), cmdsize) =
+               file.commands[14] {
             assert_eq!(dataoff, 0x200d88);
             assert_eq!(datasize, 0);
         } else {
             panic!();
         }
+    }
+
+    #[test]
+    fn test_parse_hello_bin() {
+        let file = setup_test_file!(HELLO_WORLD_BIN);
+
+        let mut w = Vec::<u8>::new();
+
+        write!(w, "helloworld:\n").unwrap();
+
+        let file = file.files[0].as_ref();
+
+        for (i, ref cmd) in file.commands.iter().enumerate() {
+            write!(w, "Load command {}\n", i).unwrap();
+            write!(w, "{}", cmd).unwrap();
+        }
+
+        let dump = str::from_utf8(w.as_slice()).unwrap();
+
+        info!("dump {} commands:\n{}", file.commands.len(), dump);
+
+        assert_eq!(dump, HELLO_WORLD_LC);
     }
 }

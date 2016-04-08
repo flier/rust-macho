@@ -2,6 +2,7 @@
 extern crate log;
 extern crate byteorder;
 extern crate uuid;
+extern crate time;
 #[macro_use]
 extern crate bitflags;
 

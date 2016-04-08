@@ -121,7 +121,11 @@ impl Into<u32> for VersionTag {
 
 impl ::std::fmt::Display for VersionTag {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
+        if self.release() == 0 {
+            write!(f, "{}.{}", self.major(), self.minor())
+        } else {
+            write!(f, "{}.{}.{}", self.major(), self.minor(), self.release())
+        }
     }
 }
 
@@ -148,7 +152,15 @@ impl ::std::fmt::Display for SourceVersionTag {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         let (a, b, c, d, e) = Self::into(*self);
 
-        write!(f, "{}.{}.{}.{}.{}", a, b, c, d, e)
+        if e != 0 {
+            write!(f, "{}.{}.{}.{}.{}", a, b, c, d, e)
+        } else if d != 0 {
+            write!(f, "{}.{}.{}.{}", a, b, c, d)
+        } else if c != 0 {
+            write!(f, "{}.{}.{}", a, b, c)
+        } else {
+            write!(f, "{}.{}", a, b)
+        }
     }
 }
 
@@ -211,9 +223,9 @@ pub struct DyLib {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LinkEditData {
     /// file offset of data in __LINKEDIT segment
-    dataoff: u32,
+    off: u32,
     /// file size of data in __LINKEDIT segment
-    datasize: u32,
+    size: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -285,6 +297,8 @@ pub enum LoadCommand {
     LoadDyLib(DyLib),
     LoadWeakDyLib(DyLib),
     ReexportDyLib(DyLib),
+    LoadUpwardDylib(DyLib),
+    LazyLoadDylib(DyLib),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
     // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
@@ -698,6 +712,8 @@ impl LoadCommand {
             LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O>(buf))),
             LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O>(buf))),
             LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(try!(Self::read_dylib::<O>(buf))),
+            LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(try!(Self::read_dylib::<O>(buf))),
+            LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(try!(Self::read_dylib::<O>(buf))),
 
             LC_ID_DYLINKER => {
                 let (off, name) = try!(Self::read_dylinker::<O>(buf));
@@ -866,8 +882,8 @@ impl LoadCommand {
 
     fn read_linkedit_data<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LinkEditData> {
         Ok(LinkEditData {
-            dataoff: try!(buf.read_u32::<O>()),
-            datasize: try!(buf.read_u32::<O>()),
+            off: try!(buf.read_u32::<O>()),
+            size: try!(buf.read_u32::<O>()),
         })
     }
 
@@ -879,6 +895,8 @@ impl LoadCommand {
             &LoadCommand::LoadDyLib(_) => LC_LOAD_DYLIB,
             &LoadCommand::LoadWeakDyLib(_) => LC_LOAD_WEAK_DYLIB,
             &LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
+            &LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
+            &LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
             &LoadCommand::IdDyLinker(..) => LC_ID_DYLINKER,
             &LoadCommand::LoadDyLinker(..) => LC_LOAD_DYLINKER,
             &LoadCommand::DyLdEnv(..) => LC_DYLD_ENVIRONMENT,
@@ -1080,19 +1098,32 @@ pub struct MachCommand(LoadCommand, usize);
 
 impl fmt::Display for MachCommand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let MachCommand(ref cmd, cmdsize) = *self;
+        match self.0 {
+            LoadCommand::Segment {..} |
+            LoadCommand::Segment64 {..} => self.print_segment_command(f),
+            LoadCommand::DyldInfo { .. } => self.print_dyld_info_command(f),
+            LoadCommand::SymTab {..} => self.print_symtab_command(f),
+            LoadCommand::DySymTab {..} => self.print_dysymtab_command(f),
+            LoadCommand::IdDyLinker(..) |
+            LoadCommand::LoadDyLinker(..) |
+            LoadCommand::DyLdEnv(..) => self.print_dylinker_command(f),
+            LoadCommand::IdDyLib(_) |
+            LoadCommand::LoadDyLib(_) |
+            LoadCommand::LoadWeakDyLib(_) |
+            LoadCommand::ReexportDyLib(_) |
+            LoadCommand::LoadUpwardDylib(_) |
+            LoadCommand::LazyLoadDylib(_) => self.print_dylib_command(f),
+            LoadCommand::VersionMin {..} => self.print_version_min_command(f),
+            LoadCommand::SourceVersion(_) => self.print_source_version_command(f),
+            LoadCommand::Uuid(_) => self.print_uuid_command(f),
+            LoadCommand::EntryPoint {..} => self.print_entry_point_command(f),
+            LoadCommand::CodeSignature(_) |
+            LoadCommand::SegmentSplitInfo(_) |
+            LoadCommand::FunctionStarts(_) |
+            LoadCommand::DataInCode(_) |
+            LoadCommand::DylibCodeSignDrs(_) |
+            LoadCommand::LinkerOptimizationHint(_) => self.print_linkedit_data_command(f),
 
-        match cmd {
-            &LoadCommand::Segment {..} | &LoadCommand::Segment64 {..} => {
-                self.print_segment_command(f)
-            }
-            &LoadCommand::DyldInfo { .. } => self.print_dyld_info_command(f),
-            &LoadCommand::SymTab {..} => self.print_symtab_command(f),
-            &LoadCommand::DySymTab {..} => self.print_dysymtab_command(f),
-            &LoadCommand::IdDyLinker(..) |
-            &LoadCommand::LoadDyLinker(..) |
-            &LoadCommand::DyLdEnv(..) => self.print_dylinker_command(f),
-            &LoadCommand::Uuid(_) => self.print_uuid_command(f),
             _ => Ok(()),
         }
     }
@@ -1257,6 +1288,62 @@ impl MachCommand {
         }
     }
 
+    fn print_dylib_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        match cmd {
+            &LoadCommand::IdDyLib(ref dylib) |
+            &LoadCommand::LoadDyLib(ref dylib) |
+            &LoadCommand::LoadWeakDyLib(ref dylib) |
+            &LoadCommand::ReexportDyLib(ref dylib) |
+            &LoadCommand::LoadUpwardDylib(ref dylib) |
+            &LoadCommand::LazyLoadDylib(ref dylib) => {
+                try!(write!(f, "          cmd {}\n", cmd.name()));
+                try!(write!(f, "      cmdsize {}\n", cmdsize));
+                try!(write!(f, "         name {}\n", dylib.name));
+                let ts = try!(time::strftime("%a %b  %d %T %Y",
+                                             time::at(time::Timespec::new(dylib.timestamp, 0))));
+                try!(write!(f, "   time stamp {} {}\n", dylib.timestamp, ts));
+                try!(write!(f, "      current version {}\n", dylib.current_version));
+                try!(write!(f, "compatibility version {}\n", dylib.compatibility_version));
+
+                Ok(())
+            }
+            _ => {
+                unreachable!();
+            }
+        }
+    }
+
+    fn print_version_min_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        if let &LoadCommand::VersionMin{target, version, sdk} = cmd {
+            try!(write!(f, "      cmd {}\n", cmd.name()));
+            try!(write!(f, "  cmdsize {}\n", cmdsize));
+            try!(write!(f, "  version {}\n", version));
+            try!(write!(f, "      sdk {}\n", sdk));
+
+            Ok(())
+        } else {
+            unreachable!();
+        }
+    }
+
+    fn print_source_version_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        if let &LoadCommand::SourceVersion(version) = cmd {
+            try!(write!(f, "      cmd {}\n", cmd.name()));
+            try!(write!(f, "  cmdsize {}\n", cmdsize));
+            try!(write!(f, "  version {}\n", version));
+
+            Ok(())
+        } else {
+            unreachable!();
+        }
+    }
+
     fn print_uuid_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
@@ -1270,6 +1357,44 @@ impl MachCommand {
             Ok(())
         } else {
             unreachable!();
+        }
+    }
+
+    fn print_entry_point_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        if let &LoadCommand::EntryPoint {entryoff, stacksize} = cmd {
+            try!(write!(f, "       cmd {}\n", cmd.name()));
+            try!(write!(f, "   cmdsize {}\n", cmdsize));
+            try!(write!(f, "  entryoff {}\n", entryoff));
+            try!(write!(f, " stacksize {}\n", stacksize));
+
+            Ok(())
+        } else {
+            unreachable!();
+        }
+    }
+
+    fn print_linkedit_data_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        match cmd {
+            &LoadCommand::CodeSignature(ref data) |
+            &LoadCommand::SegmentSplitInfo(ref data) |
+            &LoadCommand::FunctionStarts(ref data) |
+            &LoadCommand::DataInCode(ref data) |
+            &LoadCommand::DylibCodeSignDrs(ref data) |
+            &LoadCommand::LinkerOptimizationHint(ref data) => {
+                try!(write!(f, "      cmd {}\n", cmd.name()));
+                try!(write!(f, "  cmdsize {}\n", cmdsize));
+                try!(write!(f, "  dataoff {}\n", data.off));
+                try!(write!(f, " datasize {}\n", data.size));
+
+                Ok(())
+            }
+            _ => {
+                unreachable!();
+            }
         }
     }
 }
@@ -1595,8 +1720,8 @@ pub mod tests {
                file.commands[9] {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
-            assert_eq!(version.to_string(), "10.11.0");
-            assert_eq!(sdk.to_string(), "10.11.0");
+            assert_eq!(version.to_string(), "10.11");
+            assert_eq!(sdk.to_string(), "10.11");
         } else {
             panic!();
         }
@@ -1611,7 +1736,7 @@ pub mod tests {
         if let MachCommand(LoadCommand::SourceVersion(version), cmdsize) = file.commands[10] {
             assert_eq!(cmdsize, 16);
             assert_eq!(version.0, 0);
-            assert_eq!(version.to_string(), "0.0.0.0.0");
+            assert_eq!(version.to_string(), "0.0");
         } else {
             panic!();
         }
@@ -1644,7 +1769,7 @@ pub mod tests {
             assert_eq!(dylib.name, "/usr/lib/libSystem.B.dylib");
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
-            assert_eq!(dylib.compatibility_version.to_string(), "1.0.0");
+            assert_eq!(dylib.compatibility_version.to_string(), "1.0");
         } else {
             panic!();
         }
@@ -1656,20 +1781,20 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let MachCommand(LoadCommand::FunctionStarts(LinkEditData{dataoff, datasize}), cmdsize) =
+        if let MachCommand(LoadCommand::FunctionStarts(LinkEditData{off, size}), cmdsize) =
                file.commands[13] {
             assert_eq!(cmdsize, 16);
-            assert_eq!(dataoff, 0x1fec50);
-            assert_eq!(datasize, 8504);
+            assert_eq!(off, 0x1fec50);
+            assert_eq!(size, 8504);
         } else {
             panic!();
         }
 
-        if let MachCommand(LoadCommand::DataInCode(LinkEditData{dataoff, datasize}), cmdsize) =
+        if let MachCommand(LoadCommand::DataInCode(LinkEditData{off, size}), cmdsize) =
                file.commands[14] {
             assert_eq!(cmdsize, 16);
-            assert_eq!(dataoff, 0x200d88);
-            assert_eq!(datasize, 0);
+            assert_eq!(off, 0x200d88);
+            assert_eq!(size, 0);
         } else {
             panic!();
         }

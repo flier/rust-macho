@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 
 use byteorder::{ByteOrder, BigEndian, LittleEndian, ReadBytesExt, NativeEndian};
 use uuid::Uuid;
+use time;
 
 use consts::*;
 
@@ -15,6 +16,7 @@ pub enum Error {
     FromUtf8Error(::std::string::FromUtf8Error),
     UuidParseError(::uuid::ParseError),
     IoError(::std::io::Error),
+    TimeParseError(::time::ParseError),
     LoadError,
 }
 
@@ -39,6 +41,12 @@ impl From<::uuid::ParseError> for Error {
 impl From<::std::io::Error> for Error {
     fn from(err: ::std::io::Error) -> Self {
         Error::IoError(err)
+    }
+}
+
+impl From<::time::ParseError> for Error {
+    fn from(err: ::time::ParseError) -> Self {
+        Error::TimeParseError(err)
     }
 }
 
@@ -195,6 +203,15 @@ impl Into<u32> for BuildTarget {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct LcString(usize, String);
+
+impl fmt::Display for LcString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.1)
+    }
+}
+
 // Dynamicly linked shared libraries are identified by two things.  The
 // pathname (the name of the library as found for execution), and the
 // compatibility version number.  The pathname must match and the compatibility
@@ -207,7 +224,7 @@ impl Into<u32> for BuildTarget {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DyLib {
     /// library's path name
-    name: String,
+    name: LcString,
     /// library's build time stamp
     timestamp: u32,
     /// library's current version number
@@ -307,9 +324,9 @@ pub enum LoadCommand {
     // This struct is also used for the LC_DYLD_ENVIRONMENT load command and
     // contains string for dyld to treat like environment variable.
     //
-    IdDyLinker(usize, String),
-    LoadDyLinker(usize, String),
-    DyLdEnv(usize, String),
+    IdDyLinker(LcString),
+    LoadDyLinker(LcString),
+    DyLdEnv(LcString),
 
     // The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
     // "stab" style symbol table information as described in the header files
@@ -715,21 +732,9 @@ impl LoadCommand {
             LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(try!(Self::read_dylib::<O>(buf))),
             LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(try!(Self::read_dylib::<O>(buf))),
 
-            LC_ID_DYLINKER => {
-                let (off, name) = try!(Self::read_dylinker::<O>(buf));
-
-                LoadCommand::IdDyLinker(off, name)
-            }
-            LC_LOAD_DYLINKER => {
-                let (off, name) = try!(Self::read_dylinker::<O>(buf));
-
-                LoadCommand::LoadDyLinker(off, name)
-            }
-            LC_DYLD_ENVIRONMENT => {
-                let (off, name) = try!(Self::read_dylinker::<O>(buf));
-
-                LoadCommand::DyLdEnv(off, name)
-            }
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(try!(Self::read_dylinker::<O>(buf))),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(try!(Self::read_dylinker::<O>(buf))),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(try!(Self::read_dylinker::<O>(buf))),
 
             LC_SYMTAB => {
                 LoadCommand::SymTab {
@@ -856,12 +861,12 @@ impl LoadCommand {
         unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const i8).to_str()))) }
     }
 
-    fn read_dylinker<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<(usize, String)> {
+    fn read_dylinker<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LcString> {
         let off = try!(buf.read_u32::<O>()) as usize;
 
         buf.consume(off - 12);
 
-        Ok((off, try!(Self::read_lc_string::<O>(buf))))
+        Ok(LcString(off, try!(Self::read_lc_string::<O>(buf))))
     }
 
     fn read_dylib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<DyLib> {
@@ -873,7 +878,7 @@ impl LoadCommand {
         buf.consume(off - 24);
 
         Ok(DyLib {
-            name: try!(Self::read_lc_string::<O>(buf)),
+            name: LcString(off, try!(Self::read_lc_string::<O>(buf))),
             timestamp: timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),
@@ -897,9 +902,9 @@ impl LoadCommand {
             &LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
             &LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
             &LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
-            &LoadCommand::IdDyLinker(..) => LC_ID_DYLINKER,
-            &LoadCommand::LoadDyLinker(..) => LC_LOAD_DYLINKER,
-            &LoadCommand::DyLdEnv(..) => LC_DYLD_ENVIRONMENT,
+            &LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
+            &LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
+            &LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
             &LoadCommand::SymTab {..} => LC_SYMTAB,
             &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
             &LoadCommand::Uuid(_) => LC_UUID,
@@ -1104,9 +1109,9 @@ impl fmt::Display for MachCommand {
             LoadCommand::DyldInfo { .. } => self.print_dyld_info_command(f),
             LoadCommand::SymTab {..} => self.print_symtab_command(f),
             LoadCommand::DySymTab {..} => self.print_dysymtab_command(f),
-            LoadCommand::IdDyLinker(..) |
-            LoadCommand::LoadDyLinker(..) |
-            LoadCommand::DyLdEnv(..) => self.print_dylinker_command(f),
+            LoadCommand::IdDyLinker(_) |
+            LoadCommand::LoadDyLinker(_) |
+            LoadCommand::DyLdEnv(_) => self.print_dylinker_command(f),
             LoadCommand::IdDyLib(_) |
             LoadCommand::LoadDyLib(_) |
             LoadCommand::LoadWeakDyLib(_) |
@@ -1273,9 +1278,9 @@ impl MachCommand {
         let MachCommand(ref cmd, cmdsize) = *self;
 
         match cmd {
-            &LoadCommand::IdDyLinker(off, ref name) |
-            &LoadCommand::LoadDyLinker(off, ref name) |
-            &LoadCommand::DyLdEnv(off, ref name) => {
+            &LoadCommand::IdDyLinker(LcString(off, ref name)) |
+            &LoadCommand::LoadDyLinker(LcString(off, ref name)) |
+            &LoadCommand::DyLdEnv(LcString(off, ref name)) => {
                 try!(write!(f, "          cmd {}\n", cmd.name()));
                 try!(write!(f, "      cmdsize {}\n", cmdsize));
                 try!(write!(f, "         name {} (offset {})\n", name, off));
@@ -1300,12 +1305,25 @@ impl MachCommand {
             &LoadCommand::LazyLoadDylib(ref dylib) => {
                 try!(write!(f, "          cmd {}\n", cmd.name()));
                 try!(write!(f, "      cmdsize {}\n", cmdsize));
-                try!(write!(f, "         name {}\n", dylib.name));
-                let ts = try!(time::strftime("%a %b  %d %T %Y",
-                                             time::at(time::Timespec::new(dylib.timestamp, 0))));
-                try!(write!(f, "   time stamp {} {}\n", dylib.timestamp, ts));
-                try!(write!(f, "      current version {}\n", dylib.current_version));
-                try!(write!(f, "compatibility version {}\n", dylib.compatibility_version));
+                try!(write!(f,
+                            "         name {} (offset {})\n",
+                            dylib.name,
+                            dylib.name.0));
+                let ts = time::at(time::Timespec::new(dylib.timestamp as i64, 0));
+                try!(write!(f,
+                            "   time stamp {} {}\n",
+                            dylib.timestamp,
+                            try!(time::strftime("%a %b %e %T %Y", &ts).map_err(|_| fmt::Error))));
+                try!(write!(f,
+                            "      current version {}.{}.{}\n",
+                            dylib.current_version.major(),
+                            dylib.current_version.minor(),
+                            dylib.current_version.release()));
+                try!(write!(f,
+                            "compatibility version {}.{}.{}\n",
+                            dylib.compatibility_version.major(),
+                            dylib.compatibility_version.minor(),
+                            dylib.compatibility_version.release()));
 
                 Ok(())
             }
@@ -1686,7 +1704,8 @@ pub mod tests {
 
         let file = file.files[0].as_ref();
 
-        if let MachCommand(LoadCommand::LoadDyLinker(off, ref name), cmdsize) = file.commands[7] {
+        if let MachCommand(LoadCommand::LoadDyLinker(LcString(off, ref name)), cmdsize) =
+               file.commands[7] {
             assert_eq!(cmdsize, 32);
             assert_eq!(off, 12);
             assert_eq!(name, "/usr/lib/dyld");
@@ -1766,7 +1785,8 @@ pub mod tests {
 
         if let MachCommand(LoadCommand::LoadDyLib(ref dylib), cmdsize) = file.commands[12] {
             assert_eq!(cmdsize, 56);
-            assert_eq!(dylib.name, "/usr/lib/libSystem.B.dylib");
+            assert_eq!(dylib.name,
+                       LcString(24, String::from("/usr/lib/libSystem.B.dylib")));
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
             assert_eq!(dylib.compatibility_version.to_string(), "1.0");

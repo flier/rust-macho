@@ -10,5 +10,5 @@ mod consts;
 mod loader;
 
 pub use consts::*;
-pub use loader::{Error, UniversalFile, LoadCommand, MachCommand, Section, SourceVersionTag,
-                 VersionTag, BuildTarget, DyLib, LinkEditData};
+pub use loader::{Error, UniversalFile, LoadCommand, LcString, MachCommand, Section,
+                 SourceVersionTag, VersionTag, BuildTarget, DyLib, LinkEditData};

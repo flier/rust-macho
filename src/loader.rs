@@ -1841,4 +1841,48 @@ pub mod tests {
 
         assert_eq!(dump, HELLO_WORLD_LC);
     }
+
+    #[test]
+    fn test_parse_hello_objc() {
+        let file = setup_test_file!(HELLO_OBJC_BIN);
+
+        let mut w = Vec::<u8>::new();
+
+        write!(w, "helloobjc:\n").unwrap();
+
+        let file = file.files[0].as_ref();
+
+        for (i, ref cmd) in file.commands.iter().enumerate() {
+            write!(w, "Load command {}\n", i).unwrap();
+            write!(w, "{}", cmd).unwrap();
+        }
+
+        let dump = str::from_utf8(w.as_slice()).unwrap();
+
+        info!("dump {} commands:\n{}", file.commands.len(), dump);
+
+        assert_eq!(dump, HELLO_OBJC_LC);
+    }
+
+    #[test]
+    fn test_parse_hello_rust() {
+        let file = setup_test_file!(HELLO_RUST_BIN);
+
+        let mut w = Vec::<u8>::new();
+
+        write!(w, "hellorust:\n").unwrap();
+
+        let file = file.files[0].as_ref();
+
+        for (i, ref cmd) in file.commands.iter().enumerate() {
+            write!(w, "Load command {}\n", i).unwrap();
+            write!(w, "{}", cmd).unwrap();
+        }
+
+        let dump = str::from_utf8(w.as_slice()).unwrap();
+
+        info!("dump {} commands:\n{}", file.commands.len(), dump);
+
+        assert_eq!(dump, HELLO_RUST_LC);
+    }
 }

@@ -10,6 +10,8 @@ matrix:
 os:
   - linux
   - osx
+before_script:
+  - cd test && make
 after_failure:
   - tree -h
 env:

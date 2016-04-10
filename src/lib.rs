@@ -7,8 +7,11 @@ extern crate time;
 extern crate bitflags;
 
 mod consts;
+mod errors;
+mod commands;
 mod loader;
 
 pub use consts::*;
-pub use loader::{Error, UniversalFile, LoadCommand, LcString, MachCommand, Section,
-                 SourceVersionTag, VersionTag, BuildTarget, DyLib, LinkEditData};
+pub use errors::Error;
+pub use commands::*;
+pub use loader::{MachFile, UniversalFile};

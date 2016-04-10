@@ -1,11 +1,3 @@
-/**
-Mach header
-      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
- 0xfeedfacf 16777223          3  0x80           2    15       2080 0x00a18085
-**/
-const MACH_HEADER_64_DATA: [u8; 32] = [0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0,
-                                       0x80, 0x2, 0x0, 0x0, 0x0, 0xf, 0x0, 0x0, 0x0, 0x20, 0x8,
-                                       0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0, 0x0, 0x0];
 
 /**
 Load command 0
@@ -617,39 +609,3 @@ Load command 14
 **/
 const LC_DATA_IN_CODE_DATA: [u8; 0x10] = [0x29, 0x0, 0x0, 0x0, 0x10, 0x0, 0x0, 0x0, 0x88, 0xd,
                                           0x20, 0x0, 0x0, 0x0, 0x0, 0x0];
-
-pub static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
-pub static HELLO_WORLD_LC: &'static str = include_str!("../test/helloworld.lc");
-pub static HELLO_UNIVERSAL_BIN: &'static [u8] = include_bytes!("../test/helloworld.universal");
-pub static HELLO_UNIVERSAL_I386_LC: &'static str = include_str!("../test/helloworld.universal.\
-                                                                 i386.lc");
-pub static HELLO_UNIVERSAL_X86_64_LC: &'static str = include_str!("../test/helloworld.universal.\
-                                                                   x86_64.lc");
-pub static HELLO_OBJC_BIN: &'static [u8] = include_bytes!("../test/helloobjc");
-pub static HELLO_OBJC_LC: &'static str = include_str!("../test/helloobjc.lc");
-pub static HELLO_RUST_BIN: &'static [u8] = include_bytes!("../test/hellorust");
-pub static HELLO_RUST_LC: &'static str = include_str!("../test/hellorust.lc");
-
-pub fn prepare_test_mach_header() -> Vec<u8> {
-    let mut header = Vec::new();
-
-    header.extend_from_slice(&MACH_HEADER_64_DATA[..]);
-
-    header.extend_from_slice(&LC_SEGMENT_64_PAGEZERO_DATA[..]);
-    header.extend_from_slice(&LC_SEGMENT_64_TEXT_DATA[..]);
-    header.extend_from_slice(&LC_SEGMENT_64_DATA_DATA[..]);
-    header.extend_from_slice(&LC_SEGMENT_64_LINKEDIT_DATA[..]);
-    header.extend_from_slice(&LC_DYLD_INFO_ONLY_DATA[..]);
-    header.extend_from_slice(&LC_SYMTAB_DATA[..]);
-    header.extend_from_slice(&LC_DYSYMTAB_DATA[..]);
-    header.extend_from_slice(&LC_LOAD_DYLINKER_DATA[..]);
-    header.extend_from_slice(&LC_UUID_DATA[..]);
-    header.extend_from_slice(&LC_VERSION_MIN_MACOSX_DATA[..]);
-    header.extend_from_slice(&LC_SOURCE_VERSION_DATA[..]);
-    header.extend_from_slice(&LC_MAIN_DATA[..]);
-    header.extend_from_slice(&LC_LOAD_DYLIB_DATA[..]);
-    header.extend_from_slice(&LC_FUNCTION_STARTS_DATA[..]);
-    header.extend_from_slice(&LC_DATA_IN_CODE_DATA[..]);
-
-    header
-}

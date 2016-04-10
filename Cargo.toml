@@ -17,6 +17,14 @@ bitflags = "0.5"
 [dev-dependencies]
 env_logger = "0.3"
 diff = "0.1"
+getopts = "0.2"
+memmap = "0.3"
 
 [lib]
 name = "macho"
+
+[[example]]
+name = "otool"
+path = "examples/otool.rs"
+test = false
+bench = false

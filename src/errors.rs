@@ -1,7 +1,9 @@
-use std::str;
-use std::string;
+use std::error;
+use std::fmt;
 use std::io;
 use std::result;
+use std::str;
+use std::string;
 
 use uuid;
 use time;
@@ -14,6 +16,42 @@ pub enum Error {
     IoError(io::Error),
     TimeParseError(::time::ParseError),
     LoadError(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::Utf8Error(ref err) => write!(f, "utf-8 error: {}", err),
+            Error::FromUtf8Error(ref err) => write!(f, "utf-8 error: {}", err),
+            Error::UuidParseError(ref err) => write!(f, "uuid parse error: {}", err),
+            Error::IoError(ref err) => write!(f, "io error: {}", err),
+            Error::TimeParseError(ref err) => write!(f, "time parse error: {}", err),
+            Error::LoadError(ref reason) => write!(f, "load error: {}", reason),
+        }
+    }
+}
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::Utf8Error(ref err) => err.description(),
+            Error::FromUtf8Error(ref err) => err.description(),
+            Error::UuidParseError(_) => "parse uuid failed",
+            Error::IoError(ref err) => err.description(),
+            Error::TimeParseError(ref err) => err.description(),
+            Error::LoadError(_) => "load mach-o file failed",
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            Error::Utf8Error(ref err) => Some(err),
+            Error::FromUtf8Error(ref err) => Some(err),
+            Error::IoError(ref err) => Some(err),
+            Error::TimeParseError(ref err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
 impl From<str::Utf8Error> for Error {

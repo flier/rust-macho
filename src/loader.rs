@@ -8,6 +8,46 @@ use consts::*;
 use errors::*;
 use commands::{LoadCommand, LcString};
 
+pub fn get_arch_from_flag(name: &str) -> Result<(cpu_type_t, cpu_subtype_t)> {
+    match name {
+        "any" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_MULTIPLE)),
+
+        "little" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_LITTLE_ENDIAN)),
+        "big" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_BIG_ENDIAN)),
+        // architecture families
+        "ppc" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_ALL)),
+        "i386" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_I386_ALL)),
+        "m68k" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC680X0_ALL)),
+        "hppa" => Ok((CPU_TYPE_HPPA, CPU_SUBTYPE_HPPA_ALL)),
+        "sparc" => Ok((CPU_TYPE_SPARC, CPU_SUBTYPE_SPARC_ALL)),
+        "m88k" => Ok((CPU_TYPE_MC88000, CPU_SUBTYPE_MC88000_ALL)),
+        "i860" => Ok((CPU_TYPE_I860, CPU_SUBTYPE_I860_ALL)),
+        // specific architecture implementations
+        "ppc601" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_601)),
+        "ppc603" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603)),
+        "ppc603e" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603E)),
+        "ppc603ev" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603EV)),
+        "ppc604" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604)),
+        "ppc604e" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604E)),
+        "ppc750" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_750)),
+        "ppc7400" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7400)),
+        "ppc7450" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7450)),
+        "ppc970" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_970)),
+        "i486" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_486)),
+        "i486SX" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_486SX)),
+        "pentium" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENT)), /* same as i586 */
+        "i586" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_586)),
+        "pentpro" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO)), /* same as i686 */
+        "i686" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO)),
+        "pentIIm3" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M3)),
+        "pentIIm5" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M5)),
+        "m68030" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68030_ONLY)),
+        "m68040" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68040)),
+        "hppa7100LC" => Ok((CPU_TYPE_HPPA, CPU_SUBTYPE_HPPA_7100LC)),
+        _ => Err(Error::LoadError(String::from("Unknown arch flag"))),
+    }
+}
+
 pub trait MachArch {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader>;
 }
@@ -387,6 +427,36 @@ impl MachCommand {
 }
 
 #[derive(Debug, Default, Clone)]
+pub struct FatHeader {
+    magic: u32,
+    archs: Vec<FatArch>,
+}
+
+impl fmt::Display for FatHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "Fat headers\n"));
+        try!(write!(f, "fat_magic 0x{:08x}\n", self.magic));
+        try!(write!(f, "nfat_arch {}\n", self.archs.len()));
+
+        for (i, arch) in self.archs.iter().enumerate() {
+            try!(write!(f, "architecture {}\n", i));
+            try!(write!(f, "    cputype {}\n", arch.cputype));
+            try!(write!(f,
+                        "    cpusubtype {}\n",
+                        (arch.cpusubtype as u32) & !(CPU_SUBTYPE_MASK as u32)));
+            try!(write!(f,
+                        "    capabilities 0x{:x}\n",
+                        ((arch.cpusubtype as u32) & (CPU_SUBTYPE_MASK as u32)) >> 24));
+            try!(write!(f, "    offset {}\n", arch.offset));
+            try!(write!(f, "    size {}\n", arch.size));
+            try!(write!(f, "    align 2^{} ({})\n", arch.align, 1 << arch.align));
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct FatArch {
     /// cpu specifier (int)
     pub cputype: cpu_type_t,
@@ -443,6 +513,7 @@ impl MachFile {
 
 #[derive(Debug, Default,  Clone)]
 pub struct UniversalFile {
+    pub header: Option<FatHeader>,
     pub files: Vec<MachFile>,
 }
 
@@ -466,7 +537,10 @@ impl UniversalFile {
     }
 
     fn load_mach_file<A: MachArch, O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
-        Ok(UniversalFile { files: vec![try!(MachFile::parse::<A, O>(buf))] })
+        Ok(UniversalFile {
+            header: None,
+            files: vec![try!(MachFile::parse::<A, O>(buf))],
+        })
     }
 
     fn load_fat_file<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
@@ -495,7 +569,7 @@ impl UniversalFile {
 
         let mut files = Vec::new();
 
-        for arch in archs {
+        for arch in &archs {
             debug!("parsing mach-o file at 0x{:x}, arch={:?}",
                    arch.offset,
                    arch);
@@ -505,7 +579,13 @@ impl UniversalFile {
             files.push(try!(arch.parse::<O>(buf)));
         }
 
-        Ok(UniversalFile { files: files })
+        Ok(UniversalFile {
+            header: Some(FatHeader {
+                magic: magic,
+                archs: archs,
+            }),
+            files: files,
+        })
     }
 }
 

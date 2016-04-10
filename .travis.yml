@@ -10,8 +10,6 @@ matrix:
 os:
   - linux
   - osx
-before_script:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then cd test && make ; fi
 after_failure:
   - tree -h
 env:

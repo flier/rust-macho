@@ -7,8 +7,9 @@ helloworld:
 helloworld.universal:
 	xcrun clang -arch i386 -o helloworld.32 helloworld.c
 	xcrun clang -arch x86_64 -o helloworld.64 helloworld.c
-	lipo -create -arch i386 helloworld.32 -arch x86_64 helloworld.64 -output $@
-	xcrun otool -l $@ > $@.lc
+	xcrun lipo -create -arch i386 helloworld.32 -arch x86_64 helloworld.64 -output $@
+	xcrun otool -arch i386 -l $@ > $@.i386.lc
+	xcrun otool -arch x86_64 -l $@ > $@.x86_64.lc
 
 helloobjc:
 	xcrun clang -c foo.m

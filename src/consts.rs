@@ -51,6 +51,9 @@ pub const MH_MAGIC_64: u32 = 0xfeedfacf;
 /// NXSwapInt(MH_MAGIC_64)
 pub const MH_CIGAM_64: u32 = 0xcffaedfe;
 
+pub const FAT_MAGIC: u32 = 0xcafebabe;
+pub const FAT_CIGAM: u32 = 0xbebafeca;  /* NXSwapLong(FAT_MAGIC) */
+
 
 // The layout of the file depends on the filetype.  For all but the MH_OBJECT
 // file type the segments are padded out and aligned on a segment alignment

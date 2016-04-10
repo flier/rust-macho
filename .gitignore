@@ -1,3 +1,8 @@
 target
-test
+
+*.o
+*.dSYM
+*.32
+*.64
+
 Cargo.lock

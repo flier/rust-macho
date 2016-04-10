@@ -21,4 +21,7 @@ hellorust:
 	rustc hellorust.rs -o $@ -g --crate-type bin
 	xcrun otool -l $@ > $@.lc
 
-.PHONY: helloworld helloworld.universal helloobjc hellorust
+clean:
+	rm -r *.o *.lc helloworld helloworld.32 helloworld.64 helloworld.universal helloobjc hellorust hellorust.dSYM
+
+.PHONY: clean helloworld helloworld.universal helloobjc hellorust

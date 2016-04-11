@@ -32,14 +32,16 @@ fn main() {
 
     let mut opts = Options::new();
 
-    opts.optflag("X", "", "print no leading addresses or headers");
+    opts.optopt("", "arch", "Specifies the architecture", "arch_type");
     opts.optflag("f", "", "print the fat headers");
     opts.optflag("h", "", "print the mach header");
     opts.optflag("l", "", "print the load commands");
+    opts.optflag("L", "", "print shared libraries used");
+    opts.optflag("D", "", "print shared library id name");
     opts.optflag("t", "", "print the text section");
     opts.optflag("d", "", "print the data section");
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
-    opts.optopt("", "arch", "Specifies the architecture", "arch_type");
+    opts.optflag("X", "", "print no leading addresses or headers");
     opts.optflag("",
                  "version",
                  format!("print the version of {}", program).as_str());
@@ -85,6 +87,8 @@ fn main() {
                 (String::from(names[0]), None)
             }
         }),
+        print_shared_lib_info: matches.opt_present("L"),
+        print_shared_lib_id: matches.opt_present("D"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -119,6 +123,8 @@ struct FileProcessor<T: Write> {
     print_text_section: bool,
     print_data_section: bool,
     print_section: Option<(String, Option<String>)>,
+    print_shared_lib_info: bool,
+    print_shared_lib_id: bool,
 }
 
 impl<T: Write> FileProcessor<T> {
@@ -167,9 +173,11 @@ impl<T: Write> FileProcessor<T> {
             }
 
             for ref cmd in file.commands {
+                let &MachCommand(ref cmd, _) = cmd;
+
                 match cmd {
-                    &MachCommand(LoadCommand::Segment{ref sections, ..}, _) |
-                    &MachCommand(LoadCommand::Segment64{ref sections, ..}, _) => {
+                    &LoadCommand::Segment{ref sections, ..} |
+                    &LoadCommand::Segment64{ref sections, ..} => {
                         for ref sect in sections {
                             let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
@@ -195,6 +203,34 @@ impl<T: Write> FileProcessor<T> {
 
                                 try!(self.w.write(&dump[..]));
                             }
+                        }
+                    }
+                    &LoadCommand::IdDyLib(ref dylib) |
+                    &LoadCommand::LoadDyLib(ref dylib) |
+                    &LoadCommand::LoadWeakDyLib(ref dylib) |
+                    &LoadCommand::ReexportDyLib(ref dylib) |
+                    &LoadCommand::LoadUpwardDylib(ref dylib) |
+                    &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib_info ||
+                                                              self.print_shared_lib_id => {
+                        let just_id = self.print_shared_lib_id && !self.print_shared_lib_info;
+
+                        if cmd.cmd() != LC_ID_DYLIB && just_id {
+                            continue;
+                        }
+
+                        if just_id {
+                            try!(write!(self.w, "{}", dylib.name));
+                        } else {
+                            try!(write!(self.w,
+                                        "\t{} (compatibility version {}.{}.{}, current version \
+                                         {}.{}.{})\n",
+                                        dylib.name,
+                                        dylib.compatibility_version.major(),
+                                        dylib.compatibility_version.minor(),
+                                        dylib.compatibility_version.release(),
+                                        dylib.current_version.major(),
+                                        dylib.current_version.minor(),
+                                        dylib.current_version.release()));
                         }
                     }
                     _ => {}

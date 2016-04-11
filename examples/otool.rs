@@ -127,122 +127,166 @@ struct FileProcessor<T: Write> {
     print_shared_lib_just_id: bool,
 }
 
+struct FileProcessContext<'a> {
+    filename: &'a str,
+    cur: &'a mut Cursor<&'a [u8]>,
+}
+
 impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file_mmap = try!(Mmap::open_path(filename, Protection::Read));
         let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
-        let ufile = try!(UniversalFile::load(&mut cur));
+        let file = try!(OFile::parse(&mut cur));
+        let mut ctxt = FileProcessContext {
+            filename: filename,
+            cur: &mut cur,
+        };
 
-        if self.print_fat_header {
-            if let Some(fat_header) = ufile.header {
-                try!(write!(self.w, "{}", fat_header));
+        self.process_ofile(&file, &mut ctxt)
+    }
+
+    fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<(), Error> {
+        match ofile {
+            &OFile::MachFile {ref header, ref commands} => {
+                self.process_mach_file(&header, &commands, ctxt)
+            }
+            &OFile::FatFile {magic, ref files} => self.process_fat_file(magic, files, ctxt),
+            &OFile::ArFile {ref files} => self.process_ar_file(files, ctxt),
+        }
+    }
+
+    fn process_mach_file(&mut self,
+                         header: &MachHeader,
+                         commands: &Vec<MachCommand>,
+                         ctxt: &mut FileProcessContext)
+                         -> Result<(), Error> {
+        if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
+            return Ok(());
+        }
+
+        if self.print_headers {
+            if self.cpu_type != 0 {
+                try!(write!(self.w,
+                            "{} (architecture {}):\n",
+                            ctxt.filename,
+                            get_arch_name_from_types(header.cputype, header.cpusubtype)
+                                .unwrap_or(format!("cputype {} cpusubtype {}",
+                                                   header.cputype,
+                                                   header.cpusubtype)
+                                               .as_str())));
+            } else {
+                try!(write!(self.w, "{}:\n", ctxt.filename));
             }
         }
 
-        for file in ufile.files {
-            if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY &&
-               self.cpu_type != file.header.cputype {
-                continue;
+        if self.print_mach_header {
+            try!(write!(self.w, "{}", header));
+        }
+
+        if self.print_load_commands {
+            for (i, ref cmd) in commands.iter().enumerate() {
+                try!(write!(self.w, "Load command {}\n", i));
+                try!(write!(self.w, "{}", cmd));
             }
+        }
 
-            if self.print_headers {
-                if self.cpu_type != 0 {
-                    try!(write!(self.w,
-                                "{} (architecture {}):\n",
-                                filename,
-                                get_arch_name_from_types(file.header.cputype,
-                                                         file.header.cpusubtype)
-                                    .unwrap_or(format!("cputype {} cpusubtype {}",
-                                                       file.header.cputype,
-                                                       file.header.cpusubtype)
-                                                   .as_str())));
-                } else {
-                    try!(write!(self.w, "{}:\n", filename));
-                }
-            }
+        for cmd in commands {
+            let &MachCommand(ref cmd, _) = cmd;
 
-            if self.print_mach_header {
-                try!(write!(self.w, "{}", file.header));
-            }
+            match cmd {
+                &LoadCommand::Segment{ref sections, ..} |
+                &LoadCommand::Segment64{ref sections, ..} => {
+                    for ref sect in sections {
+                        let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
-            if self.print_load_commands {
-                for (i, ref cmd) in file.commands.iter().enumerate() {
-                    try!(write!(self.w, "Load command {}\n", i));
-                    try!(write!(self.w, "{}", cmd));
-                }
-            }
+                        if name == self.print_section ||
+                           Some((sect.segname.clone(), None)) == self.print_section ||
+                           (self.print_text_section &&
+                            name ==
+                            Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
+                           (self.print_data_section &&
+                            name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
 
-            for ref cmd in file.commands {
-                let &MachCommand(ref cmd, _) = cmd;
-
-                match cmd {
-                    &LoadCommand::Segment{ref sections, ..} |
-                    &LoadCommand::Segment64{ref sections, ..} => {
-                        for ref sect in sections {
-                            let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
-
-                            if name == self.print_section ||
-                               Some((sect.segname.clone(), None)) == self.print_section ||
-                               (self.print_text_section &&
-                                name ==
-                                Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
-                               (self.print_data_section &&
-                                name ==
-                                Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
-
-                                if self.print_headers {
-                                    try!(write!(self.w,
-                                                "Contents of ({},{}) section\n",
-                                                sect.segname,
-                                                sect.sectname));
-                                }
-
-                                try!(cur.seek(SeekFrom::Start(sect.offset as u64)));
-
-                                let dump = try!(hexdump(sect.addr, &mut cur, sect.size));
-
-                                try!(self.w.write(&dump[..]));
+                            if self.print_headers {
+                                try!(write!(self.w,
+                                            "Contents of ({},{}) section\n",
+                                            sect.segname,
+                                            sect.sectname));
                             }
+
+                            try!(ctxt.cur.seek(SeekFrom::Start(sect.offset as u64)));
+
+                            let dump = try!(hexdump(sect.addr, &mut ctxt.cur, sect.size));
+
+                            try!(self.w.write(&dump[..]));
                         }
                     }
-
-                    &LoadCommand::IdFvmLib(ref fvmlib) |
-                    &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib &&
-                                                            !self.print_shared_lib_just_id => {
-                        try!(write!(self.w,
-                                    "\t{} (minor version {})\n",
-                                    fvmlib.name,
-                                    fvmlib.minor_version));
-                    }
-
-                    &LoadCommand::IdDyLib(ref dylib) |
-                    &LoadCommand::LoadDyLib(ref dylib) |
-                    &LoadCommand::LoadWeakDyLib(ref dylib) |
-                    &LoadCommand::ReexportDyLib(ref dylib) |
-                    &LoadCommand::LoadUpwardDylib(ref dylib) |
-                    &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib &&
-                                                              (cmd.cmd() == LC_ID_DYLIB ||
-                                                               !self.print_shared_lib_just_id) => {
-                        if self.print_shared_lib_just_id {
-                            try!(write!(self.w, "{}", dylib.name));
-                        } else {
-                            try!(write!(self.w,
-                                        "\t{} (compatibility version {}.{}.{}, current version \
-                                         {}.{}.{})\n",
-                                        dylib.name,
-                                        dylib.compatibility_version.major(),
-                                        dylib.compatibility_version.minor(),
-                                        dylib.compatibility_version.release(),
-                                        dylib.current_version.major(),
-                                        dylib.current_version.minor(),
-                                        dylib.current_version.release()));
-                        }
-                    }
-                    _ => {}
                 }
+
+                &LoadCommand::IdFvmLib(ref fvmlib) |
+                &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib &&
+                                                        !self.print_shared_lib_just_id => {
+                    try!(write!(self.w,
+                                "\t{} (minor version {})\n",
+                                fvmlib.name,
+                                fvmlib.minor_version));
+                }
+
+                &LoadCommand::IdDyLib(ref dylib) |
+                &LoadCommand::LoadDyLib(ref dylib) |
+                &LoadCommand::LoadWeakDyLib(ref dylib) |
+                &LoadCommand::ReexportDyLib(ref dylib) |
+                &LoadCommand::LoadUpwardDylib(ref dylib) |
+                &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib &&
+                                                          (cmd.cmd() == LC_ID_DYLIB ||
+                                                           !self.print_shared_lib_just_id) => {
+                    if self.print_shared_lib_just_id {
+                        try!(write!(self.w, "{}", dylib.name));
+                    } else {
+                        try!(write!(self.w,
+                                    "\t{} (compatibility version {}.{}.{}, current version \
+                                     {}.{}.{})\n",
+                                    dylib.name,
+                                    dylib.compatibility_version.major(),
+                                    dylib.compatibility_version.minor(),
+                                    dylib.compatibility_version.release(),
+                                    dylib.current_version.major(),
+                                    dylib.current_version.minor(),
+                                    dylib.current_version.release()));
+                    }
+                }
+                _ => {}
             }
         }
 
+        Ok(())
+    }
+
+    fn process_fat_file(&mut self,
+                        magic: u32,
+                        files: &Vec<(FatArch, OFile)>,
+                        ctxt: &mut FileProcessContext)
+                        -> Result<(), Error> {
+        if self.print_fat_header {
+            let header = FatHeader {
+                magic: magic,
+                archs: files.iter().map(|&(ref arch, _)| arch.clone()).collect(),
+            };
+
+            try!(write!(self.w, "{}", header));
+        }
+
+        for &(_, ref file) in files {
+            try!(self.process_ofile(file, ctxt));
+        }
+
+        Ok(())
+    }
+
+    fn process_ar_file(&mut self,
+                       files: &Vec<(ArHeader, OFile)>,
+                       ctxt: &mut FileProcessContext)
+                       -> Result<(), Error> {
         Ok(())
     }
 }

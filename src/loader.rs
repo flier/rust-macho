@@ -423,8 +423,8 @@ impl MachCommand {
 
 #[derive(Debug, Default, Clone)]
 pub struct FatHeader {
-    magic: u32,
-    archs: Vec<FatArch>,
+    pub magic: u32,
+    pub archs: Vec<FatArch>,
 }
 
 impl fmt::Display for FatHeader {
@@ -465,35 +465,91 @@ pub struct FatArch {
     pub align: u32,
 }
 
-impl FatArch {
-    fn parse<O: ByteOrder>(&self, buf: &mut Cursor<&[u8]>) -> Result<MachFile> {
+#[derive(Debug, Default,  Clone)]
+pub struct ArHeader {
+    pub ar_name: String,
+    // modification time
+    pub ar_date: libc::time_t,
+    // user id
+    pub ar_uid: libc::uid_t,
+    // group id
+    pub ar_gid: libc::gid_t,
+    // octal file permissions
+    pub ar_mode: libc::mode_t,
+    // size in bytes
+    pub ar_size: usize,
+    // consistency check
+    pub ar_fmag: u16,
+}
+
+impl ArHeader {
+    fn parse(buf: &mut Cursor<&[u8]>) -> Result<ArHeader> {
+        let mut header = ArHeader {
+            ar_name: try!(buf.read_fixed_size_string(16)),
+            ar_date: try!(try!(buf.read_fixed_size_string(12)).parse()),
+            ar_uid: try!(try!(buf.read_fixed_size_string(6)).parse()),
+            ar_gid: try!(try!(buf.read_fixed_size_string(6)).parse()),
+            ar_mode: try!(try!(buf.read_fixed_size_string(8)).parse()),
+            ar_size: try!(try!(buf.read_fixed_size_string(10)).parse()),
+            ar_fmag: try!(buf.read_u16::<NativeEndian>()),
+        };
+
+        if header.ar_name.starts_with(AR_EFMT1) {
+            let size: usize = try!(header.ar_name[AR_EFMT1.len()..].parse());
+
+            header.ar_name = try!(buf.read_fixed_size_string(size));
+        }
+
+        Ok(header)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum OFile {
+    MachFile {
+        header: MachHeader,
+        commands: Vec<MachCommand>,
+    },
+    FatFile {
+        magic: u32,
+        files: Vec<(FatArch, OFile)>,
+    },
+    ArFile {
+        files: Vec<(ArHeader, OFile)>,
+    },
+}
+
+impl OFile {
+    pub fn parse(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
         let magic = try!(buf.read_u32::<NativeEndian>());
 
         try!(buf.seek(SeekFrom::Current(-4)));
 
-        debug!("parsing mach-o file with magic 0x{:x}", magic);
-
         match magic {
-            MH_MAGIC => MachFile::parse::<Arch32, LittleEndian>(buf),
-            MH_CIGAM => MachFile::parse::<Arch32, BigEndian>(buf),
-            MH_MAGIC_64 => MachFile::parse::<Arch64, LittleEndian>(buf),
-            MH_CIGAM_64 => MachFile::parse::<Arch64, BigEndian>(buf),
-            _ => Err(Error::LoadError(format!("unknown file format 0x{:x}", magic))),
+            MH_MAGIC => Self::parse_mach_file::<Arch32, LittleEndian>(buf),
+            MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian>(buf),
+            MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian>(buf),
+            MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian>(buf),
+            FAT_MAGIC => Self::parse_fat_file::<LittleEndian>(buf),
+            FAT_CIGAM => Self::parse_fat_file::<BigEndian>(buf),
+            _ => {
+                let mut ar_magic = [0; 8];
+
+                try!(buf.read_exact(&mut ar_magic));
+
+                if ar_magic == ARMAG {
+                    Self::parse_ar_file(buf)
+                } else {
+                    Err(Error::LoadError(format!("unknown file format 0x{:x}", magic)))
+                }
+            }
         }
     }
-}
 
-#[derive(Debug, Default, Clone)]
-pub struct MachFile {
-    pub header: MachHeader,
-    pub commands: Vec<MachCommand>,
-}
-
-impl MachFile {
-    fn parse<A: MachArch, O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<MachFile> {
+    fn parse_mach_file<A: MachArch, O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
         let header = try!(A::parse_mach_header::<Cursor<&[u8]>, O>(buf));
 
-        debug!("parsed file header: {:?}", header);
+        debug!("parsed mach-o file header: {:?}", header);
 
         let mut commands = Vec::new();
 
@@ -505,56 +561,13 @@ impl MachFile {
 
         debug!("parsed {} load commands", commands.len());
 
-        Ok(MachFile {
+        Ok(OFile::MachFile {
             header: header,
             commands: commands,
         })
     }
-}
 
-#[derive(Debug, Default,  Clone)]
-pub struct UniversalFile {
-    pub header: Option<FatHeader>,
-    pub files: Vec<MachFile>,
-}
-
-impl UniversalFile {
-    pub fn load(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
-        let magic = try!(buf.read_u32::<NativeEndian>());
-
-        try!(buf.seek(SeekFrom::Current(-4)));
-
-        debug!("parsing mach-o file with magic 0x{:x}", magic);
-
-        match magic {
-            MH_MAGIC => Self::load_mach_file::<Arch32, LittleEndian>(buf),
-            MH_CIGAM => Self::load_mach_file::<Arch32, BigEndian>(buf),
-            MH_MAGIC_64 => Self::load_mach_file::<Arch64, LittleEndian>(buf),
-            MH_CIGAM_64 => Self::load_mach_file::<Arch64, BigEndian>(buf),
-            FAT_MAGIC => Self::load_fat_file::<LittleEndian>(buf),
-            FAT_CIGAM => Self::load_fat_file::<BigEndian>(buf),
-            _ => {
-                let mut ar_magic = [0; 8];
-
-                try!(buf.read_exact(&mut ar_magic));
-
-                if ar_magic == ARMAG {
-                    Self::load_ar_file(buf)
-                } else {
-                    Err(Error::LoadError(format!("unknown file format 0x{:x}", magic)))
-                }
-            }
-        }
-    }
-
-    fn load_mach_file<A: MachArch, O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
-        Ok(UniversalFile {
-            header: None,
-            files: vec![try!(MachFile::parse::<A, O>(buf))],
-        })
-    }
-
-    fn load_fat_file<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
+    fn parse_fat_file<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
         let magic = try!(buf.read_u32::<O>());
         let nfat_arch = try!(buf.read_u32::<O>());
 
@@ -580,57 +593,35 @@ impl UniversalFile {
 
         let mut files = Vec::new();
 
-        for arch in &archs {
+        for arch in archs {
             debug!("parsing mach-o file at 0x{:x}, arch={:?}",
                    arch.offset,
                    arch);
 
             try!(buf.seek(SeekFrom::Start(arch.offset as u64)));
 
-            files.push(try!(arch.parse::<O>(buf)));
+            let file = try!(OFile::parse(buf));
+
+            files.push((arch, file));
         }
 
-        Ok(UniversalFile {
-            header: Some(FatHeader {
-                magic: magic,
-                archs: archs,
-            }),
+        Ok(OFile::FatFile {
+            magic: magic,
             files: files,
         })
     }
 
-    fn load_ar_file(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
-        let header = ArHeader {
-            ar_name: try!(buf.read_fixed_size_string(16)),
-            ar_date: try!(try!(buf.read_fixed_size_string(12)).parse()),
-            ar_uid: try!(try!(buf.read_fixed_size_string(6)).parse()),
-            ar_gid: try!(try!(buf.read_fixed_size_string(6)).parse()),
-            ar_mode: try!(try!(buf.read_fixed_size_string(8)).parse()),
-            ar_size: try!(try!(buf.read_fixed_size_string(10)).parse()),
-            ar_fmag: try!(buf.read_u16::<NativeEndian>()),
-        };
+    fn parse_ar_file(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
+        let mut files = Vec::new();
 
-        Ok(UniversalFile {
-            header: None,
-            files: Vec::new(),
-        })
+        while let Ok(header) = ArHeader::parse(buf) {
+            let file = try!(Self::parse(buf));
+
+            files.push((header, file));
+        }
+
+        Ok(OFile::ArFile { files: files })
     }
-}
-
-pub struct ArHeader {
-    pub ar_name: String,
-    // modification time
-    pub ar_date: libc::time_t,
-    // user id
-    pub ar_uid: libc::uid_t,
-    // group id
-    pub ar_gid: libc::gid_t,
-    // octal file permissions
-    pub ar_mode: libc::mode_t,
-    // size in bytes
-    pub ar_size: usize,
-    // consistency check
-    pub ar_fmag: u16,
 }
 
 #[cfg(test)]
@@ -668,13 +659,13 @@ pub mod tests {
     static HELLO_RUST_BIN: &'static [u8] = include_bytes!("../test/hellorust");
     static HELLO_RUST_LC: &'static str = include_str!("../test/hellorust.lc");
 
-    macro_rules! setup_test_file {
+    macro_rules! parse_test_file {
         ($buf: expr) => ({
             let _ = env_logger::init();
 
             let mut cursor = Cursor::new($buf);
 
-            UniversalFile::load(&mut cursor).unwrap()
+            OFile::parse(&mut cursor).unwrap()
         })
     }
 
@@ -726,93 +717,91 @@ pub mod tests {
 
     #[test]
     fn test_parse_hello_bin() {
-        let file = setup_test_file!(HELLO_WORLD_BIN);
-
-        assert_eq!(file.files.len(), 1);
-
-        let mut w = Vec::<u8>::new();
-
-        write!(w, "helloworld:\n").unwrap();
-
-        let ref file = file.files[0];
-
-        for (i, ref cmd) in file.commands.iter().enumerate() {
-            write!(w, "Load command {}\n", i).unwrap();
-            write!(w, "{}", cmd).unwrap();
-        }
-
-        let dump = str::from_utf8(w.as_slice()).unwrap();
-
-        assert_nodiff!(dump, HELLO_WORLD_LC);
-    }
-
-    #[test]
-    fn test_parse_hello_objc() {
-        let file = setup_test_file!(HELLO_OBJC_BIN);
-
-        assert_eq!(file.files.len(), 1);
-
-        let mut w = Vec::<u8>::new();
-
-        write!(w, "helloobjc:\n").unwrap();
-
-        let ref file = file.files[0];
-
-        for (i, ref cmd) in file.commands.iter().enumerate() {
-            write!(w, "Load command {}\n", i).unwrap();
-            write!(w, "{}", cmd).unwrap();
-        }
-
-        let dump = str::from_utf8(w.as_slice()).unwrap();
-
-        assert_nodiff!(dump, HELLO_OBJC_LC);
-    }
-
-    #[test]
-    fn test_parse_hello_rust() {
-        let file = setup_test_file!(HELLO_RUST_BIN);
-
-        assert_eq!(file.files.len(), 1);
-
-        let mut w = Vec::<u8>::new();
-
-        write!(w, "hellorust:\n").unwrap();
-
-        let ref file = file.files[0];
-
-        for (i, ref cmd) in file.commands.iter().enumerate() {
-            write!(w, "Load command {}\n", i).unwrap();
-            write!(w, "{}", cmd).unwrap();
-        }
-
-        let dump = str::from_utf8(w.as_slice()).unwrap();
-
-        assert_nodiff!(dump, HELLO_RUST_LC);
-    }
-
-    #[test]
-    fn test_parse_hello_universal() {
-        let file = setup_test_file!(HELLO_UNIVERSAL_BIN);
-
-        assert_eq!(file.files.len(), 2);
-
-        for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC]
-                                  .iter()
-                                  .enumerate() {
-            let ref file = file.files[i];
-
+        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_WORLD_BIN) {
             let mut w = Vec::<u8>::new();
 
-            write!(w, "helloworld.universal:\n").unwrap();
+            write!(w, "helloworld:\n").unwrap();
 
-            for (i, ref cmd) in file.commands.iter().enumerate() {
+            for (i, ref cmd) in commands.iter().enumerate() {
                 write!(w, "Load command {}\n", i).unwrap();
                 write!(w, "{}", cmd).unwrap();
             }
 
             let dump = str::from_utf8(w.as_slice()).unwrap();
 
-            assert_nodiff!(dump, *arch_dump);
+            assert_nodiff!(dump, HELLO_WORLD_LC);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_hello_objc() {
+        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_OBJC_BIN) {
+            let mut w = Vec::<u8>::new();
+
+            write!(w, "helloobjc:\n").unwrap();
+
+            for (i, ref cmd) in commands.iter().enumerate() {
+                write!(w, "Load command {}\n", i).unwrap();
+                write!(w, "{}", cmd).unwrap();
+            }
+
+            let dump = str::from_utf8(w.as_slice()).unwrap();
+
+            assert_nodiff!(dump, HELLO_OBJC_LC);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_hello_rust() {
+        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_RUST_BIN) {
+            let mut w = Vec::<u8>::new();
+
+            write!(w, "hellorust:\n").unwrap();
+
+            for (i, ref cmd) in commands.iter().enumerate() {
+                write!(w, "Load command {}\n", i).unwrap();
+                write!(w, "{}", cmd).unwrap();
+            }
+
+            let dump = str::from_utf8(w.as_slice()).unwrap();
+
+            assert_nodiff!(dump, HELLO_RUST_LC);
+        } else {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_hello_universal() {
+        if let OFile::FatFile { ref files, .. } = parse_test_file!(HELLO_UNIVERSAL_BIN) {
+            assert_eq!(files.len(), 2);
+
+            for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC]
+                                      .iter()
+                                      .enumerate() {
+                let mut w = Vec::<u8>::new();
+
+                write!(w, "helloworld.universal:\n").unwrap();
+
+                if let (_, OFile::MachFile{ref commands, ..}) = files[i] {
+                    for (i, ref cmd) in commands.iter().enumerate() {
+                        write!(w, "Load command {}\n", i).unwrap();
+                        write!(w, "{}", cmd).unwrap();
+                    }
+
+                    let dump = str::from_utf8(w.as_slice()).unwrap();
+
+                    assert_nodiff!(dump, *arch_dump);
+                } else {
+                    panic!();
+                }
+            }
+        } else {
+            panic!();
         }
     }
 }

@@ -32,6 +32,7 @@ fn main() {
 
     let mut opts = Options::new();
 
+    opts.optflag("X", "", "print no leading addresses or headers");
     opts.optflag("f", "", "print the fat headers");
     opts.optflag("h", "", "print the mach header");
     opts.optflag("l", "", "print the load commands");
@@ -69,6 +70,7 @@ fn main() {
     let mut processor = FileProcessor {
         w: stdout(),
         cpu_type: 0,
+        print_headers: !matches.opt_present("X"),
         print_fat_header: matches.opt_present("f"),
         print_mach_header: matches.opt_present("h"),
         print_load_commands: matches.opt_present("l"),
@@ -110,6 +112,7 @@ fn main() {
 struct FileProcessor<T: Write> {
     w: T,
     cpu_type: cpu_type_t,
+    print_headers: bool,
     print_fat_header: bool,
     print_mach_header: bool,
     print_load_commands: bool,
@@ -136,17 +139,20 @@ impl<T: Write> FileProcessor<T> {
                 continue;
             }
 
-            if self.cpu_type != 0 {
-                try!(write!(self.w,
-                            "{} (architecture {}):\n",
-                            filename,
-                            get_arch_name_from_types(file.header.cputype, file.header.cpusubtype)
-                                .unwrap_or(format!("cputype {} cpusubtype {}",
-                                                   file.header.cputype,
-                                                   file.header.cpusubtype)
-                                               .as_str())));
-            } else {
-                try!(write!(self.w, "{}:\n", filename));
+            if self.print_headers {
+                if self.cpu_type != 0 {
+                    try!(write!(self.w,
+                                "{} (architecture {}):\n",
+                                filename,
+                                get_arch_name_from_types(file.header.cputype,
+                                                         file.header.cpusubtype)
+                                    .unwrap_or(format!("cputype {} cpusubtype {}",
+                                                       file.header.cputype,
+                                                       file.header.cpusubtype)
+                                                   .as_str())));
+                } else {
+                    try!(write!(self.w, "{}:\n", filename));
+                }
             }
 
             if self.print_mach_header {
@@ -175,10 +181,13 @@ impl<T: Write> FileProcessor<T> {
                                (self.print_data_section &&
                                 name ==
                                 Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
-                                try!(write!(self.w,
-                                            "Contents of ({},{}) section\n",
-                                            sect.segname,
-                                            sect.sectname));
+
+                                if self.print_headers {
+                                    try!(write!(self.w,
+                                                "Contents of ({},{}) section\n",
+                                                sect.segname,
+                                                sect.sectname));
+                                }
 
                                 try!(cur.seek(SeekFrom::Start(sect.offset as u64)));
 

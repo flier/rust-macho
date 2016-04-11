@@ -70,8 +70,8 @@ impl fmt::Display for MachHeader {
                " 0x{:08x} {:7} {:10}  0x{:02x}  {:10} {:5} {:10} 0x{:08x}\n",
                self.magic,
                self.cputype,
-               (self.cpusubtype as u32) & !(CPU_SUBTYPE_MASK as u32),
-               ((self.cpusubtype as u32) & (CPU_SUBTYPE_MASK as u32)) >> 24,
+               get_cpu_subtype_type(self.cpusubtype),
+               get_cpu_subtype_feature(self.cpusubtype),
                self.filetype,
                self.ncmds,
                self.sizeofcmds,
@@ -416,10 +416,10 @@ impl fmt::Display for FatHeader {
             try!(write!(f, "    cputype {}\n", arch.cputype));
             try!(write!(f,
                         "    cpusubtype {}\n",
-                        (arch.cpusubtype as u32) & !(CPU_SUBTYPE_MASK as u32)));
+                        get_cpu_subtype_type(arch.cpusubtype)));
             try!(write!(f,
                         "    capabilities 0x{:x}\n",
-                        ((arch.cpusubtype as u32) & (CPU_SUBTYPE_MASK as u32)) >> 24));
+                        get_cpu_subtype_feature(arch.cpusubtype)));
             try!(write!(f, "    offset {}\n", arch.offset));
             try!(write!(f, "    size {}\n", arch.size));
             try!(write!(f, "    align 2^{} ({})\n", arch.align, 1 << arch.align));

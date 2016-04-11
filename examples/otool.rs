@@ -6,7 +6,7 @@ extern crate memmap;
 extern crate macho;
 
 use std::env;
-use std::io::{Write, Cursor, stderr};
+use std::io::{Write, Cursor, stdout, stderr};
 use std::path::Path;
 use std::process::exit;
 
@@ -62,6 +62,7 @@ fn main() {
     }
 
     let mut processor = FileProcessor {
+        w: stdout(),
         cpu_type: 0,
         print_fat_header: matches.opt_present("f"),
         print_mach_header: matches.opt_present("h"),
@@ -90,40 +91,54 @@ fn main() {
     }
 }
 
-struct FileProcessor {
+struct FileProcessor<T: Write> {
+    w: T,
     cpu_type: cpu_type_t,
     print_fat_header: bool,
     print_mach_header: bool,
     print_load_commands: bool,
 }
 
-impl FileProcessor {
-    fn process(&self, filename: &str) -> Result<(), Error> {
+impl<T: Write> FileProcessor<T> {
+    fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file_mmap = try!(Mmap::open_path(filename, Protection::Read));
         let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
         let ufile = try!(UniversalFile::load(&mut cur));
 
         if self.print_fat_header {
             if let Some(fat_header) = ufile.header {
-                println!("{}", fat_header);
+                try!(write!(self.w, "{}", fat_header));
             }
         }
 
         for file in ufile.files {
+            if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY &&
+               self.cpu_type != file.header.cputype {
+                continue;
+            }
+
             if self.cpu_type != 0 {
-                println!("{} (architecture {}):",
-                         filename,
-                         get_arch_name_from_types(file.header.cputype, file.header.cpusubtype)
-                             .unwrap_or(format!("cputype {} cpusubtype {}",
-                                                file.header.cputype,
-                                                file.header.cpusubtype)
-                                            .as_str()));
+                try!(write!(self.w,
+                            "{} (architecture {}):\n",
+                            filename,
+                            get_arch_name_from_types(file.header.cputype, file.header.cpusubtype)
+                                .unwrap_or(format!("cputype {} cpusubtype {}",
+                                                   file.header.cputype,
+                                                   file.header.cpusubtype)
+                                               .as_str())));
             } else {
-                println!("{}:", filename);
+                try!(write!(self.w, "{}:\n", filename));
             }
 
             if self.print_mach_header {
-                println!("{}", file.header);
+                try!(write!(self.w, "{}", file.header));
+            }
+
+            if self.print_load_commands {
+                for (i, ref cmd) in file.commands.iter().enumerate() {
+                    try!(write!(self.w, "Load command {}\n", i));
+                    try!(write!(self.w, "{}", cmd));
+                }
             }
         }
 

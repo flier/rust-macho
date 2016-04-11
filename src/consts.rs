@@ -48,6 +48,13 @@ pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
 pub const CPU_SUBTYPE_MASK: cpu_subtype_t = 0xff000000u64 as cpu_subtype_t;  /* mask for feature flags */
 pub const CPU_SUBTYPE_LIB64: cpu_subtype_t = 0x80000000u64 as cpu_subtype_t;  /* 64 bit libraries */
 
+pub fn get_cpu_subtype_type(subtype: cpu_subtype_t) -> u32 {
+    (subtype as u32) & !(CPU_SUBTYPE_MASK as u32)
+}
+
+pub fn get_cpu_subtype_feature(subtype: cpu_subtype_t) -> u32 {
+    ((subtype as u32) & (CPU_SUBTYPE_MASK as u32)) >> 24
+}
 
 //  Object files that are hand-crafted to run on any
 //  implementation of an architecture are tagged with
@@ -305,7 +312,7 @@ pub fn get_arch_name_from_types(cputype: cpu_type_t,
                                 -> Option<&'static str> {
     for (name, &(cpu_type, cpu_subtype)) in get_arch_flags() {
         if cpu_type == cputype &&
-           (cpu_subtype & !CPU_SUBTYPE_MASK) == (subtype & !CPU_SUBTYPE_MASK) {
+           get_cpu_subtype_type(cpu_subtype) == get_cpu_subtype_type(subtype) {
             return Some(name);
         }
     }

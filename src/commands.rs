@@ -576,7 +576,7 @@ pub enum LoadCommand {
     },
 }
 
-trait ReadStringExt : Read {
+pub trait ReadStringExt : Read {
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
         let mut buf = Vec::new();
 

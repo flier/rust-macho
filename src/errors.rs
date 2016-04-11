@@ -1,6 +1,7 @@
 use std::error;
 use std::fmt;
 use std::io;
+use std::num;
 use std::result;
 use std::str;
 use std::string;
@@ -14,7 +15,8 @@ pub enum Error {
     FromUtf8Error(string::FromUtf8Error),
     UuidParseError(::uuid::ParseError),
     IoError(io::Error),
-    TimeParseError(::time::ParseError),
+    TimeParseError(time::ParseError),
+    ParseIntError(num::ParseIntError),
     LoadError(String),
 }
 
@@ -25,7 +27,8 @@ impl fmt::Display for Error {
             Error::FromUtf8Error(ref err) => write!(f, "utf-8 error: {}", err),
             Error::UuidParseError(ref err) => write!(f, "uuid parse error: {}", err),
             Error::IoError(ref err) => write!(f, "io error: {}", err),
-            Error::TimeParseError(ref err) => write!(f, "time parse error: {}", err),
+            Error::TimeParseError(ref err) => write!(f, "parse time error: {}", err),
+            Error::ParseIntError(ref err) => write!(f, "parse int error: {}", err),
             Error::LoadError(ref reason) => write!(f, "load error: {}", reason),
         }
     }
@@ -39,6 +42,7 @@ impl error::Error for Error {
             Error::UuidParseError(_) => "parse uuid failed",
             Error::IoError(ref err) => err.description(),
             Error::TimeParseError(ref err) => err.description(),
+            Error::ParseIntError(ref err) => err.description(),
             Error::LoadError(_) => "load mach-o file failed",
         }
     }
@@ -49,6 +53,7 @@ impl error::Error for Error {
             Error::FromUtf8Error(ref err) => Some(err),
             Error::IoError(ref err) => Some(err),
             Error::TimeParseError(ref err) => Some(err),
+            Error::ParseIntError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -81,6 +86,12 @@ impl From<io::Error> for Error {
 impl From<time::ParseError> for Error {
     fn from(err: time::ParseError) -> Self {
         Error::TimeParseError(err)
+    }
+}
+
+impl From<num::ParseIntError> for Error {
+    fn from(err: num::ParseIntError) -> Self {
+        Error::ParseIntError(err)
     }
 }
 

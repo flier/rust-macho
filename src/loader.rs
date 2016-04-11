@@ -1,12 +1,13 @@
 use std::fmt;
-use std::io::{BufRead, Seek, SeekFrom, Cursor};
+use std::io::{Read, BufRead, Seek, SeekFrom, Cursor};
 
+use libc;
 use time;
-use byteorder::{ByteOrder, BigEndian, LittleEndian, ReadBytesExt, NativeEndian};
+use byteorder::{ReadBytesExt, ByteOrder, BigEndian, LittleEndian, NativeEndian};
 
 use consts::*;
 use errors::*;
-use commands::{LoadCommand, LcString};
+use commands::{LoadCommand, LcString, ReadStringExt};
 
 pub trait MachArch {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader>;
@@ -532,7 +533,17 @@ impl UniversalFile {
             MH_CIGAM_64 => Self::load_mach_file::<Arch64, BigEndian>(buf),
             FAT_MAGIC => Self::load_fat_file::<LittleEndian>(buf),
             FAT_CIGAM => Self::load_fat_file::<BigEndian>(buf),
-            _ => Err(Error::LoadError(format!("unknown file format 0x{:x}", magic))),
+            _ => {
+                let mut ar_magic = [0; 8];
+
+                try!(buf.read_exact(&mut ar_magic));
+
+                if ar_magic == ARMAG {
+                    Self::load_ar_file(buf)
+                } else {
+                    Err(Error::LoadError(format!("unknown file format 0x{:x}", magic)))
+                }
+            }
         }
     }
 
@@ -587,6 +598,39 @@ impl UniversalFile {
             files: files,
         })
     }
+
+    fn load_ar_file(buf: &mut Cursor<&[u8]>) -> Result<UniversalFile> {
+        let header = ArHeader {
+            ar_name: try!(buf.read_fixed_size_string(16)),
+            ar_date: try!(try!(buf.read_fixed_size_string(12)).parse()),
+            ar_uid: try!(try!(buf.read_fixed_size_string(6)).parse()),
+            ar_gid: try!(try!(buf.read_fixed_size_string(6)).parse()),
+            ar_mode: try!(try!(buf.read_fixed_size_string(8)).parse()),
+            ar_size: try!(try!(buf.read_fixed_size_string(10)).parse()),
+            ar_fmag: try!(buf.read_u16::<NativeEndian>()),
+        };
+
+        Ok(UniversalFile {
+            header: None,
+            files: Vec::new(),
+        })
+    }
+}
+
+pub struct ArHeader {
+    pub ar_name: String,
+    // modification time
+    pub ar_date: libc::time_t,
+    // user id
+    pub ar_uid: libc::uid_t,
+    // group id
+    pub ar_gid: libc::gid_t,
+    // octal file permissions
+    pub ar_mode: libc::mode_t,
+    // size in bytes
+    pub ar_size: usize,
+    // consistency check
+    pub ar_fmag: u16,
 }
 
 #[cfg(test)]

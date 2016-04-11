@@ -340,6 +340,8 @@ pub const FAT_MAGIC: u32 = 0xcafebabe;
 pub const FAT_CIGAM: u32 = 0xbebafeca;  /* NXSwapLong(FAT_MAGIC) */
 
 
+pub const ARMAG: &'static [u8] = b"!<arch>\n";
+
 // The layout of the file depends on the filetype.  For all but the MH_OBJECT
 // file type the segments are padded out and aligned on a segment alignment
 // boundary for efficient demand pageing.  The MH_EXECUTE, MH_FVMLIB, MH_DYLIB,

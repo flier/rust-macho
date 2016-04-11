@@ -14,7 +14,8 @@ helloworld.universal:
 helloobjc:
 	xcrun clang -c foo.m
 	xcrun clang -c helloobjc.m
-	xcrun clang -o $@ helloobjc.o foo.o -Wl,`xcrun --show-sdk-path`/System/Library/Frameworks/Foundation.framework/Foundation
+	xcrun ar -cr libfoo.a foo.o
+	xcrun clang -o $@ helloobjc.o libfoo.a -Wl,`xcrun --show-sdk-path`/System/Library/Frameworks/Foundation.framework/Foundation
 	xcrun otool -l $@ > $@.lc
 
 hellorust:

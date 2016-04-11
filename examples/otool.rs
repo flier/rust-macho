@@ -2,15 +2,17 @@
 extern crate log;
 extern crate env_logger;
 extern crate getopts;
+extern crate byteorder;
 extern crate memmap;
 extern crate macho;
 
 use std::env;
-use std::io::{Write, Cursor, stdout, stderr};
+use std::io::{BufRead, Write, Cursor, Seek, SeekFrom, stdout, stderr};
 use std::path::Path;
 use std::process::exit;
 
 use getopts::Options;
+use byteorder::ReadBytesExt;
 use memmap::{Mmap, Protection};
 
 use macho::*;
@@ -33,6 +35,9 @@ fn main() {
     opts.optflag("f", "", "print the fat headers");
     opts.optflag("h", "", "print the mach header");
     opts.optflag("l", "", "print the load commands");
+    opts.optflag("t", "", "print the text section");
+    opts.optflag("d", "", "print the data section");
+    opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optopt("", "arch", "Specifies the architecture", "arch_type");
     opts.optflag("",
                  "version",
@@ -67,6 +72,17 @@ fn main() {
         print_fat_header: matches.opt_present("f"),
         print_mach_header: matches.opt_present("h"),
         print_load_commands: matches.opt_present("l"),
+        print_text_section: matches.opt_present("t"),
+        print_data_section: matches.opt_present("d"),
+        print_section: matches.opt_str("s").map(|s| {
+            let names: Vec<&str> = s.splitn(2, ':').collect();
+
+            if names.len() == 2 {
+                (String::from(names[0]), Some(String::from(names[1])))
+            } else {
+                (String::from(names[0]), None)
+            }
+        }),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -97,6 +113,9 @@ struct FileProcessor<T: Write> {
     print_fat_header: bool,
     print_mach_header: bool,
     print_load_commands: bool,
+    print_text_section: bool,
+    print_data_section: bool,
+    print_section: Option<(String, Option<String>)>,
 }
 
 impl<T: Write> FileProcessor<T> {
@@ -140,8 +159,60 @@ impl<T: Write> FileProcessor<T> {
                     try!(write!(self.w, "{}", cmd));
                 }
             }
+
+            for ref cmd in file.commands {
+                match cmd {
+                    &MachCommand(LoadCommand::Segment{ref sections, ..}, _) |
+                    &MachCommand(LoadCommand::Segment64{ref sections, ..}, _) => {
+                        for ref sect in sections {
+                            let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
+
+                            if name == self.print_section ||
+                               Some((sect.segname.clone(), None)) == self.print_section ||
+                               (self.print_text_section &&
+                                name ==
+                                Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
+                               (self.print_data_section &&
+                                name ==
+                                Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
+                                try!(write!(self.w,
+                                            "Contents of ({},{}) section\n",
+                                            sect.segname,
+                                            sect.sectname));
+
+                                try!(cur.seek(SeekFrom::Start(sect.offset as u64)));
+
+                                let dump = try!(hexdump(sect.addr, &mut cur, sect.size));
+
+                                try!(self.w.write(&dump[..]));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
 
         Ok(())
     }
+}
+
+fn hexdump<T: BufRead>(addr: usize, buf: &mut T, size: usize) -> Result<Vec<u8>, Error> {
+    let mut w = Vec::new();
+
+    for off in 0..size {
+        if (off % 16) == 0 {
+            if off > 0 {
+                try!(write!(&mut w, "\n"));
+            }
+
+            try!(write!(&mut w, "{:016x}\t", addr + off));
+        }
+
+        try!(write!(&mut w, "{:02x} ", try!(buf.read_u8())));
+    }
+
+    try!(write!(&mut w, "\n"));
+
+    Ok(w)
 }

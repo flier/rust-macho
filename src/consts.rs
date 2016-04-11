@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
+use std::collections::HashMap;
+
 pub type cpu_type_t = i32;
 pub type cpu_subtype_t = i32;
 pub type vm_prot_t = i32;
@@ -220,6 +222,96 @@ pub const CPU_SUBTYPE_ARM_V8: cpu_subtype_t = 13;
 //
 pub const CPU_SUBTYPE_ARM64_ALL: cpu_subtype_t = 0;
 pub const CPU_SUBTYPE_ARM64_V8: cpu_subtype_t = 1;
+
+fn get_arch_flags() -> &'static HashMap<&'static str, (cpu_type_t, cpu_subtype_t)> {
+    lazy_static! {
+        static ref ARCH_FLAGS : HashMap<&'static str, (cpu_type_t, cpu_subtype_t)> = {
+            let mut m = HashMap::new();
+
+            m.insert("any",    (CPU_TYPE_ANY,     CPU_SUBTYPE_MULTIPLE ));
+            m.insert("little", (CPU_TYPE_ANY,     CPU_SUBTYPE_LITTLE_ENDIAN ));
+            m.insert("big",    (CPU_TYPE_ANY,     CPU_SUBTYPE_BIG_ENDIAN ));
+
+        /* 64-bit Mach-O architectures */
+
+            /* architecture families */
+            m.insert("ppc64",     (CPU_TYPE_POWERPC64, CPU_SUBTYPE_POWERPC_ALL ));
+            m.insert("x86_64",    (CPU_TYPE_X86_64, CPU_SUBTYPE_X86_64_ALL ));
+            m.insert("x86_64h",   (CPU_TYPE_X86_64, CPU_SUBTYPE_X86_64_H ));
+            m.insert("arm64",     (CPU_TYPE_ARM64,     CPU_SUBTYPE_ARM64_ALL ));
+            /* specific architecture implementations */
+            m.insert("ppc970-64", (CPU_TYPE_POWERPC64, CPU_SUBTYPE_POWERPC_970 ));
+
+        /* 32-bit Mach-O architectures */
+
+            /* architecture families */
+            m.insert("ppc",    (CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_ALL ));
+            m.insert("i386",   (CPU_TYPE_I386,    CPU_SUBTYPE_I386_ALL ));
+            m.insert("m68k",   (CPU_TYPE_MC680X0, CPU_SUBTYPE_MC680X0_ALL ));
+            m.insert("hppa",   (CPU_TYPE_HPPA,    CPU_SUBTYPE_HPPA_ALL ));
+            m.insert("sparc",  (CPU_TYPE_SPARC,   CPU_SUBTYPE_SPARC_ALL ));
+            m.insert("m88k",   (CPU_TYPE_MC88000, CPU_SUBTYPE_MC88000_ALL ));
+            m.insert("i860",   (CPU_TYPE_I860,    CPU_SUBTYPE_I860_ALL ));
+            m.insert("arm",    (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_ALL ));
+            /* specific architecture implementations */
+            m.insert("ppc601", (CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_601 ));
+            m.insert("ppc603",(CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603 ));
+            m.insert("ppc603e",(CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603E ));
+            m.insert("ppc603ev",(CPU_TYPE_POWERPC,CPU_SUBTYPE_POWERPC_603EV ));
+            m.insert("ppc604", (CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604 ));
+            m.insert("ppc604e",(CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604E ));
+            m.insert("ppc750", (CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_750 ));
+            m.insert("ppc7400",(CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7400 ));
+            m.insert("ppc7450",(CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7450 ));
+            m.insert("ppc970", (CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_970 ));
+            m.insert("i486",   (CPU_TYPE_I386,    CPU_SUBTYPE_486 ));
+            m.insert("i486SX", (CPU_TYPE_I386,    CPU_SUBTYPE_486SX ));
+            m.insert("pentium",(CPU_TYPE_I386,    CPU_SUBTYPE_PENT )); /* same as i586 */
+            m.insert("i586",   (CPU_TYPE_I386,    CPU_SUBTYPE_586 ));
+            m.insert("pentpro",( CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO )); /* same as i686 */
+            m.insert("i686",   (CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO ));
+            m.insert("pentIIm3",(CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M3 ));
+            m.insert("pentIIm5",(CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M5 ));
+            m.insert("pentium4",(CPU_TYPE_I386, CPU_SUBTYPE_PENTIUM_4 ));
+            m.insert("m68030", (CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68030_ONLY ));
+            m.insert("m68040", (CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68040 ));
+            m.insert("hppa7100LC",( CPU_TYPE_HPPA,  CPU_SUBTYPE_HPPA_7100LC ));
+            m.insert("armv4t", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V4T));
+            m.insert("armv5",  (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V5TEJ));
+            m.insert("xscale", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_XSCALE));
+            m.insert("armv6",  (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V6 ));
+            m.insert("armv6m", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V6M ));
+            m.insert("armv7",  (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7 ));
+            m.insert("armv7f", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7F ));
+            m.insert("armv7s", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7S ));
+            m.insert("armv7k", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7K ));
+            m.insert("armv7m", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7M ));
+            m.insert("armv7em",( CPU_TYPE_ARM,    CPU_SUBTYPE_ARM_V7EM ));
+            m.insert("arm64v8",(CPU_TYPE_ARM64,   CPU_SUBTYPE_ARM64_V8 ));
+
+            m
+        };
+    }
+
+    &ARCH_FLAGS
+}
+
+pub fn get_arch_from_flag(name: &str) -> Option<&(cpu_type_t, cpu_subtype_t)> {
+    get_arch_flags().get(&name)
+}
+
+pub fn get_arch_name_from_types(cputype: cpu_type_t,
+                                subtype: cpu_subtype_t)
+                                -> Option<&'static str> {
+    for (name, &(cpu_type, cpu_subtype)) in get_arch_flags() {
+        if cpu_type == cputype &&
+           (cpu_subtype & !CPU_SUBTYPE_MASK) == (subtype & !CPU_SUBTYPE_MASK) {
+            return Some(name);
+        }
+    }
+
+    None
+}
 
 // Constant for the magic field of the mach_header (32-bit architectures)
 //

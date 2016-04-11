@@ -5,6 +5,8 @@ extern crate uuid;
 extern crate time;
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate lazy_static;
 
 mod consts;
 mod errors;
@@ -14,4 +16,4 @@ mod loader;
 pub use consts::*;
 pub use errors::Error;
 pub use commands::*;
-pub use loader::{get_arch_from_flag, MachFile, UniversalFile};
+pub use loader::{MachFile, UniversalFile};

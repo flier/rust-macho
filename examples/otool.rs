@@ -62,12 +62,14 @@ fn main() {
     }
 
     let mut processor = FileProcessor {
-        cpu_type: CPU_TYPE_ANY,
-        print_fat_headers: matches.opt_present("f"),
+        cpu_type: 0,
+        print_fat_header: matches.opt_present("f"),
+        print_mach_header: matches.opt_present("h"),
+        print_load_commands: matches.opt_present("l"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
-        if let Ok((cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
+        if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
             processor.cpu_type = cpu_type;
         } else {
             write!(stderr(),
@@ -90,18 +92,38 @@ fn main() {
 
 struct FileProcessor {
     cpu_type: cpu_type_t,
-    print_fat_headers: bool,
+    print_fat_header: bool,
+    print_mach_header: bool,
+    print_load_commands: bool,
 }
 
 impl FileProcessor {
     fn process(&self, filename: &str) -> Result<(), Error> {
         let file_mmap = try!(Mmap::open_path(filename, Protection::Read));
         let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
-        let file = try!(UniversalFile::load(&mut cur));
+        let ufile = try!(UniversalFile::load(&mut cur));
 
-        if self.print_fat_headers {
-            if let Some(fat_header) = file.header {
+        if self.print_fat_header {
+            if let Some(fat_header) = ufile.header {
                 println!("{}", fat_header);
+            }
+        }
+
+        for file in ufile.files {
+            if self.cpu_type != 0 {
+                println!("{} (architecture {}):",
+                         filename,
+                         get_arch_name_from_types(file.header.cputype, file.header.cpusubtype)
+                             .unwrap_or(format!("cputype {} cpusubtype {}",
+                                                file.header.cputype,
+                                                file.header.cpusubtype)
+                                            .as_str()));
+            } else {
+                println!("{}:", filename);
+            }
+
+            if self.print_mach_header {
+                println!("{}", file.header);
             }
         }
 

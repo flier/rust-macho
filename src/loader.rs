@@ -8,46 +8,6 @@ use consts::*;
 use errors::*;
 use commands::{LoadCommand, LcString};
 
-pub fn get_arch_from_flag(name: &str) -> Result<(cpu_type_t, cpu_subtype_t)> {
-    match name {
-        "any" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_MULTIPLE)),
-
-        "little" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_LITTLE_ENDIAN)),
-        "big" => Ok((CPU_TYPE_ANY, CPU_SUBTYPE_BIG_ENDIAN)),
-        // architecture families
-        "ppc" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_ALL)),
-        "i386" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_I386_ALL)),
-        "m68k" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC680X0_ALL)),
-        "hppa" => Ok((CPU_TYPE_HPPA, CPU_SUBTYPE_HPPA_ALL)),
-        "sparc" => Ok((CPU_TYPE_SPARC, CPU_SUBTYPE_SPARC_ALL)),
-        "m88k" => Ok((CPU_TYPE_MC88000, CPU_SUBTYPE_MC88000_ALL)),
-        "i860" => Ok((CPU_TYPE_I860, CPU_SUBTYPE_I860_ALL)),
-        // specific architecture implementations
-        "ppc601" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_601)),
-        "ppc603" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603)),
-        "ppc603e" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603E)),
-        "ppc603ev" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_603EV)),
-        "ppc604" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604)),
-        "ppc604e" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_604E)),
-        "ppc750" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_750)),
-        "ppc7400" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7400)),
-        "ppc7450" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_7450)),
-        "ppc970" => Ok((CPU_TYPE_POWERPC, CPU_SUBTYPE_POWERPC_970)),
-        "i486" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_486)),
-        "i486SX" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_486SX)),
-        "pentium" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENT)), /* same as i586 */
-        "i586" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_586)),
-        "pentpro" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO)), /* same as i686 */
-        "i686" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTPRO)),
-        "pentIIm3" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M3)),
-        "pentIIm5" => Ok((CPU_TYPE_I386, CPU_SUBTYPE_PENTII_M5)),
-        "m68030" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68030_ONLY)),
-        "m68040" => Ok((CPU_TYPE_MC680X0, CPU_SUBTYPE_MC68040)),
-        "hppa7100LC" => Ok((CPU_TYPE_HPPA, CPU_SUBTYPE_HPPA_7100LC)),
-        _ => Err(Error::LoadError(String::from("Unknown arch flag"))),
-    }
-}
-
 pub trait MachArch {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader>;
 }
@@ -90,12 +50,6 @@ impl MachArch for Arch64 {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct MachFile {
-    pub header: MachHeader,
-    pub commands: Vec<MachCommand>,
-}
-
-#[derive(Debug, Default, Clone)]
 pub struct MachHeader {
     pub magic: u32,
     pub cputype: cpu_type_t,
@@ -104,6 +58,25 @@ pub struct MachHeader {
     pub ncmds: u32,
     pub sizeofcmds: u32,
     pub flags: u32,
+}
+
+impl fmt::Display for MachHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "Mach header\n"));
+        try!(write!(f,
+                    "      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      \
+                     flags\n"));
+        write!(f,
+               " 0x{:08x} {:7} {:10}  0x{:02x}  {:10} {:5} {:10} 0x{:08x}\n",
+               self.magic,
+               self.cputype,
+               (self.cpusubtype as u32) & !(CPU_SUBTYPE_MASK as u32),
+               ((self.cpusubtype as u32) & (CPU_SUBTYPE_MASK as u32)) >> 24,
+               self.filetype,
+               self.ncmds,
+               self.sizeofcmds,
+               self.flags)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +144,7 @@ impl MachCommand {
                 for ref section in sections {
                     try!(write!(f, "Section\n"));
                     try!(write!(f, "  sectname {}\n", section.sectname));
-                    try!(write!(f, "   segname {}{}", section.segname, 
+                    try!(write!(f, "   segname {}{}", section.segname,
                         if *segname != section.segname { " (does not match segment)\n" } else { "\n" }));
                     if is_64bit {
                         try!(write!(f, "      addr 0x{:016x}\n", section.addr));
@@ -213,7 +186,7 @@ impl MachCommand {
     fn print_dyld_info_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DyldInfo { rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size, 
+        if let &LoadCommand::DyldInfo { rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size,
             lazy_bind_off, lazy_bind_size, export_off, export_size} = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
@@ -254,7 +227,7 @@ impl MachCommand {
     fn print_dysymtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym, tocoff, ntoc, modtaboff, nmodtab, 
+        if let &LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym, tocoff, ntoc, modtaboff, nmodtab,
                 extrefsymoff, nextrefsyms, indirectsymoff, nindirectsyms, extreloff, nextrel, locreloff, nlocrel} = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
@@ -486,6 +459,12 @@ impl FatArch {
             _ => Err(Error::LoadError(format!("unknown file format 0x{:x}", magic))),
         }
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MachFile {
+    pub header: MachHeader,
+    pub commands: Vec<MachCommand>,
 }
 
 impl MachFile {

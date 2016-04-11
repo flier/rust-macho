@@ -93,6 +93,8 @@ impl fmt::Display for MachCommand {
             LoadCommand::IdDyLinker(_) |
             LoadCommand::LoadDyLinker(_) |
             LoadCommand::DyLdEnv(_) => self.print_dylinker_command(f),
+            LoadCommand::IdFvmLib(_) |
+            LoadCommand::LoadFvmLib(_) => self.print_fvmlib_command(f),
             LoadCommand::IdDyLib(_) |
             LoadCommand::LoadDyLib(_) |
             LoadCommand::LoadWeakDyLib(_) |
@@ -266,6 +268,25 @@ impl MachCommand {
                 try!(write!(f, "          cmd {}\n", cmd.name()));
                 try!(write!(f, "      cmdsize {}\n", cmdsize));
                 try!(write!(f, "         name {} (offset {})\n", name, off));
+
+                Ok(())
+            }
+            _ => {
+                unreachable!();
+            }
+        }
+    }
+
+    fn print_fvmlib_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        match cmd {
+            &LoadCommand::IdFvmLib(ref fvmlib) |
+            &LoadCommand::LoadFvmLib(ref fvmlib) => {
+                try!(write!(f, "           cmd {}\n", cmd.name()));
+                try!(write!(f, "       cmdsize {}\n", cmdsize));
+                try!(write!(f, " minor version {}\n", fvmlib.minor_version));
+                try!(write!(f, "   header addr 0x{:08x}\n", fvmlib.header_addr));
 
                 Ok(())
             }

@@ -116,15 +116,31 @@ impl fmt::Display for LcString {
     }
 }
 
-// Dynamicly linked shared libraries are identified by two things.  The
-// pathname (the name of the library as found for execution), and the
-// compatibility version number.  The pathname must match and the compatibility
-// number in the user of the library must be greater than or equal to the
-// library being used.  The time stamp is used to record the time a library was
-// built and copied into user so it can be use to determined if the library used
-// at runtime is exactly the same as used to built the program.
-//
-//
+/// Fixed virtual memory shared libraries are identified by two things.  The
+/// target pathname (the name of the library as found for execution), and the
+/// minor version number.  The address of where the headers are loaded is in
+/// header_addr. (THIS IS OBSOLETE and no longer supported).
+///
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct FvmLib {
+    /// library's target pathname
+    pub name: LcString,
+    /// library's minor version number
+    pub minor_version: u32,
+    /// library's header address
+    pub header_addr: u32,
+}
+
+
+/// Dynamicly linked shared libraries are identified by two things.  The
+/// pathname (the name of the library as found for execution), and the
+/// compatibility version number.  The pathname must match and the compatibility
+/// number in the user of the library must be greater than or equal to the
+/// library being used.  The time stamp is used to record the time a library was
+/// built and copied into user so it can be use to determined if the library used
+/// at runtime is exactly the same as used to built the program.
+///
+///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DyLib {
     /// library's path name
@@ -207,6 +223,15 @@ pub enum LoadCommand {
         /// sections
         sections: Vec<Section>,
     },
+
+    // A fixed virtual shared library (filetype == MH_FVMLIB in the mach header)
+    // contains a fvmlib_command (cmd == LC_IDFVMLIB) to identify the library.
+    // An object that uses a fixed virtual shared library also contains a
+    // fvmlib_command (cmd == LC_LOADFVMLIB) for each library it uses.
+    // (THIS IS OBSOLETE and no longer supported).
+    //
+    IdFvmLib(FvmLib),
+    LoadFvmLib(FvmLib),
 
     // A dynamically linked shared library (filetype == MH_DYLIB in the mach header)
     // contains a dylib_command (cmd == LC_ID_DYLIB) to identify the library.
@@ -545,7 +570,7 @@ pub enum LoadCommand {
     Command {
         /// type of load command
         cmd: u32,
-        /// 
+        ///
         /// command in bytes
         payload: Vec<u8>,
     },
@@ -629,6 +654,9 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
+            LC_IDFVMLIB => LoadCommand::IdFvmLib(try!(Self::read_fvmlib::<O>(buf))),
+            LC_LOADFVMLIB => LoadCommand::LoadFvmLib(try!(Self::read_fvmlib::<O>(buf))),
+
             LC_ID_DYLIB => LoadCommand::IdDyLib(try!(Self::read_dylib::<O>(buf))),
             LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O>(buf))),
             LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O>(buf))),
@@ -773,6 +801,20 @@ impl LoadCommand {
         Ok(LcString(off, try!(Self::read_lc_string::<O>(buf))))
     }
 
+    fn read_fvmlib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<FvmLib> {
+        let off = try!(buf.read_u32::<O>()) as usize;
+        let minor_version = try!(buf.read_u32::<O>());
+        let header_addr = try!(buf.read_u32::<O>());
+
+        buf.consume(off - 20);
+
+        Ok(FvmLib {
+            name: LcString(off, try!(Self::read_lc_string::<O>(buf))),
+            minor_version: minor_version,
+            header_addr: header_addr,
+        })
+    }
+
     fn read_dylib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<DyLib> {
         let off = try!(buf.read_u32::<O>()) as usize;
         let timestamp = try!(buf.read_u32::<O>());
@@ -800,6 +842,8 @@ impl LoadCommand {
         match self {
             &LoadCommand::Segment {..} => LC_SEGMENT,
             &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::IdFvmLib(_) => LC_IDFVMLIB,
+            &LoadCommand::LoadFvmLib(_) => LC_LOADFVMLIB,
             &LoadCommand::IdDyLib(_) => LC_ID_DYLIB,
             &LoadCommand::LoadDyLib(_) => LC_LOAD_DYLIB,
             &LoadCommand::LoadWeakDyLib(_) => LC_LOAD_WEAK_DYLIB,
@@ -954,7 +998,7 @@ pub struct Section {
     pub reserved1: u32,
     /// reserved (for count or sizeof)
     pub reserved2: u32,
-    /// reserved 
+    /// reserved
     pub reserved3: u32,
 }
 
@@ -1035,7 +1079,7 @@ pub mod tests {
     #[test]
     fn test_parse_segments() {
         if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_PAGEZERO_DATA) {
-            assert_eq!(cmdsize, 72);    
+            assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_PAGEZERO);
             assert_eq!(vmaddr, 0);
             assert_eq!(vmsize, 0x0000000100000000);
@@ -1050,7 +1094,7 @@ pub mod tests {
         }
 
         if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_TEXT_DATA) {
-            assert_eq!(cmdsize, 712);    
+            assert_eq!(cmdsize, 712);
             assert_eq!(segname, SEG_TEXT);
             assert_eq!(vmaddr, 0x0000000100000000);
             assert_eq!(vmsize, 0x00000000001e3000);
@@ -1068,7 +1112,7 @@ pub mod tests {
         }
 
         if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_DATA_DATA) {
-            assert_eq!(cmdsize, 872);    
+            assert_eq!(cmdsize, 872);
             assert_eq!(segname, SEG_DATA);
             assert_eq!(vmaddr, 0x00000001001e3000);
             assert_eq!(vmsize, 0x0000000000013000);
@@ -1087,7 +1131,7 @@ pub mod tests {
         }
 
         if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_LINKEDIT_DATA) {
-            assert_eq!(cmdsize, 72);    
+            assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_LINKEDIT);
             assert_eq!(vmaddr, 0x00000001001f6000);
             assert_eq!(vmsize, 0x000000000017a000);
@@ -1106,7 +1150,7 @@ pub mod tests {
     fn test_parse_dyld_info_command() {
         if let (LoadCommand::DyldInfo{rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size,
             lazy_bind_off, lazy_bind_size, export_off, export_size}, cmdsize) = parse_command!(LC_DYLD_INFO_ONLY_DATA) {
-            assert_eq!(cmdsize, 48);    
+            assert_eq!(cmdsize, 48);
             assert_eq!(rebase_off, 0x1f5000);
             assert_eq!(rebase_size, 3368);
             assert_eq!(bind_off, 0x1f5d28);
@@ -1138,10 +1182,10 @@ pub mod tests {
 
     #[test]
     fn test_parse_dysymtab_command() {
-        if let (LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym, 
-            tocoff, ntoc, modtaboff, nmodtab, extrefsymoff, nextrefsyms, indirectsymoff, nindirectsyms, 
+        if let (LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym,
+            tocoff, ntoc, modtaboff, nmodtab, extrefsymoff, nextrefsyms, indirectsymoff, nindirectsyms,
             extreloff, nextrel, locreloff, nlocrel }, cmdsize) = parse_command!(LC_DYSYMTAB_DATA) {
-            assert_eq!(cmdsize, 80);    
+            assert_eq!(cmdsize, 80);
             assert_eq!(ilocalsym, 0);
             assert_eq!(nlocalsym, 35968);
             assert_eq!(iextdefsym, 35968);

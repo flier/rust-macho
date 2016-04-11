@@ -87,8 +87,8 @@ fn main() {
                 (String::from(names[0]), None)
             }
         }),
-        print_shared_lib_info: matches.opt_present("L"),
-        print_shared_lib_id: matches.opt_present("D"),
+        print_shared_lib: matches.opt_present("L") || matches.opt_present("D"),
+        print_shared_lib_just_id: matches.opt_present("D") && !matches.opt_present("L"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -123,8 +123,8 @@ struct FileProcessor<T: Write> {
     print_text_section: bool,
     print_data_section: bool,
     print_section: Option<(String, Option<String>)>,
-    print_shared_lib_info: bool,
-    print_shared_lib_id: bool,
+    print_shared_lib: bool,
+    print_shared_lib_just_id: bool,
 }
 
 impl<T: Write> FileProcessor<T> {
@@ -205,20 +205,25 @@ impl<T: Write> FileProcessor<T> {
                             }
                         }
                     }
+
+                    &LoadCommand::IdFvmLib(ref fvmlib) |
+                    &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib &&
+                                                            !self.print_shared_lib_just_id => {
+                        try!(write!(self.w,
+                                    "\t{} (minor version {})\n",
+                                    fvmlib.name,
+                                    fvmlib.minor_version));
+                    }
+
                     &LoadCommand::IdDyLib(ref dylib) |
                     &LoadCommand::LoadDyLib(ref dylib) |
                     &LoadCommand::LoadWeakDyLib(ref dylib) |
                     &LoadCommand::ReexportDyLib(ref dylib) |
                     &LoadCommand::LoadUpwardDylib(ref dylib) |
-                    &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib_info ||
-                                                              self.print_shared_lib_id => {
-                        let just_id = self.print_shared_lib_id && !self.print_shared_lib_info;
-
-                        if cmd.cmd() != LC_ID_DYLIB && just_id {
-                            continue;
-                        }
-
-                        if just_id {
+                    &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib &&
+                                                              (cmd.cmd() == LC_ID_DYLIB ||
+                                                               !self.print_shared_lib_just_id) => {
+                        if self.print_shared_lib_just_id {
                             try!(write!(self.w, "{}", dylib.name));
                         } else {
                             try!(write!(self.w,

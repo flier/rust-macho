@@ -154,6 +154,48 @@ pub struct DyLib {
 }
 
 
+/// a table of contents entry
+pub struct DyLibTocEntry {
+    /// the defined external symbol (index into the symbol table)
+    pub symbol_index: u32,
+    /// index into the module table this symbol is defined in
+    pub module_index: u32,
+}
+
+/// a module table entry
+pub struct DyLibModule {
+    /// the module name (index into string table)
+    pub module_name: u32,
+
+    /// index into externally defined symbols
+    pub iextdefsym: u32,
+    /// number of externally defined symbols
+    pub nextdefsym: u32,
+    /// index into reference symbol table
+    pub irefsym: u32,
+    /// number of reference symbol table entries
+    pub nrefsym: u32,
+    /// index into symbols for local symbols
+    pub ilocalsym: u32,
+    /// number of local symbols
+    pub nlocalsym: u32,
+
+    /// index into external relocation entries
+    pub iextrel: u32,
+    /// number of external relocation entries
+    pub nextrel: u32,
+
+    /// low 16 bits are the index into the init section, high 16 bits are the index into the term section
+    pub iinit_iterm: u32,
+    /// low 16 bits are the number of init section entries, high 16 bits are the number of term section entries
+    pub ninit_nterm: u32,
+
+    /// for this module address of the start of the (__OBJC,__module_info) section
+    pub objc_module_info_addr: u32,
+    /// for this module size of the (__OBJC,__module_info) section
+    pub objc_module_info_size: usize,
+}
+
 // The linkedit_data_command contains the offsets and sizes of a blob
 // of data in the __LINKEDIT segment.
 //

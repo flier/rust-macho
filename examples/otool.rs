@@ -27,6 +27,8 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
+    env_logger::init().unwrap();
+
     let args: Vec<String> = env::args().collect();
     let program = Path::new(args[0].as_str()).file_name().unwrap().to_str().unwrap();
 
@@ -34,6 +36,7 @@ fn main() {
 
     opts.optopt("", "arch", "Specifies the architecture", "arch_type");
     opts.optflag("f", "", "print the fat headers");
+    opts.optflag("a", "", "print the archive headers");
     opts.optflag("h", "", "print the mach header");
     opts.optflag("l", "", "print the load commands");
     opts.optflag("L", "", "print shared libraries used");
@@ -74,6 +77,7 @@ fn main() {
         cpu_type: 0,
         print_headers: !matches.opt_present("X"),
         print_fat_header: matches.opt_present("f"),
+        print_archive_header: matches.opt_present("a"),
         print_mach_header: matches.opt_present("h"),
         print_load_commands: matches.opt_present("l"),
         print_text_section: matches.opt_present("t"),
@@ -118,6 +122,7 @@ struct FileProcessor<T: Write> {
     cpu_type: cpu_type_t,
     print_headers: bool,
     print_fat_header: bool,
+    print_archive_header: bool,
     print_mach_header: bool,
     print_load_commands: bool,
     print_text_section: bool,
@@ -128,7 +133,7 @@ struct FileProcessor<T: Write> {
 }
 
 struct FileProcessContext<'a> {
-    filename: &'a str,
+    filename: String,
     cur: &'a mut Cursor<&'a [u8]>,
 }
 
@@ -138,20 +143,23 @@ impl<T: Write> FileProcessor<T> {
         let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
         let file = try!(OFile::parse(&mut cur));
         let mut ctxt = FileProcessContext {
-            filename: filename,
+            filename: String::from(filename),
             cur: &mut cur,
         };
+
+        debug!("process file {} with {} bytes", filename, file_mmap.len());
 
         self.process_ofile(&file, &mut ctxt)
     }
 
     fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         match ofile {
-            &OFile::MachFile {ref header, ref commands} => {
+            &OFile::MachFile { ref header, ref commands } => {
                 self.process_mach_file(&header, &commands, ctxt)
             }
-            &OFile::FatFile {magic, ref files} => self.process_fat_file(magic, files, ctxt),
-            &OFile::ArFile {ref files} => self.process_ar_file(files, ctxt),
+            &OFile::FatFile { magic, ref files } => self.process_fat_file(magic, files, ctxt),
+            &OFile::ArFile { ref files } => self.process_ar_file(files, ctxt),
+            &OFile::SymDef { .. } => Ok(()),
         }
     }
 
@@ -164,7 +172,8 @@ impl<T: Write> FileProcessor<T> {
             return Ok(());
         }
 
-        if self.print_headers {
+        if self.print_headers &&
+           (self.print_mach_header | self.print_load_commands | self.print_shared_lib) {
             if self.cpu_type != 0 {
                 try!(write!(self.w,
                             "{} (architecture {}):\n",
@@ -194,8 +203,8 @@ impl<T: Write> FileProcessor<T> {
             let &MachCommand(ref cmd, _) = cmd;
 
             match cmd {
-                &LoadCommand::Segment{ref sections, ..} |
-                &LoadCommand::Segment64{ref sections, ..} => {
+                &LoadCommand::Segment { ref sections, .. } |
+                &LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
@@ -287,6 +296,26 @@ impl<T: Write> FileProcessor<T> {
                        files: &Vec<(ArHeader, OFile)>,
                        ctxt: &mut FileProcessContext)
                        -> Result<(), Error> {
+        if self.print_archive_header {
+            try!(write!(self.w, "Archive :{}\n", ctxt.filename));
+
+            for &(ref header, _) in files {
+                try!(write!(self.w, "{}", header));
+            }
+        }
+
+        for &(ref header, ref file) in files {
+            try!(self.process_ofile(file,
+                                    &mut FileProcessContext {
+                                        filename: if let Some(ref name) = header.ar_member_name {
+                                            format!("{}({})", ctxt.filename, name)
+                                        } else {
+                                            ctxt.filename.clone()
+                                        },
+                                        cur: &mut ctxt.cur.clone(),
+                                    }));
+        }
+
         Ok(())
     }
 }

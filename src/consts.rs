@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub type cpu_type_t = i32;
 pub type cpu_subtype_t = i32;
 pub type vm_prot_t = i32;
+pub type off_t = u32;
 
 // Capability bits used in the definition of cpu_type.
 //
@@ -343,6 +344,9 @@ pub const FAT_CIGAM: u32 = 0xbebafeca;  /* NXSwapLong(FAT_MAGIC) */
 pub const ARMAG: &'static [u8] = b"!<arch>\n";
 
 pub const AR_EFMT1: &'static str = "#1/"; /* extended format #1 */
+
+pub const SYMDEF: &'static str = "__.SYMDEF";
+pub const SYMDEF_SORTED: &'static str = "__.SYMDEF SORTED";
 
 // The layout of the file depends on the filetype.  For all but the MH_OBJECT
 // file type the segments are padded out and aligned on a segment alignment

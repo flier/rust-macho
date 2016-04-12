@@ -17,6 +17,7 @@ pub enum Error {
     IoError(io::Error),
     TimeParseError(time::ParseError),
     ParseIntError(num::ParseIntError),
+    ParseOctalError(String),
     LoadError(String),
 }
 
@@ -29,6 +30,7 @@ impl fmt::Display for Error {
             Error::IoError(ref err) => write!(f, "io error: {}", err),
             Error::TimeParseError(ref err) => write!(f, "parse time error: {}", err),
             Error::ParseIntError(ref err) => write!(f, "parse int error: {}", err),
+            Error::ParseOctalError(ref s) => write!(f, "parse octal error: {}", s),
             Error::LoadError(ref reason) => write!(f, "load error: {}", reason),
         }
     }
@@ -43,6 +45,7 @@ impl error::Error for Error {
             Error::IoError(ref err) => err.description(),
             Error::TimeParseError(ref err) => err.description(),
             Error::ParseIntError(ref err) => err.description(),
+            Error::ParseOctalError(_) => "parse octal error",
             Error::LoadError(_) => "load mach-o file failed",
         }
     }

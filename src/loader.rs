@@ -1,5 +1,7 @@
 use std::fmt;
-use std::io::{Read, BufRead, Seek, SeekFrom, Cursor};
+use std::convert::From;
+use std::mem::size_of;
+use std::io::{Read, BufRead, Seek, SeekFrom, Cursor, ErrorKind};
 
 use libc;
 use time;
@@ -86,11 +88,11 @@ pub struct MachCommand(pub LoadCommand, pub usize);
 impl fmt::Display for MachCommand {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            LoadCommand::Segment {..} |
-            LoadCommand::Segment64 {..} => self.print_segment_command(f),
+            LoadCommand::Segment { .. } |
+            LoadCommand::Segment64 { .. } => self.print_segment_command(f),
             LoadCommand::DyldInfo { .. } => self.print_dyld_info_command(f),
-            LoadCommand::SymTab {..} => self.print_symtab_command(f),
-            LoadCommand::DySymTab {..} => self.print_dysymtab_command(f),
+            LoadCommand::SymTab { .. } => self.print_symtab_command(f),
+            LoadCommand::DySymTab { .. } => self.print_dysymtab_command(f),
             LoadCommand::IdDyLinker(_) |
             LoadCommand::LoadDyLinker(_) |
             LoadCommand::DyLdEnv(_) => self.print_dylinker_command(f),
@@ -102,10 +104,10 @@ impl fmt::Display for MachCommand {
             LoadCommand::ReexportDyLib(_) |
             LoadCommand::LoadUpwardDylib(_) |
             LoadCommand::LazyLoadDylib(_) => self.print_dylib_command(f),
-            LoadCommand::VersionMin {..} => self.print_version_min_command(f),
+            LoadCommand::VersionMin { .. } => self.print_version_min_command(f),
             LoadCommand::SourceVersion(_) => self.print_source_version_command(f),
             LoadCommand::Uuid(_) => self.print_uuid_command(f),
-            LoadCommand::EntryPoint {..} => self.print_entry_point_command(f),
+            LoadCommand::EntryPoint { .. } => self.print_entry_point_command(f),
             LoadCommand::CodeSignature(_) |
             LoadCommand::SegmentSplitInfo(_) |
             LoadCommand::FunctionStarts(_) |
@@ -123,9 +125,29 @@ impl MachCommand {
         let MachCommand(ref cmd, cmdsize) = *self;
 
         match cmd {
-            &LoadCommand::Segment {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} |
-            &LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections} => {
-                let is_64bit = if cmd.cmd() == LC_SEGMENT_64 { true } else { false };
+            &LoadCommand::Segment { ref segname,
+                                    vmaddr,
+                                    vmsize,
+                                    fileoff,
+                                    filesize,
+                                    maxprot,
+                                    initprot,
+                                    flags,
+                                    ref sections } |
+            &LoadCommand::Segment64 { ref segname,
+                                      vmaddr,
+                                      vmsize,
+                                      fileoff,
+                                      filesize,
+                                      maxprot,
+                                      initprot,
+                                      flags,
+                                      ref sections } => {
+                let is_64bit = if cmd.cmd() == LC_SEGMENT_64 {
+                    true
+                } else {
+                    false
+                };
 
                 try!(write!(f, "      cmd {}\n", cmd.name()));
                 try!(write!(f, "  cmdsize {}\n", cmdsize));
@@ -147,8 +169,14 @@ impl MachCommand {
                 for ref section in sections {
                     try!(write!(f, "Section\n"));
                     try!(write!(f, "  sectname {}\n", section.sectname));
-                    try!(write!(f, "   segname {}{}", section.segname,
-                        if *segname != section.segname { " (does not match segment)\n" } else { "\n" }));
+                    try!(write!(f,
+                                "   segname {}{}",
+                                section.segname,
+                                if *segname != section.segname {
+                                    " (does not match segment)\n"
+                                } else {
+                                    "\n"
+                                }));
                     if is_64bit {
                         try!(write!(f, "      addr 0x{:016x}\n", section.addr));
                         try!(write!(f, "      size 0x{:016x}\n", section.size));
@@ -157,25 +185,34 @@ impl MachCommand {
                         try!(write!(f, "      size 0x{:08x}\n", section.size));
                     }
                     try!(write!(f, "    offset {}\n", section.offset));
-                    try!(write!(f, "     align 2^{} ({})\n", section.align, 1<<section.align));
+                    try!(write!(f,
+                                "     align 2^{} ({})\n",
+                                section.align,
+                                1 << section.align));
                     try!(write!(f, "    reloff {}\n", section.reloff));
                     try!(write!(f, "    nreloc {}\n", section.nreloc));
-                    let flags :u32 = section.flags.into();
+                    let flags: u32 = section.flags.into();
                     try!(write!(f, "     flags 0x{:08x}\n", flags));
-                    try!(write!(f, " reserved1 {}{}", section.reserved1,
-                        match section.flags.secttype() {
-                            S_SYMBOL_STUBS |
-                            S_LAZY_SYMBOL_POINTERS |
-                            S_LAZY_DYLIB_SYMBOL_POINTERS |
-                            S_NON_LAZY_SYMBOL_POINTERS => {
-                                " (index into indirect symbol table)\n"
-                            }
-                            _ =>{
-                                "\n"
-                            }
-                        }));
-                    try!(write!(f, " reserved2 {}{}", section.reserved2,
-                        if section.flags.secttype() == S_SYMBOL_STUBS { " (size of stubs)\n" } else { "\n" }));
+                    try!(write!(f,
+                                " reserved1 {}{}",
+                                section.reserved1,
+                                match section.flags.secttype() {
+                                    S_SYMBOL_STUBS |
+                                    S_LAZY_SYMBOL_POINTERS |
+                                    S_LAZY_DYLIB_SYMBOL_POINTERS |
+                                    S_NON_LAZY_SYMBOL_POINTERS => {
+                                        " (index into indirect symbol table)\n"
+                                    }
+                                    _ => "\n",
+                                }));
+                    try!(write!(f,
+                                " reserved2 {}{}",
+                                section.reserved2,
+                                if section.flags.secttype() == S_SYMBOL_STUBS {
+                                    " (size of stubs)\n"
+                                } else {
+                                    "\n"
+                                }));
                 }
 
                 Ok(())
@@ -189,8 +226,16 @@ impl MachCommand {
     fn print_dyld_info_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DyldInfo { rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size,
-            lazy_bind_off, lazy_bind_size, export_off, export_size} = cmd {
+        if let &LoadCommand::DyldInfo { rebase_off,
+                                        rebase_size,
+                                        bind_off,
+                                        bind_size,
+                                        weak_bind_off,
+                                        weak_bind_size,
+                                        lazy_bind_off,
+                                        lazy_bind_size,
+                                        export_off,
+                                        export_size } = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
             try!(write!(f, "     rebase_off {}\n", rebase_off));
@@ -213,7 +258,7 @@ impl MachCommand {
     fn print_symtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::SymTab {symoff, nsyms, stroff, strsize} = cmd {
+        if let &LoadCommand::SymTab { symoff, nsyms, stroff, strsize } = cmd {
             try!(write!(f, "     cmd {}\n", cmd.name()));
             try!(write!(f, " cmdsize {}\n", cmdsize));
             try!(write!(f, "  symoff {}\n", symoff));
@@ -230,8 +275,24 @@ impl MachCommand {
     fn print_dysymtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym, tocoff, ntoc, modtaboff, nmodtab,
-                extrefsymoff, nextrefsyms, indirectsymoff, nindirectsyms, extreloff, nextrel, locreloff, nlocrel} = cmd {
+        if let &LoadCommand::DySymTab { ilocalsym,
+                                        nlocalsym,
+                                        iextdefsym,
+                                        nextdefsym,
+                                        iundefsym,
+                                        nundefsym,
+                                        tocoff,
+                                        ntoc,
+                                        modtaboff,
+                                        nmodtab,
+                                        extrefsymoff,
+                                        nextrefsyms,
+                                        indirectsymoff,
+                                        nindirectsyms,
+                                        extreloff,
+                                        nextrel,
+                                        locreloff,
+                                        nlocrel } = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
             try!(write!(f, "      ilocalsym {}\n", ilocalsym));
@@ -340,7 +401,7 @@ impl MachCommand {
     fn print_version_min_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::VersionMin{version, sdk, ..} = cmd {
+        if let &LoadCommand::VersionMin { version, sdk, .. } = cmd {
             try!(write!(f, "      cmd {}\n", cmd.name()));
             try!(write!(f, "  cmdsize {}\n", cmdsize));
             try!(write!(f, "  version {}\n", version));
@@ -385,7 +446,7 @@ impl MachCommand {
     fn print_entry_point_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::EntryPoint {entryoff, stacksize} = cmd {
+        if let &LoadCommand::EntryPoint { entryoff, stacksize } = cmd {
             try!(write!(f, "       cmd {}\n", cmd.name()));
             try!(write!(f, "   cmdsize {}\n", cmdsize));
             try!(write!(f, "  entryoff {}\n", entryoff));
@@ -480,28 +541,76 @@ pub struct ArHeader {
     pub ar_size: usize,
     // consistency check
     pub ar_fmag: u16,
+    // extended format #1
+    pub ar_member_name: Option<String>,
 }
 
 impl ArHeader {
     fn parse(buf: &mut Cursor<&[u8]>) -> Result<ArHeader> {
         let mut header = ArHeader {
-            ar_name: try!(buf.read_fixed_size_string(16)),
-            ar_date: try!(try!(buf.read_fixed_size_string(12)).parse()),
-            ar_uid: try!(try!(buf.read_fixed_size_string(6)).parse()),
-            ar_gid: try!(try!(buf.read_fixed_size_string(6)).parse()),
-            ar_mode: try!(try!(buf.read_fixed_size_string(8)).parse()),
-            ar_size: try!(try!(buf.read_fixed_size_string(10)).parse()),
+            ar_name: String::from(try!(buf.read_fixed_size_string(16)).trim()),
+            ar_date: try!(try!(buf.read_fixed_size_string(12)).trim().parse()),
+            ar_uid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
+            ar_gid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
+            ar_mode: try!(Self::parse_octal(try!(buf.read_fixed_size_string(8))
+                                                .trim())) as libc::mode_t,
+            ar_size: try!(try!(buf.read_fixed_size_string(10)).trim().parse()),
             ar_fmag: try!(buf.read_u16::<NativeEndian>()),
+            ar_member_name: None,
         };
 
-        if header.ar_name.starts_with(AR_EFMT1) {
-            let size: usize = try!(header.ar_name[AR_EFMT1.len()..].parse());
-
-            header.ar_name = try!(buf.read_fixed_size_string(size));
+        if let Some(size) = header.extended_format_size() {
+            header.ar_member_name = Some(try!(buf.read_fixed_size_string(size)));
         }
+
+        debug!("{:08x}\tparsed ar header: {:?}", buf.position(), header);
 
         Ok(header)
     }
+
+    fn extended_format_size(&self) -> Option<usize> {
+        if self.ar_name.starts_with(AR_EFMT1) {
+            if let Ok(size) = self.ar_name[AR_EFMT1.len()..].parse() {
+                return Some(size);
+            }
+        }
+
+        None
+    }
+
+    fn parse_octal(s: &str) -> Result<usize> {
+        let mut v: usize = 0;
+
+        for c in s.as_bytes() {
+            if *c < b'0' || b'7' < *c {
+                return Err(Error::ParseOctalError(String::from(s)));
+            }
+
+            v = v * 8 + (c - b'0') as usize;
+        }
+
+        Ok(v)
+    }
+}
+
+impl fmt::Display for ArHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "0{:o} {:3}/{:<3} {:5} {} {}\n",
+               self.ar_mode,
+               self.ar_uid,
+               self.ar_gid,
+               self.ar_size,
+               self.ar_date,
+               self.ar_name)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RanLib {
+    // string table index of
+    pub ran_strx: off_t,
+    pub ran_off: off_t,
 }
 
 #[derive(Debug, Clone)]
@@ -517,6 +626,9 @@ pub enum OFile {
     ArFile {
         files: Vec<(ArHeader, OFile)>,
     },
+    SymDef {
+        ranlibs: Vec<RanLib>,
+    },
 }
 
 impl OFile {
@@ -524,6 +636,10 @@ impl OFile {
         let magic = try!(buf.read_u32::<NativeEndian>());
 
         try!(buf.seek(SeekFrom::Current(-4)));
+
+        debug!("0x{:08x}\tparsing ofile header with magic: 0x{:x}",
+               buf.position(),
+               magic);
 
         match magic {
             MH_MAGIC => Self::parse_mach_file::<Arch32, LittleEndian>(buf),
@@ -538,7 +654,7 @@ impl OFile {
                 try!(buf.read_exact(&mut ar_magic));
 
                 if ar_magic == ARMAG {
-                    Self::parse_ar_file(buf)
+                    Self::parse_ar_file::<NativeEndian>(buf)
                 } else {
                     Err(Error::LoadError(format!("unknown file format 0x{:x}", magic)))
                 }
@@ -547,6 +663,8 @@ impl OFile {
     }
 
     fn parse_mach_file<A: MachArch, O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
+        debug!("0x{:08x}\tparsing macho-o file header", buf.position());
+
         let header = try!(A::parse_mach_header::<Cursor<&[u8]>, O>(buf));
 
         debug!("parsed mach-o file header: {:?}", header);
@@ -568,10 +686,13 @@ impl OFile {
     }
 
     fn parse_fat_file<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
+        debug!("0x{:08x}\tparsing fat file header", buf.position());
+
         let magic = try!(buf.read_u32::<O>());
         let nfat_arch = try!(buf.read_u32::<O>());
 
-        debug!("parsing fat header with {} archs, magic=0x{:x}",
+        debug!("parsed fat header @ 0x{:08} with {} archs, magic=0x{:x}",
+               buf.position(),
                nfat_arch,
                magic);
 
@@ -611,14 +732,70 @@ impl OFile {
         })
     }
 
-    fn parse_ar_file(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
+    fn parse_ar_file<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
         let mut files = Vec::new();
 
-        while let Ok(header) = ArHeader::parse(buf) {
-            let file = try!(Self::parse(buf));
+        loop {
+            debug!("0x{:08x}\tparsing ar header", buf.position());
 
-            files.push((header, file));
+            match ArHeader::parse(buf) {
+                Ok(ref mut header) => {
+                    if let Some(ref member_name) = header.ar_member_name {
+                        if member_name == SYMDEF || member_name == SYMDEF_SORTED {
+                            let ranlib_len = try!(buf.read_u32::<O>()) as usize;
+                            let mut ranlibs = Vec::new();
+
+                            for _ in 0..(ranlib_len / size_of::<RanLib>()) {
+                                ranlibs.push(RanLib {
+                                    ran_strx: try!(buf.read_u32::<O>()),
+                                    ran_off: try!(buf.read_u32::<O>()),
+                                })
+                            }
+
+                            let toc_strsize = try!(buf.read_u32::<O>());
+
+                            let end = buf.position() + toc_strsize as u64;
+
+                            try!(buf.seek(SeekFrom::Start(end)));
+
+                            debug!("parsed {} with {} ranlibs and {} bytes string",
+                                   member_name,
+                                   ranlibs.len(),
+                                   toc_strsize);
+
+                            files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
+                        } else {
+                            let mut end = buf.position() + header.ar_size as u64;
+
+                            if let Some(size) = header.extended_format_size() {
+                                end -= size as u64;
+                            }
+
+                            let file = try!(Self::parse(buf));
+
+                            debug!("0x{:08x}\tseek to 0x{:08x}, skip {} bytes",
+                                   buf.position(),
+                                   end,
+                                   end - buf.position());
+
+                            try!(buf.seek(SeekFrom::Start(end)));
+
+                            files.push((header.clone(), file));
+                        }
+                    }
+                }
+                Err(Error::IoError(err)) => {
+                    if err.kind() == ErrorKind::UnexpectedEof {
+                        break;
+                    }
+
+                    return Err(Error::from(err));
+                }
+                Err(err) => return Err(err),
+            }
         }
+
+        debug!("found {} ar header/files", files.len());
 
         Ok(OFile::ArFile { files: files })
     }
@@ -717,7 +894,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_hello_bin() {
-        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_WORLD_BIN) {
+        if let OFile::MachFile { commands, .. } = parse_test_file!(HELLO_WORLD_BIN) {
             let mut w = Vec::<u8>::new();
 
             write!(w, "helloworld:\n").unwrap();
@@ -737,7 +914,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_hello_objc() {
-        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_OBJC_BIN) {
+        if let OFile::MachFile { commands, .. } = parse_test_file!(HELLO_OBJC_BIN) {
             let mut w = Vec::<u8>::new();
 
             write!(w, "helloobjc:\n").unwrap();
@@ -757,7 +934,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_hello_rust() {
-        if let OFile::MachFile{ commands, .. } = parse_test_file!(HELLO_RUST_BIN) {
+        if let OFile::MachFile { commands, .. } = parse_test_file!(HELLO_RUST_BIN) {
             let mut w = Vec::<u8>::new();
 
             write!(w, "hellorust:\n").unwrap();
@@ -787,7 +964,7 @@ pub mod tests {
 
                 write!(w, "helloworld.universal:\n").unwrap();
 
-                if let (_, OFile::MachFile{ref commands, ..}) = files[i] {
+                if let (_, OFile::MachFile { ref commands, .. }) = files[i] {
                     for (i, ref cmd) in commands.iter().enumerate() {
                         write!(w, "Load command {}\n", i).unwrap();
                         write!(w, "{}", cmd).unwrap();

@@ -7,6 +7,7 @@ extern crate memmap;
 extern crate macho;
 
 use std::env;
+use std::mem::size_of;
 use std::io::{BufRead, Write, Cursor, Seek, SeekFrom, stdout, stderr};
 use std::path::Path;
 use std::process::exit;
@@ -44,6 +45,7 @@ fn main() {
     opts.optflag("t", "", "print the text section");
     opts.optflag("d", "", "print the data section");
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
+    opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
     opts.optflag("",
                  "version",
@@ -80,6 +82,8 @@ fn main() {
         print_archive_header: matches.opt_present("a"),
         print_mach_header: matches.opt_present("h"),
         print_load_commands: matches.opt_present("l"),
+        print_shared_lib: matches.opt_present("L") || matches.opt_present("D"),
+        print_shared_lib_just_id: matches.opt_present("D") && !matches.opt_present("L"),
         print_text_section: matches.opt_present("t"),
         print_data_section: matches.opt_present("d"),
         print_section: matches.opt_str("s").map(|s| {
@@ -91,8 +95,7 @@ fn main() {
                 (String::from(names[0]), None)
             }
         }),
-        print_shared_lib: matches.opt_present("L") || matches.opt_present("D"),
-        print_shared_lib_just_id: matches.opt_present("D") && !matches.opt_present("L"),
+        print_lib_toc: matches.opt_present("S"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -125,11 +128,12 @@ struct FileProcessor<T: Write> {
     print_archive_header: bool,
     print_mach_header: bool,
     print_load_commands: bool,
+    print_shared_lib: bool,
+    print_shared_lib_just_id: bool,
     print_text_section: bool,
     print_data_section: bool,
     print_section: Option<(String, Option<String>)>,
-    print_shared_lib: bool,
-    print_shared_lib_just_id: bool,
+    print_lib_toc: bool,
 }
 
 struct FileProcessContext<'a> {
@@ -159,8 +163,13 @@ impl<T: Write> FileProcessor<T> {
             }
             &OFile::FatFile { magic, ref files } => self.process_fat_file(magic, files, ctxt),
             &OFile::ArFile { ref files } => self.process_ar_file(files, ctxt),
-            &OFile::SymDef { .. } => Ok(()),
+            &OFile::SymDef { ref ranlibs } => self.process_symdef(ranlibs, ctxt),
         }
+    }
+
+    fn print_mach_file(&self) -> bool {
+        self.print_mach_header | self.print_load_commands | self.print_text_section |
+        self.print_data_section | self.print_shared_lib
     }
 
     fn process_mach_file(&mut self,
@@ -172,8 +181,7 @@ impl<T: Write> FileProcessor<T> {
             return Ok(());
         }
 
-        if self.print_headers &&
-           (self.print_mach_header | self.print_load_commands | self.print_shared_lib) {
+        if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
                 try!(write!(self.w,
                             "{} (architecture {}):\n",
@@ -296,9 +304,11 @@ impl<T: Write> FileProcessor<T> {
                        files: &Vec<(ArHeader, OFile)>,
                        ctxt: &mut FileProcessContext)
                        -> Result<(), Error> {
-        if self.print_archive_header {
+        if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
             try!(write!(self.w, "Archive :{}\n", ctxt.filename));
+        }
 
+        if self.print_archive_header {
             for &(ref header, _) in files {
                 try!(write!(self.w, "{}", header));
             }
@@ -314,6 +324,26 @@ impl<T: Write> FileProcessor<T> {
                                         },
                                         cur: &mut ctxt.cur.clone(),
                                     }));
+        }
+
+        Ok(())
+    }
+
+    fn process_symdef(&mut self,
+                      ranlibs: &Vec<RanLib>,
+                      ctxt: &mut FileProcessContext)
+                      -> Result<(), Error> {
+        if self.print_lib_toc {
+            try!(write!(self.w, "Table of contents from: {}\n", ctxt.filename));
+            try!(write!(self.w,
+                        "size of ranlib structures: {} (number {})\n",
+                        ranlibs.len() * size_of::<RanLib>(),
+                        ranlibs.len()));
+            try!(write!(self.w, "object offset  string index\n"));
+
+            for ref ranlib in ranlibs {
+                try!(write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx));
+            }
         }
 
         Ok(())

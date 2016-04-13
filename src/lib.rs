@@ -26,7 +26,7 @@
 //! }
 //! ```
 //!
-//! For more detail, please check the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
+//! For more detail, please check the unit tests and the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
 //!
 #[macro_use]
 extern crate log;

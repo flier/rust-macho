@@ -8,6 +8,10 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use consts::*;
 use errors::*;
 
+/// The encoded version.
+///
+///  X.Y.Z is encoded in nibbles xxxx.yy.zz
+/// 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct VersionTag(u32);
 
@@ -41,6 +45,10 @@ impl fmt::Display for VersionTag {
     }
 }
 
+/// The packed version.
+///
+/// A.B.C.D.E packed as a24.b10.c10.d10.e10 
+///
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct SourceVersionTag(u64);
 
@@ -76,6 +84,8 @@ impl fmt::Display for SourceVersionTag {
     }
 }
 
+/// The min OS version on which this binary was built to run.
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BuildTarget {
     MacOsX,
@@ -107,6 +117,14 @@ impl Into<u32> for BuildTarget {
     }
 }
 
+/// A variable length string in a load command is represented by an LcString structure.
+/// 
+/// The strings are stored just after the load command structure and
+/// the offset is from the start of the load command structure.  The size
+/// of the string is reflected in the cmdsize field of the load command.
+/// Once again any padded bytes to bring the cmdsize field to a multiple
+/// of 4 bytes must be zero.
+///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LcString(pub usize, pub String);
 
@@ -116,9 +134,10 @@ impl fmt::Display for LcString {
     }
 }
 
-/// Fixed virtual memory shared libraries are identified by two things.  The
-/// target pathname (the name of the library as found for execution), and the
-/// minor version number.  The address of where the headers are loaded is in
+/// Fixed virtual memory shared libraries are identified by two things.  
+///
+/// The target pathname (the name of the library as found for execution), 
+/// and the minor version number.  The address of where the headers are loaded is in
 /// header_addr. (THIS IS OBSOLETE and no longer supported).
 ///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -132,8 +151,9 @@ pub struct FvmLib {
 }
 
 
-/// Dynamicly linked shared libraries are identified by two things.  The
-/// pathname (the name of the library as found for execution), and the
+/// Dynamicly linked shared libraries are identified by two things.  
+/// 
+/// The pathname (the name of the library as found for execution), and the
 /// compatibility version number.  The pathname must match and the compatibility
 /// number in the user of the library must be greater than or equal to the
 /// library being used.  The time stamp is used to record the time a library was
@@ -152,7 +172,6 @@ pub struct DyLib {
     /// library's compatibility vers number
     pub compatibility_version: VersionTag,
 }
-
 
 /// a table of contents entry
 pub struct DyLibTocEntry {
@@ -196,9 +215,9 @@ pub struct DyLibModule {
     pub objc_module_info_size: usize,
 }
 
-// The linkedit_data_command contains the offsets and sizes of a blob
-// of data in the __LINKEDIT segment.
-//
+/// The linkedit_data_command contains the offsets and sizes of a blob
+/// of data in the __LINKEDIT segment.
+///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LinkEditData {
     /// file offset of data in __LINKEDIT segment
@@ -207,12 +226,16 @@ pub struct LinkEditData {
     pub size: u32,
 }
 
+/// The load commands directly follow the mach_header.  
+///
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
     /// The segment load command indicates that a part of this file is to be
-    /// mapped into the task's address space.  The size of this segment in memory,
-    /// vmsize, maybe equal to or larger than the amount to map from this file,
-    /// filesize.  The file is mapped starting at fileoff to the beginning of
+    /// mapped into the task's address space.  
+    /// 
+    /// The size of this segment in memory, vmsize, maybe equal to or 
+    /// larger than the amount to map from this file, filesize.  
+    /// The file is mapped starting at fileoff to the beginning of
     /// the segment in memory, vmaddr.  The rest of the memory of the segment,
     /// if any, is allocated zero fill on demand.  The segment's maximum virtual
     /// memory protection and initial virtual memory protection are specified
@@ -241,9 +264,10 @@ pub enum LoadCommand {
         sections: Vec<Section>,
     },
     /// The 64-bit segment load command indicates that a part of this file is to be
-    /// mapped into a 64-bit task's address space.  If the 64-bit segment has
-    /// sections then section_64 structures directly follow the 64-bit segment
-    /// command and their size is reflected in cmdsize.
+    /// mapped into a 64-bit task's address space.  
+    /// 
+    /// If the 64-bit segment has sections then section_64 structures directly follow 
+    /// the 64-bit segment command and their size is reflected in cmdsize.
     ///
     Segment64 {
         /// segment name
@@ -268,24 +292,34 @@ pub enum LoadCommand {
 
     // A fixed virtual shared library (filetype == MH_FVMLIB in the mach header)
     // contains a fvmlib_command (cmd == LC_IDFVMLIB) to identify the library.
+    //
     // An object that uses a fixed virtual shared library also contains a
     // fvmlib_command (cmd == LC_LOADFVMLIB) for each library it uses.
     // (THIS IS OBSOLETE and no longer supported).
     //
+    /// fixed VM shared library identification
     IdFvmLib(FvmLib),
+    /// load a specified fixed VM shared library
     LoadFvmLib(FvmLib),
 
     // A dynamically linked shared library (filetype == MH_DYLIB in the mach header)
     // contains a dylib_command (cmd == LC_ID_DYLIB) to identify the library.
+    //
     // An object that uses a dynamically linked shared library also contains a
     // dylib_command (cmd == LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB, or
     // LC_REEXPORT_DYLIB) for each library it uses.
     //
+    /// dynamically linked shared lib ident
     IdDyLib(DyLib),
+    /// load a dynamically linked shared library
     LoadDyLib(DyLib),
+    /// load a dynamically linked shared library that is allowed to be missing (all symbols are weak imported).
     LoadWeakDyLib(DyLib),
+    /// load and re-export dylib
     ReexportDyLib(DyLib),
+    /// load upward dylib
     LoadUpwardDylib(DyLib),
+    /// delay load of dylib until first use 
     LazyLoadDylib(DyLib),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
@@ -295,14 +329,17 @@ pub enum LoadCommand {
     // This struct is also used for the LC_DYLD_ENVIRONMENT load command and
     // contains string for dyld to treat like environment variable.
     //
+    /// dynamic linker identification
     IdDyLinker(LcString),
+    /// load a dynamic linker 
     LoadDyLinker(LcString),
+    /// string for dyld to treat like environment variable
     DyLdEnv(LcString),
 
-    // The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
-    // "stab" style symbol table information as described in the header files
-    // <nlist.h> and <stab.h>.
-    //
+    /// The symtab_command contains the offsets and sizes of the link-edit 4.3BSD
+    /// "stab" style symbol table information as described in the header files
+    /// <nlist.h> and <stab.h>.
+    ///
     SymTab {
         /// symbol table offset
         symoff: u32,
@@ -314,45 +351,45 @@ pub enum LoadCommand {
         strsize: u32,
     },
 
-    // This is the second set of the symbolic information which is used to support
-    // the data structures for the dynamically link editor.
-    //
-    // The original set of symbolic information in the symtab_command which contains
-    // the symbol and string tables must also be present when this load command is
-    // present.  When this load command is present the symbol table is organized
-    // into three groups of symbols:
-    //  local symbols (static and debugging symbols) - grouped by module
-    //  defined external symbols - grouped by module (sorted by name if not lib)
-    //  undefined external symbols (sorted by name if MH_BINDATLOAD is not set,
-    //                      and in order the were seen by the static
-    //                  linker if MH_BINDATLOAD is set)
-    // In this load command there are offsets and counts to each of the three groups
-    // of symbols.
-    //
-    // This load command contains a the offsets and sizes of the following new
-    // symbolic information tables:
-    //  table of contents
-    //  module table
-    //  reference symbol table
-    //  indirect symbol table
-    // The first three tables above (the table of contents, module table and
-    // reference symbol table) are only present if the file is a dynamically linked
-    // shared library.  For executable and object modules, which are files
-    // containing only one module, the information that would be in these three
-    // tables is determined as follows:
-    //  table of contents - the defined external symbols are sorted by name
-    //  module table - the file contains only one module so everything in the
-    //             file is part of the module.
-    //  reference symbol table - is the defined and undefined external symbols
-    //
-    // For dynamically linked shared library files this load command also contains
-    // offsets and sizes to the pool of relocation entries for all sections
-    // separated into two groups:
-    //  external relocation entries
-    //  local relocation entries
-    // For executable and object modules the relocation entries continue to hang
-    // off the section structures.
-    //
+    /// This is the second set of the symbolic information which is used to support
+    /// the data structures for the dynamically link editor.
+    ///
+    /// The original set of symbolic information in the symtab_command which contains
+    /// the symbol and string tables must also be present when this load command is
+    /// present.  When this load command is present the symbol table is organized
+    /// into three groups of symbols:
+    ///  local symbols (static and debugging symbols) - grouped by module
+    ///  defined external symbols - grouped by module (sorted by name if not lib)
+    ///  undefined external symbols (sorted by name if MH_BINDATLOAD is not set,
+    ///                      and in order the were seen by the static
+    ///                  linker if MH_BINDATLOAD is set)
+    /// In this load command there are offsets and counts to each of the three groups
+    /// of symbols.
+    ///
+    /// This load command contains a the offsets and sizes of the following new
+    /// symbolic information tables:
+    ///  table of contents
+    ///  module table
+    ///  reference symbol table
+    ///  indirect symbol table
+    /// The first three tables above (the table of contents, module table and
+    /// reference symbol table) are only present if the file is a dynamically linked
+    /// shared library.  For executable and object modules, which are files
+    /// containing only one module, the information that would be in these three
+    /// tables is determined as follows:
+    ///  table of contents - the defined external symbols are sorted by name
+    ///  module table - the file contains only one module so everything in the
+    ///             file is part of the module.
+    ///  reference symbol table - is the defined and undefined external symbols
+    ///
+    /// For dynamically linked shared library files this load command also contains
+    /// offsets and sizes to the pool of relocation entries for all sections
+    /// separated into two groups:
+    ///  external relocation entries
+    ///  local relocation entries
+    /// For executable and object modules the relocation entries continue to hang
+    /// off the section structures.
+    ///
     DySymTab {
         // The symbols indicated by symoff and nsyms of the LC_SYMTAB load command
         // are grouped into the following three groups:
@@ -368,14 +405,20 @@ pub enum LoadCommand {
         // binding (indirectly through the module table and the reference symbol
         // table when this is a dynamically linked shared library file).
         //
-        ilocalsym: u32, // index to local symbols
-        nlocalsym: u32, // number of local symbols
+        /// index to local symbols
+        ilocalsym: u32,
+        /// number of local symbols
+        nlocalsym: u32,
 
-        iextdefsym: u32, // index to externally defined symbols
-        nextdefsym: u32, // number of externally defined symbols
+        /// index to externally defined symbols
+        iextdefsym: u32,
+        /// number of externally defined symbols
+        nextdefsym: u32,
 
-        iundefsym: u32, // index to undefined symbols
-        nundefsym: u32, // number of undefined symbols
+        /// index to undefined symbols
+        iundefsym: u32,
+        /// number of undefined symbols
+        nundefsym: u32,
 
         // For the for the dynamic binding process to find which module a symbol
         // is defined in the table of contents is used (analogous to the ranlib
@@ -384,8 +427,10 @@ pub enum LoadCommand {
         // library file.  For executable and object modules the defined external
         // symbols are sorted by name and is use as the table of contents.
         //
-        tocoff: u32, // file offset to table of contents
-        ntoc: u32, // number of entries in table of contents
+        /// file offset to table of contents
+        tocoff: u32,
+        /// number of entries in table of contents
+        ntoc: u32,
 
         // To support dynamic binding of "modules" (whole object files) the symbol
         // table must reflect the modules that the file was created from.  This is
@@ -395,8 +440,10 @@ pub enum LoadCommand {
         // shared library file.  For executable and object modules the file only
         // contains one module so everything in the file belongs to the module.
         //
-        modtaboff: u32, // file offset to module table
-        nmodtab: u32, // number of module table entries
+        /// file offset to module table
+        modtaboff: u32,
+        /// number of module table entries
+        nmodtab: u32,
 
         // To support dynamic module binding the module structure for each module
         // indicates the external references (defined and undefined) each module
@@ -406,8 +453,10 @@ pub enum LoadCommand {
         // executable and object modules the defined external symbols and the
         // undefined external symbols indicates the external references.
         //
-        extrefsymoff: u32, // offset to referenced symbol table
-        nextrefsyms: u32, // number of referenced symbol table entries
+        /// offset to referenced symbol table
+        extrefsymoff: u32,
+        /// number of referenced symbol table entries 
+        nextrefsyms: u32,
 
         // The sections that contain "symbol pointers" and "routine stubs" have
         // indexes and (implied counts based on the size of the section and fixed
@@ -418,8 +467,10 @@ pub enum LoadCommand {
         // the symbol table to the symbol that the pointer or stub is referring to.
         // The indirect symbol table is ordered to match the entries in the section.
         //
-        indirectsymoff: u32, // file offset to the indirect symbol table
-        nindirectsyms: u32, // number of indirect symbol table entries
+        /// file offset to the indirect symbol table
+        indirectsymoff: u32,
+        /// number of indirect symbol table entries 
+        nindirectsyms: u32,
 
         // To support relocating an individual module in a library file quickly the
         // external relocation entries for each module in the library need to be
@@ -447,48 +498,58 @@ pub enum LoadCommand {
         // remaining external relocation entries for them (for merged sections
         // remaining relocation entries must be local).
         //
-        extreloff: u32, // offset to external relocation entries
-        nextrel: u32, // number of external relocation entries
+        /// offset to external relocation entries
+        extreloff: u32,
+        /// number of external relocation entries
+        nextrel: u32,
 
         // All the local relocation entries are grouped together (they are not
         // grouped by their module since they are only used if the object is moved
         // from it staticly link edited address).
         //
-        locreloff: u32, // offset to local relocation entries
-        nlocrel: u32, // number of local relocation entries
+        /// offset to local relocation entries
+        locreloff: u32,
+        /// number of local relocation entries
+        nlocrel: u32,
     },
 
-    // The uuid load command contains a single 128-bit unique random number that
-    // identifies an object produced by the static link editor.
-    //
+    /// The uuid load command contains a single 128-bit unique random number that
+    /// identifies an object produced by the static link editor.
+    ///
     Uuid(Uuid),
 
     // The linkedit_data_command contains the offsets and sizes of a blob
     // of data in the __LINKEDIT segment.
     //
+    /// local of code signature
     CodeSignature(LinkEditData),
+    /// local of info to split segments 
     SegmentSplitInfo(LinkEditData),
+    /// compressed table of function start addresses
     FunctionStarts(LinkEditData),
+    /// table of non-instructions in __text
     DataInCode(LinkEditData),
+    /// Code signing DRs copied from linked dylibs
     DylibCodeSignDrs(LinkEditData),
+    /// optimization hints in MH_OBJECT files
     LinkerOptimizationHint(LinkEditData),
 
-    // The version_min_command contains the min OS version on which this
-    // binary was built to run.
-    //
+    /// The version_min_command contains the min OS version on which this
+    /// binary was built to run.
+    ///
     VersionMin {
         target: BuildTarget,
         version: VersionTag,
         sdk: VersionTag,
     },
 
-    // The dyld_info_command contains the file offsets and sizes of
-    // the new compressed form of the information dyld needs to
-    // load the image.  This information is used by dyld on Mac OS X
-    // 10.6 and later.  All information pointed to by this command
-    // is encoded using byte streams, so no endian swapping is needed
-    // to interpret it.
-    //
+    /// The dyld_info_command contains the file offsets and sizes of
+    /// the new compressed form of the information dyld needs to
+    /// load the image.  This information is used by dyld on Mac OS X
+    /// 10.6 and later.  All information pointed to by this command
+    /// is encoded using byte streams, so no endian swapping is needed
+    /// to interpret it.
+    ///
     DyldInfo {
         // Dyld rebases an image whenever dyld loads it at an address different
         // from its preferred address.  The rebase information is a stream
@@ -594,20 +655,20 @@ pub enum LoadCommand {
         export_size: u32,
     },
 
-    // The entry_point_command is a replacement for thread_command.
-    // It is used for main executables to specify the location (file offset)
-    // of main().  If -stack_size was used at link time, the stacksize
-    // field will contain the stack size need for the main thread.
-    //
+    /// The entry_point_command is a replacement for thread_command.
+    /// It is used for main executables to specify the location (file offset)
+    /// of main().  If -stack_size was used at link time, the stacksize
+    /// field will contain the stack size need for the main thread.
+    ///
     EntryPoint {
-        // file (__TEXT) offset of main()
+        /// file (__TEXT) offset of main()
         entryoff: u64,
-        // if not zero, initial stack size
+        /// if not zero, initial stack size
         stacksize: u64,
     },
-    // The source_version_command is an optional load command containing
-    // the version of the sources used to build the binary.
-    //
+    /// The source_version_command is an optional load command containing
+    /// the version of the sources used to build the binary.
+    ///
     SourceVersion(SourceVersionTag),
     Command {
         /// type of load command
@@ -618,7 +679,9 @@ pub enum LoadCommand {
     },
 }
 
+/// Read a fixed size string 
 pub trait ReadStringExt : Read {
+    /// Read the fixed size string
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
         let mut buf = Vec::new();
 
@@ -970,15 +1033,21 @@ impl LoadCommand {
     }
 }
 
+/// The flags field of a section structure is separated into two parts a section
+/// type and section attributes.  
+/// 
+/// The section types are mutually exclusive (it can only have one type) 
+/// but the section attributes are not (it may have more than one attribute).
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SectionFlags(u32);
 
 impl SectionFlags {
-    pub fn secttype(self) -> u32 {
+    pub fn sect_type(self) -> u32 {
         self.0 & SECTION_TYPE
     }
 
-    pub fn sectattrs(self) -> SectionAttributes {
+    pub fn sect_attrs(self) -> SectionAttributes {
         SectionAttributes::from_bits_truncate(self.0 & SECTION_ATTRIBUTES)
     }
 }
@@ -989,33 +1058,34 @@ impl Into<u32> for SectionFlags {
     }
 }
 
-// A segment is made up of zero or more sections.  Non-MH_OBJECT files have
-// all of their segments with the proper sections in each, and padded to the
-// specified segment alignment when produced by the link editor.  The first
-// segment of a MH_EXECUTE and MH_FVMLIB format file contains the mach_header
-// and load commands of the object file before its first section.  The zero
-// fill sections are always last in their segment (in all formats).  This
-// allows the zeroed segment padding to be mapped into memory where zero fill
-// sections might be. The gigabyte zero fill sections, those with the section
-// type S_GB_ZEROFILL, can only be in a segment with sections of this type.
-// These segments are then placed after all other segments.
-//
-// The MH_OBJECT format has all of its sections in one segment for
-// compactness.  There is no padding to a specified segment boundary and the
-// mach_header and load commands are not part of the segment.
-//
-// Sections with the same section name, sectname, going into the same segment,
-// segname, are combined by the link editor.  The resulting section is aligned
-// to the maximum alignment of the combined sections and is the new section's
-// alignment.  The combined sections are aligned to their original alignment in
-// the combined section.  Any padded bytes to get the specified alignment are
-// zeroed.
-//
-// The format of the relocation entries referenced by the reloff and nreloc
-// fields of the section structure for mach object files is described in the
-// header file <reloc.h>.
-//
-
+/// A segment is made up of zero or more sections.  
+/// 
+/// Non-MH_OBJECT files have all of their segments with the proper sections in each, 
+/// and padded to the specified segment alignment when produced by the link editor.  
+/// The first segment of a MH_EXECUTE and MH_FVMLIB format file contains the mach_header
+/// and load commands of the object file before its first section.  The zero
+/// fill sections are always last in their segment (in all formats).  This
+/// allows the zeroed segment padding to be mapped into memory where zero fill
+/// sections might be. The gigabyte zero fill sections, those with the section
+/// type S_GB_ZEROFILL, can only be in a segment with sections of this type.
+/// These segments are then placed after all other segments.
+///
+/// The MH_OBJECT format has all of its sections in one segment for
+/// compactness.  There is no padding to a specified segment boundary and the
+/// mach_header and load commands are not part of the segment.
+///
+/// Sections with the same section name, sectname, going into the same segment,
+/// segname, are combined by the link editor.  The resulting section is aligned
+/// to the maximum alignment of the combined sections and is the new section's
+/// alignment.  The combined sections are aligned to their original alignment in
+/// the combined section.  Any padded bytes to get the specified alignment are
+/// zeroed.
+///
+/// The format of the relocation entries referenced by the reloff and nreloc
+/// fields of the section structure for mach object files is described in the
+/// header file <reloc.h>.
+///
+///
 #[derive(Debug, Clone)]
 pub struct Section {
     /// name of this section
@@ -1084,10 +1154,11 @@ impl Section {
     }
 }
 
-// The LC_DATA_IN_CODE load commands uses a linkedit_data_command
-// to point to an array of data_in_code_entry entries. Each entry
-// describes a range of data in a code section.
-//
+/// The LC_DATA_IN_CODE load commands uses a linkedit_data_command
+/// to point to an array of data_in_code_entry entries. 
+///
+/// Each entry describes a range of data in a code section.
+///
 pub struct DataInCodeEntry {
     pub offset: u32, // from mach_header to start of data range
     pub length: u16, // number of bytes in data range

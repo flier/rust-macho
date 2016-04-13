@@ -11,11 +11,16 @@ use consts::*;
 use errors::*;
 use commands::{LoadCommand, LcString, ReadStringExt};
 
+/// The architecture of mach header 
+///
 pub trait MachArch {
+    /// parse mach header
     fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader>;
 }
 
+/// The 32-bit mach header
 pub enum Arch32 {}
+/// The 64-bit mach header
 pub enum Arch64 {}
 
 impl MachArch for Arch32 {
@@ -52,6 +57,8 @@ impl MachArch for Arch64 {
     }
 }
 
+/// The mach header appears at the very beginning of the object file
+///
 #[derive(Debug, Default, Clone)]
 pub struct MachHeader {
     pub magic: u32,
@@ -196,7 +203,7 @@ impl MachCommand {
                     try!(write!(f,
                                 " reserved1 {}{}",
                                 section.reserved1,
-                                match section.flags.secttype() {
+                                match section.flags.sect_type() {
                                     S_SYMBOL_STUBS |
                                     S_LAZY_SYMBOL_POINTERS |
                                     S_LAZY_DYLIB_SYMBOL_POINTERS |
@@ -208,7 +215,7 @@ impl MachCommand {
                     try!(write!(f,
                                 " reserved2 {}{}",
                                 section.reserved2,
-                                if section.flags.secttype() == S_SYMBOL_STUBS {
+                                if section.flags.sect_type() == S_SYMBOL_STUBS {
                                     " (size of stubs)\n"
                                 } else {
                                     "\n"
@@ -482,6 +489,10 @@ impl MachCommand {
     }
 }
 
+/// The structures of the file format for "fat" architecture specific file (wrapper design).  
+/// At the begining of the file there is one FatHeader structure followed by a number of FatArch
+/// structures.  
+///
 #[derive(Debug, Default, Clone)]
 pub struct FatHeader {
     pub magic: u32,
@@ -512,6 +523,10 @@ impl fmt::Display for FatHeader {
     }
 }
 
+/// For each architecture in the file, specified by a pair of cputype and cpusubtype, 
+/// the FatArch describes the file offset, file size and alignment 
+/// in the file of the architecture specific member.
+///
 #[derive(Debug, Default, Clone)]
 pub struct FatArch {
     /// cpu specifier (int)
@@ -526,22 +541,23 @@ pub struct FatArch {
     pub align: u32,
 }
 
+/// the archive file header
 #[derive(Debug, Default,  Clone)]
 pub struct ArHeader {
     pub ar_name: String,
-    // modification time
+    /// modification time
     pub ar_date: libc::time_t,
-    // user id
+    /// user id
     pub ar_uid: libc::uid_t,
-    // group id
+    /// group id
     pub ar_gid: libc::gid_t,
-    // octal file permissions
+    /// octal file permissions
     pub ar_mode: libc::mode_t,
-    // size in bytes
+    /// size in bytes
     pub ar_size: usize,
-    // consistency check
+    /// consistency check
     pub ar_fmag: u16,
-    // extended format #1
+    /// extended format #1
     pub ar_member_name: Option<String>,
 }
 
@@ -606,6 +622,14 @@ impl fmt::Display for ArHeader {
     }
 }
 
+/// Structure of the __.SYMDEF table of contents for an archive.
+///
+/// __.SYMDEF begins with a long giving the size in bytes of the ranlib
+/// structures which immediately follow, and then continues with a string
+/// table consisting of a long giving the number of bytes of strings which
+/// follow and then the strings themselves.  The ran_strx fields index the
+/// string table whose first byte is numbered 0.
+///
 #[derive(Debug, Default, Clone)]
 pub struct RanLib {
     // string table index of
@@ -613,6 +637,7 @@ pub struct RanLib {
     pub ran_off: off_t,
 }
 
+/// The abstract file block, including mach-o file, fat/universal file, archive file and symdef block
 #[derive(Debug, Clone)]
 pub enum OFile {
     MachFile {
@@ -632,6 +657,7 @@ pub enum OFile {
 }
 
 impl OFile {
+    /// Parse a file base on its magic number
     pub fn parse(buf: &mut Cursor<&[u8]>) -> Result<OFile> {
         let magic = try!(buf.read_u32::<NativeEndian>());
 

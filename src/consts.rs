@@ -574,7 +574,7 @@ pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 /// build for Watch min OS version
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 
-// Constants for the flags field of the segment_command
+/// Constants for the flags field of the segment_command
 bitflags! { pub flags SegmentFlags: u32 {
     /// the file contents for this segment is for the high part of the VM space,
     /// the low part is zero filled (for stacks in core files)

@@ -21,8 +21,8 @@ if let OFile::MachFile { ref header, ref commands } = OFile::parse(&mut cur).unw
         if let &LoadCommand::Segment64 { ref segname, ref sections, .. } = cmd {
             println!("segment: {}", segname);
 
-                for ref sect in sections {
-                    println!("  section: {}", sect.sectname);
+            for ref sect in sections {
+                println!("  section: {}", sect.sectname);
             }
         }
     }

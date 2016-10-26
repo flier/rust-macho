@@ -30,3 +30,6 @@ if let OFile::MachFile { ref header, ref commands } = OFile::parse(&mut cur).unw
 ```
 
 For more detail, please check the unit tests and the [otool](examples/otool.rs) example.
+
+## Document
+[API Reference](http://flier.github.io/rust-macho/doc/macho/index.html)

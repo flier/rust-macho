@@ -1,5 +1,6 @@
 use std::fmt;
-use std::io::{Cursor, Seek, SeekFrom};
+use std::ffi::CStr;
+use std::io::{BufRead, Cursor, Seek, SeekFrom};
 
 use byteorder::{ByteOrder, ReadBytesExt, LittleEndian, BigEndian};
 
@@ -9,20 +10,31 @@ use loader::*;
 
 #[derive(Debug)]
 pub enum Symbol {
-    Undefined { external: bool },
-    Absolute { external: bool, entry: usize },
+    Undefined { name: String, external: bool },
+    Absolute {
+        name: String,
+        external: bool,
+        entry: usize,
+    },
     Defined {
+        name: String,
         external: bool,
         section: u8,
         entry: usize,
     },
-    Prebound { external: bool },
-    Indirect { external: bool, name: usize },
+    Prebound { name: String, external: bool },
+    Indirect {
+        name: String,
+        external: bool,
+        refsym: String,
+    },
 }
 
 pub struct SymbolIter<'a> {
     cur: &'a mut Cursor<&'a [u8]>,
     nsyms: u32,
+    stroff: u32,
+    strsize: u32,
     is_bigend: bool,
     is_64bit: bool,
 }
@@ -30,9 +42,83 @@ pub struct SymbolIter<'a> {
 impl<'a> SymbolIter<'a> {
     fn parse(&mut self) -> Result<Symbol> {
         if self.is_bigend {
-            Symbol::parse::<BigEndian>(self.cur, self.is_64bit)
+            self.parse_symbol::<BigEndian>()
         } else {
-            Symbol::parse::<LittleEndian>(self.cur, self.is_64bit)
+            self.parse_symbol::<LittleEndian>()
+        }
+    }
+
+    pub fn parse_symbol<O: ByteOrder>(&mut self) -> Result<Symbol> {
+        let strx = try!(self.cur.read_u32::<O>()) as usize;
+        let flags = try!(self.cur.read_u8());
+        let sect = try!(self.cur.read_u8());
+        let desc = try!(self.cur.read_u16::<O>());
+        let value = if self.is_64bit {
+            try!(self.cur.read_u64::<O>()) as usize
+        } else {
+            try!(self.cur.read_u32::<O>()) as usize
+        };
+
+        let external = (flags & N_EXT) == N_EXT;
+
+        let typ = flags & N_TYPE;
+
+        match typ {
+            N_UNDF => {
+                Ok(Symbol::Undefined {
+                    name: try!(self.read_string(strx)),
+                    external: external,
+                })
+            }
+            N_ABS => {
+                Ok(Symbol::Absolute {
+                    name: try!(self.read_string(strx)),
+                    external: external,
+                    entry: value,
+                })
+            }
+            N_SECT => {
+                Ok(Symbol::Defined {
+                    name: try!(self.read_string(strx)),
+                    external: external,
+                    section: sect,
+                    entry: value,
+                })
+            }
+            N_PBUD => {
+                Ok(Symbol::Prebound {
+                    name: try!(self.read_string(strx)),
+                    external: external,
+                })
+            }
+            N_INDR => {
+                Ok(Symbol::Indirect {
+                    name: try!(self.read_string(strx)),
+                    external: external,
+                    refsym: try!(self.read_string(value)),
+                })
+            }
+            _ => Err(Error::LoadError(format!("unknown symbol type 0x{:x}", typ))),
+        }
+    }
+
+    fn read_string(&mut self, off: usize) -> Result<String> {
+        if off == 0 {
+            Ok(String::new())
+        } else if off >= self.strsize as usize {
+            Err(Error::LoadError(format!("string offset out of range [..{})", self.strsize)))
+        } else {
+            let mut cur = self.cur.clone();
+
+            try!(cur.seek(SeekFrom::Start(self.stroff as u64 + off as u64)));
+
+            let mut buf = Vec::new();
+
+            try!(cur.read_until(0, &mut buf));
+
+            let s = unsafe { try!(CStr::from_ptr(buf.as_ptr() as *const i8).to_str()) };
+
+            Ok(String::from(s))
         }
     }
 }
@@ -68,6 +154,8 @@ impl SymbolProvider for OFile {
                         return Some(SymbolIter {
                             cur: cur,
                             nsyms: nsyms,
+                            stroff: stroff,
+                            strsize: strsize,
                             is_bigend: header.is_bigend(),
                             is_64bit: header.is_64bit(),
                         });
@@ -80,66 +168,40 @@ impl SymbolProvider for OFile {
     }
 }
 
-impl Symbol {
-    pub fn parse<O: ByteOrder>(cur: &mut Cursor<&[u8]>, is_64bit: bool) -> Result<Symbol> {
-        let strx = cur.read_u32::<O>();
-        let flags = try!(cur.read_u8());
-        let sect = try!(cur.read_u8());
-        let desc = cur.read_u16::<O>();
-        let value = if is_64bit {
-            try!(cur.read_u64::<O>()) as usize
-        } else {
-            try!(cur.read_u32::<O>()) as usize
-        };
-
-        let external = (flags & N_EXT) == N_EXT;
-
-        let typ = flags & N_TYPE;
-
-        match typ {
-            N_UNDF => Ok(Symbol::Undefined { external: external }),
-            N_ABS => {
-                Ok(Symbol::Absolute {
-                    external: external,
-                    entry: value,
-                })
-            }
-            N_SECT => {
-                Ok(Symbol::Defined {
-                    external: external,
-                    section: sect,
-                    entry: value,
-                })
-            }
-            N_PBUD => Ok(Symbol::Prebound { external: external }),
-            N_INDR => {
-                Ok(Symbol::Indirect {
-                    external: external,
-                    name: value,
-                })
-            }
-            _ => Err(Error::LoadError(format!("unknown symbol type 0x{:x}", typ))),
-        }
-    }
-}
-
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Symbol::Undefined { external } => {
-                write!(f, "                 {}", if external { "U" } else { "u" })
+            &Symbol::Undefined { ref name, external } => {
+                write!(f,
+                       "                 {} {}",
+                       if external { "U" } else { "u" },
+                       name)
             }
-            &Symbol::Absolute { external, entry } => {
-                write!(f, "{:016x} {}", entry, if external { "A" } else { "a" })
+            &Symbol::Absolute { ref name, external, entry } => {
+                write!(f,
+                       "{:016x} {} {}",
+                       entry,
+                       if external { "A" } else { "a" },
+                       name)
             }
-            &Symbol::Defined { external, section, entry } => {
-                write!(f, "{:016x} {}", entry, if external { "D" } else { "d" })
+            &Symbol::Defined { ref name, external, section, entry } => {
+                write!(f,
+                       "{:016x} {} {}",
+                       entry,
+                       if external { "D" } else { "d" },
+                       name)
             }
-            &Symbol::Prebound { external } => {
-                write!(f, "                 {}", if external { "U" } else { "u" })
+            &Symbol::Prebound { ref name, external } => {
+                write!(f,
+                       "                 {} {}",
+                       if external { "U" } else { "u" },
+                       name)
             }
-            &Symbol::Indirect { external, ref name } => {
-                write!(f, "                 {}", if external { "I" } else { "i" })
+            &Symbol::Indirect { ref name, external, ref refsym } => {
+                write!(f,
+                       "                 {} {}",
+                       if external { "I" } else { "i" },
+                       name)
             }
         }
     }

@@ -8,7 +8,7 @@ extern crate macho;
 
 use std::env;
 use std::mem::size_of;
-use std::io::{BufRead, Write, Cursor, Seek, SeekFrom, stdout, stderr};
+use std::io::{Write, Cursor, Seek, SeekFrom, stdout, stderr};
 use std::path::Path;
 use std::process::exit;
 
@@ -18,7 +18,7 @@ use memmap::{Mmap, Protection};
 
 use macho::*;
 
-const APP_VERSION: &'static str = "0.1";
+const APP_VERSION: &'static str = "0.1.1";
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [-arch arch_type] [options] [--version] <object file> ...",
@@ -44,6 +44,7 @@ fn main() {
     opts.optflag("D", "", "print shared library id name");
     opts.optflag("t", "", "print the text section");
     opts.optflag("d", "", "print the data section");
+    opts.optflag("n", "", "print the symbol table");
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
@@ -86,6 +87,7 @@ fn main() {
         print_shared_lib_just_id: matches.opt_present("D") && !matches.opt_present("L"),
         print_text_section: matches.opt_present("t"),
         print_data_section: matches.opt_present("d"),
+        print_symbol_table: matches.opt_present("n"),
         print_section: matches.opt_str("s").map(|s| {
             let names: Vec<&str> = s.splitn(2, ':').collect();
 
@@ -132,6 +134,7 @@ struct FileProcessor<T: Write> {
     print_shared_lib_just_id: bool,
     print_text_section: bool,
     print_data_section: bool,
+    print_symbol_table: bool,
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
 }
@@ -139,6 +142,28 @@ struct FileProcessor<T: Write> {
 struct FileProcessContext<'a> {
     filename: String,
     cur: &'a mut Cursor<&'a [u8]>,
+}
+
+impl<'a> FileProcessContext<'a> {
+    fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, Error> {
+        let mut w = Vec::new();
+
+        for off in 0..size {
+            if (off % 16) == 0 {
+                if off > 0 {
+                    try!(write!(&mut w, "\n"));
+                }
+
+                try!(write!(&mut w, "{:016x}\t", addr + off));
+            }
+
+            try!(write!(&mut w, "{:02x} ", try!(self.cur.read_u8())));
+        }
+
+        try!(write!(&mut w, "\n"));
+
+        Ok(w)
+    }
 }
 
 impl<T: Write> FileProcessor<T> {
@@ -153,7 +178,19 @@ impl<T: Write> FileProcessor<T> {
 
         debug!("process file {} with {} bytes", filename, file_mmap.len());
 
-        self.process_ofile(&file, &mut ctxt)
+        try!(self.process_ofile(&file, &mut ctxt));
+
+        if self.print_symbol_table {
+            debug!("dumping symbol table");
+
+            if let Some(symbols) = file.symbols(ctxt.cur) {
+                for symbol in symbols {
+                    try!(write!(self.w, "{}\n", symbol));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<(), Error> {
@@ -190,7 +227,7 @@ impl<T: Write> FileProcessor<T> {
                                 .unwrap_or(format!("cputype {} cpusubtype {}",
                                                    header.cputype,
                                                    header.cpusubtype)
-                                               .as_str())));
+                                    .as_str())));
             } else {
                 try!(write!(self.w, "{}:\n", ctxt.filename));
             }
@@ -233,7 +270,7 @@ impl<T: Write> FileProcessor<T> {
 
                             try!(ctxt.cur.seek(SeekFrom::Start(sect.offset as u64)));
 
-                            let dump = try!(hexdump(sect.addr, &mut ctxt.cur, sect.size));
+                            let dump = try!(ctxt.hexdump(sect.addr, sect.size));
 
                             try!(self.w.write(&dump[..]));
                         }
@@ -348,24 +385,4 @@ impl<T: Write> FileProcessor<T> {
 
         Ok(())
     }
-}
-
-fn hexdump<T: BufRead>(addr: usize, buf: &mut T, size: usize) -> Result<Vec<u8>, Error> {
-    let mut w = Vec::new();
-
-    for off in 0..size {
-        if (off % 16) == 0 {
-            if off > 0 {
-                try!(write!(&mut w, "\n"));
-            }
-
-            try!(write!(&mut w, "{:016x}\t", addr + off));
-        }
-
-        try!(write!(&mut w, "{:02x} ", try!(buf.read_u8())));
-    }
-
-    try!(write!(&mut w, "\n"));
-
-    Ok(w)
 }

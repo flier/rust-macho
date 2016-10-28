@@ -11,7 +11,7 @@ use errors::*;
 /// The encoded version.
 ///
 ///  X.Y.Z is encoded in nibbles xxxx.yy.zz
-/// 
+///
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct VersionTag(u32);
 
@@ -47,7 +47,7 @@ impl fmt::Display for VersionTag {
 
 /// The packed version.
 ///
-/// A.B.C.D.E packed as a24.b10.c10.d10.e10 
+/// A.B.C.D.E packed as a24.b10.c10.d10.e10
 ///
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct SourceVersionTag(u64);
@@ -118,7 +118,7 @@ impl Into<u32> for BuildTarget {
 }
 
 /// A variable length string in a load command is represented by an LcString structure.
-/// 
+///
 /// The strings are stored just after the load command structure and
 /// the offset is from the start of the load command structure.  The size
 /// of the string is reflected in the cmdsize field of the load command.
@@ -134,9 +134,9 @@ impl fmt::Display for LcString {
     }
 }
 
-/// Fixed virtual memory shared libraries are identified by two things.  
+/// Fixed virtual memory shared libraries are identified by two things.
 ///
-/// The target pathname (the name of the library as found for execution), 
+/// The target pathname (the name of the library as found for execution),
 /// and the minor version number.  The address of where the headers are loaded is in
 /// header_addr. (THIS IS OBSOLETE and no longer supported).
 ///
@@ -151,8 +151,8 @@ pub struct FvmLib {
 }
 
 
-/// Dynamicly linked shared libraries are identified by two things.  
-/// 
+/// Dynamicly linked shared libraries are identified by two things.
+///
 /// The pathname (the name of the library as found for execution), and the
 /// compatibility version number.  The pathname must match and the compatibility
 /// number in the user of the library must be greater than or equal to the
@@ -204,9 +204,11 @@ pub struct DyLibModule {
     /// number of external relocation entries
     pub nextrel: u32,
 
-    /// low 16 bits are the index into the init section, high 16 bits are the index into the term section
+    /// low 16 bits are the index into the init section,
+    /// high 16 bits are the index into the term section
     pub iinit_iterm: u32,
-    /// low 16 bits are the number of init section entries, high 16 bits are the number of term section entries
+    /// low 16 bits are the number of init section entries,
+    /// high 16 bits are the number of term section entries
     pub ninit_nterm: u32,
 
     /// for this module address of the start of the (__OBJC,__module_info) section
@@ -226,15 +228,15 @@ pub struct LinkEditData {
     pub size: u32,
 }
 
-/// The load commands directly follow the mach_header.  
+/// The load commands directly follow the mach_header.
 ///
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
     /// The segment load command indicates that a part of this file is to be
-    /// mapped into the task's address space.  
-    /// 
-    /// The size of this segment in memory, vmsize, maybe equal to or 
-    /// larger than the amount to map from this file, filesize.  
+    /// mapped into the task's address space.
+    ///
+    /// The size of this segment in memory, vmsize, maybe equal to or
+    /// larger than the amount to map from this file, filesize.
     /// The file is mapped starting at fileoff to the beginning of
     /// the segment in memory, vmaddr.  The rest of the memory of the segment,
     /// if any, is allocated zero fill on demand.  The segment's maximum virtual
@@ -264,9 +266,9 @@ pub enum LoadCommand {
         sections: Vec<Section>,
     },
     /// The 64-bit segment load command indicates that a part of this file is to be
-    /// mapped into a 64-bit task's address space.  
-    /// 
-    /// If the 64-bit segment has sections then section_64 structures directly follow 
+    /// mapped into a 64-bit task's address space.
+    ///
+    /// If the 64-bit segment has sections then section_64 structures directly follow
     /// the 64-bit segment command and their size is reflected in cmdsize.
     ///
     Segment64 {
@@ -313,13 +315,14 @@ pub enum LoadCommand {
     IdDyLib(DyLib),
     /// load a dynamically linked shared library
     LoadDyLib(DyLib),
-    /// load a dynamically linked shared library that is allowed to be missing (all symbols are weak imported).
+    /// load a dynamically linked shared library
+    /// that is allowed to be missing (all symbols are weak imported).
     LoadWeakDyLib(DyLib),
     /// load and re-export dylib
     ReexportDyLib(DyLib),
     /// load upward dylib
     LoadUpwardDylib(DyLib),
-    /// delay load of dylib until first use 
+    /// delay load of dylib until first use
     LazyLoadDylib(DyLib),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
@@ -331,7 +334,7 @@ pub enum LoadCommand {
     //
     /// dynamic linker identification
     IdDyLinker(LcString),
-    /// load a dynamic linker 
+    /// load a dynamic linker
     LoadDyLinker(LcString),
     /// string for dyld to treat like environment variable
     DyLdEnv(LcString),
@@ -455,7 +458,7 @@ pub enum LoadCommand {
         //
         /// offset to referenced symbol table
         extrefsymoff: u32,
-        /// number of referenced symbol table entries 
+        /// number of referenced symbol table entries
         nextrefsyms: u32,
 
         // The sections that contain "symbol pointers" and "routine stubs" have
@@ -469,7 +472,7 @@ pub enum LoadCommand {
         //
         /// file offset to the indirect symbol table
         indirectsymoff: u32,
-        /// number of indirect symbol table entries 
+        /// number of indirect symbol table entries
         nindirectsyms: u32,
 
         // To support relocating an individual module in a library file quickly the
@@ -523,7 +526,7 @@ pub enum LoadCommand {
     //
     /// local of code signature
     CodeSignature(LinkEditData),
-    /// local of info to split segments 
+    /// local of info to split segments
     SegmentSplitInfo(LinkEditData),
     /// compressed table of function start addresses
     FunctionStarts(LinkEditData),
@@ -679,8 +682,8 @@ pub enum LoadCommand {
     },
 }
 
-/// Read a fixed size string 
-pub trait ReadStringExt : Read {
+/// Read a fixed size string
+pub trait ReadStringExt: Read {
     /// Read the fixed size string
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
         let mut buf = Vec::new();
@@ -945,8 +948,8 @@ impl LoadCommand {
 
     pub fn cmd(&self) -> u32 {
         match self {
-            &LoadCommand::Segment {..} => LC_SEGMENT,
-            &LoadCommand::Segment64 {..} => LC_SEGMENT_64,
+            &LoadCommand::Segment { .. } => LC_SEGMENT,
+            &LoadCommand::Segment64 { .. } => LC_SEGMENT_64,
             &LoadCommand::IdFvmLib(_) => LC_IDFVMLIB,
             &LoadCommand::LoadFvmLib(_) => LC_LOADFVMLIB,
             &LoadCommand::IdDyLib(_) => LC_ID_DYLIB,
@@ -958,8 +961,8 @@ impl LoadCommand {
             &LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
             &LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
             &LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
-            &LoadCommand::SymTab {..} => LC_SYMTAB,
-            &LoadCommand::DySymTab {..} => LC_DYSYMTAB,
+            &LoadCommand::SymTab { .. } => LC_SYMTAB,
+            &LoadCommand::DySymTab { .. } => LC_DYSYMTAB,
             &LoadCommand::Uuid(_) => LC_UUID,
             &LoadCommand::CodeSignature(_) => LC_CODE_SIGNATURE,
             &LoadCommand::SegmentSplitInfo(_) => LC_SEGMENT_SPLIT_INFO,
@@ -967,11 +970,11 @@ impl LoadCommand {
             &LoadCommand::DataInCode(_) => LC_DATA_IN_CODE,
             &LoadCommand::DylibCodeSignDrs(_) => LC_DYLIB_CODE_SIGN_DRS,
             &LoadCommand::LinkerOptimizationHint(_) => LC_LINKER_OPTIMIZATION_HINT,
-            &LoadCommand::VersionMin {target, ..} => BuildTarget::into(target),
-            &LoadCommand::DyldInfo {..} => LC_DYLD_INFO_ONLY,
-            &LoadCommand::EntryPoint {..} => LC_MAIN,
+            &LoadCommand::VersionMin { target, .. } => BuildTarget::into(target),
+            &LoadCommand::DyldInfo { .. } => LC_DYLD_INFO_ONLY,
+            &LoadCommand::EntryPoint { .. } => LC_MAIN,
             &LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
-            &LoadCommand::Command {cmd, ..} => cmd,
+            &LoadCommand::Command { cmd, .. } => cmd,
         }
     }
 
@@ -1034,9 +1037,9 @@ impl LoadCommand {
 }
 
 /// The flags field of a section structure is separated into two parts a section
-/// type and section attributes.  
-/// 
-/// The section types are mutually exclusive (it can only have one type) 
+/// type and section attributes.
+///
+/// The section types are mutually exclusive (it can only have one type)
 /// but the section attributes are not (it may have more than one attribute).
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -1058,10 +1061,10 @@ impl Into<u32> for SectionFlags {
     }
 }
 
-/// A segment is made up of zero or more sections.  
-/// 
-/// Non-MH_OBJECT files have all of their segments with the proper sections in each, 
-/// and padded to the specified segment alignment when produced by the link editor.  
+/// A segment is made up of zero or more sections.
+///
+/// Non-MH_OBJECT files have all of their segments with the proper sections in each,
+/// and padded to the specified segment alignment when produced by the link editor.
 /// The first segment of a MH_EXECUTE and MH_FVMLIB format file contains the mach_header
 /// and load commands of the object file before its first section.  The zero
 /// fill sections are always last in their segment (in all formats).  This
@@ -1155,7 +1158,7 @@ impl Section {
 }
 
 /// The LC_DATA_IN_CODE load commands uses a linkedit_data_command
-/// to point to an array of data_in_code_entry entries. 
+/// to point to an array of data_in_code_entry entries.
 ///
 /// Each entry describes a range of data in a code section.
 ///
@@ -1191,7 +1194,16 @@ pub mod tests {
 
     #[test]
     fn test_parse_segments() {
-        if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_PAGEZERO_DATA) {
+        if let (LoadCommand::Segment64 { ref segname,
+                                         vmaddr,
+                                         vmsize,
+                                         fileoff,
+                                         filesize,
+                                         maxprot,
+                                         initprot,
+                                         flags,
+                                         ref sections },
+                cmdsize) = parse_command!(LC_SEGMENT_64_PAGEZERO_DATA) {
             assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_PAGEZERO);
             assert_eq!(vmaddr, 0);
@@ -1206,7 +1218,16 @@ pub mod tests {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_TEXT_DATA) {
+        if let (LoadCommand::Segment64 { ref segname,
+                                         vmaddr,
+                                         vmsize,
+                                         fileoff,
+                                         filesize,
+                                         maxprot,
+                                         initprot,
+                                         flags,
+                                         ref sections },
+                cmdsize) = parse_command!(LC_SEGMENT_64_TEXT_DATA) {
             assert_eq!(cmdsize, 712);
             assert_eq!(segname, SEG_TEXT);
             assert_eq!(vmaddr, 0x0000000100000000);
@@ -1218,13 +1239,31 @@ pub mod tests {
             assert!(flags.is_empty());
             assert_eq!(sections.len(), 8);
 
-            assert_eq!(sections.iter().map(|sec: &Section| sec.sectname.clone()).collect::<Vec<String>>(),
-                       vec![SECT_TEXT, "__stubs", "__stub_helper", "__gcc_except_tab", "__const", "__cstring", "__unwind_info", "__eh_frame"]);
+            assert_eq!(sections.iter()
+                           .map(|sec: &Section| sec.sectname.clone())
+                           .collect::<Vec<String>>(),
+                       vec![SECT_TEXT,
+                            "__stubs",
+                            "__stub_helper",
+                            "__gcc_except_tab",
+                            "__const",
+                            "__cstring",
+                            "__unwind_info",
+                            "__eh_frame"]);
         } else {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_DATA_DATA) {
+        if let (LoadCommand::Segment64 { ref segname,
+                                         vmaddr,
+                                         vmsize,
+                                         fileoff,
+                                         filesize,
+                                         maxprot,
+                                         initprot,
+                                         flags,
+                                         ref sections },
+                cmdsize) = parse_command!(LC_SEGMENT_64_DATA_DATA) {
             assert_eq!(cmdsize, 872);
             assert_eq!(segname, SEG_DATA);
             assert_eq!(vmaddr, 0x00000001001e3000);
@@ -1234,16 +1273,35 @@ pub mod tests {
             assert_eq!(maxprot, 7);
             assert_eq!(initprot, 3);
             assert!(flags.is_empty());
-            assert_eq!(sections.len(),10);
+            assert_eq!(sections.len(), 10);
 
-            assert_eq!(sections.iter().map(|sec: &Section| sec.sectname.clone()).collect::<Vec<String>>(),
-                       vec!["__nl_symbol_ptr", "__got", "__la_symbol_ptr", "__mod_init_func", "__const",
-                            SECT_DATA, "__thread_vars", "__thread_data", SECT_COMMON, SECT_BSS]);
+            assert_eq!(sections.iter()
+                           .map(|sec: &Section| sec.sectname.clone())
+                           .collect::<Vec<String>>(),
+                       vec!["__nl_symbol_ptr",
+                            "__got",
+                            "__la_symbol_ptr",
+                            "__mod_init_func",
+                            "__const",
+                            SECT_DATA,
+                            "__thread_vars",
+                            "__thread_data",
+                            SECT_COMMON,
+                            SECT_BSS]);
         } else {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 {ref segname, vmaddr, vmsize, fileoff, filesize, maxprot, initprot, flags, ref sections}, cmdsize) = parse_command!(LC_SEGMENT_64_LINKEDIT_DATA) {
+        if let (LoadCommand::Segment64 { ref segname,
+                                         vmaddr,
+                                         vmsize,
+                                         fileoff,
+                                         filesize,
+                                         maxprot,
+                                         initprot,
+                                         flags,
+                                         ref sections },
+                cmdsize) = parse_command!(LC_SEGMENT_64_LINKEDIT_DATA) {
             assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_LINKEDIT);
             assert_eq!(vmaddr, 0x00000001001f6000);
@@ -1261,8 +1319,17 @@ pub mod tests {
 
     #[test]
     fn test_parse_dyld_info_command() {
-        if let (LoadCommand::DyldInfo{rebase_off, rebase_size, bind_off, bind_size, weak_bind_off, weak_bind_size,
-            lazy_bind_off, lazy_bind_size, export_off, export_size}, cmdsize) = parse_command!(LC_DYLD_INFO_ONLY_DATA) {
+        if let (LoadCommand::DyldInfo { rebase_off,
+                                        rebase_size,
+                                        bind_off,
+                                        bind_size,
+                                        weak_bind_off,
+                                        weak_bind_size,
+                                        lazy_bind_off,
+                                        lazy_bind_size,
+                                        export_off,
+                                        export_size },
+                cmdsize) = parse_command!(LC_DYLD_INFO_ONLY_DATA) {
             assert_eq!(cmdsize, 48);
             assert_eq!(rebase_off, 0x1f5000);
             assert_eq!(rebase_size, 3368);
@@ -1281,8 +1348,8 @@ pub mod tests {
 
     #[test]
     fn test_parse_symtab_command() {
-        if let (LoadCommand::SymTab {symoff, nsyms, stroff, strsize},
-                cmdsize) = parse_command!(LC_SYMTAB_DATA) {
+        if let (LoadCommand::SymTab { symoff, nsyms, stroff, strsize }, cmdsize) =
+               parse_command!(LC_SYMTAB_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(symoff, 0x200d88);
             assert_eq!(nsyms, 36797);
@@ -1295,9 +1362,25 @@ pub mod tests {
 
     #[test]
     fn test_parse_dysymtab_command() {
-        if let (LoadCommand::DySymTab {ilocalsym, nlocalsym, iextdefsym, nextdefsym, iundefsym, nundefsym,
-            tocoff, ntoc, modtaboff, nmodtab, extrefsymoff, nextrefsyms, indirectsymoff, nindirectsyms,
-            extreloff, nextrel, locreloff, nlocrel }, cmdsize) = parse_command!(LC_DYSYMTAB_DATA) {
+        if let (LoadCommand::DySymTab { ilocalsym,
+                                        nlocalsym,
+                                        iextdefsym,
+                                        nextdefsym,
+                                        iundefsym,
+                                        nundefsym,
+                                        tocoff,
+                                        ntoc,
+                                        modtaboff,
+                                        nmodtab,
+                                        extrefsymoff,
+                                        nextrefsyms,
+                                        indirectsymoff,
+                                        nindirectsyms,
+                                        extreloff,
+                                        nextrel,
+                                        locreloff,
+                                        nlocrel },
+                cmdsize) = parse_command!(LC_DYSYMTAB_DATA) {
             assert_eq!(cmdsize, 80);
             assert_eq!(ilocalsym, 0);
             assert_eq!(nlocalsym, 35968);
@@ -1347,7 +1430,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_min_version_command() {
-        if let (LoadCommand::VersionMin{target, version, sdk}, cmdsize) =
+        if let (LoadCommand::VersionMin { target, version, sdk }, cmdsize) =
                parse_command!(LC_VERSION_MIN_MACOSX_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
@@ -1371,7 +1454,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_main_command() {
-        if let (LoadCommand::EntryPoint{entryoff, stacksize}, cmdsize) =
+        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) =
                parse_command!(LC_MAIN_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(entryoff, 0x11400);
@@ -1397,8 +1480,8 @@ pub mod tests {
 
     #[test]
     fn test_parse_link_edit_data_command() {
-        if let (LoadCommand::FunctionStarts(LinkEditData{off, size}),
-                cmdsize) = parse_command!(LC_FUNCTION_STARTS_DATA) {
+        if let (LoadCommand::FunctionStarts(LinkEditData { off, size }), cmdsize) =
+               parse_command!(LC_FUNCTION_STARTS_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(off, 0x1fec50);
             assert_eq!(size, 8504);
@@ -1406,7 +1489,7 @@ pub mod tests {
             panic!();
         }
 
-        if let (LoadCommand::DataInCode(LinkEditData{off, size}), cmdsize) =
+        if let (LoadCommand::DataInCode(LinkEditData { off, size }), cmdsize) =
                parse_command!(LC_DATA_IN_CODE_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(off, 0x200d88);

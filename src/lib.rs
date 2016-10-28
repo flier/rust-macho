@@ -12,21 +12,22 @@
 //! let size = f.read_to_end(&mut buf).unwrap();
 //! let mut cur = Cursor::new(&buf[..size]);
 //! if let OFile::MachFile { ref header, ref commands } = OFile::parse(&mut cur).unwrap() {
-//! 	assert_eq!(header.cputype, CPU_TYPE_X86_64);
-//! 	assert_eq!(header.ncmds as usize, commands.len());
-//! 	for &MachCommand(ref cmd, cmdsize) in commands {
-//! 		if let &LoadCommand::Segment64 { ref segname, ref sections, .. } = cmd {
-//! 			println!("segment: {}", segname);
+//!     assert_eq!(header.cputype, CPU_TYPE_X86_64);
+//!     assert_eq!(header.ncmds as usize, commands.len());
+//!     for &MachCommand(ref cmd, cmdsize) in commands {
+//!         if let &LoadCommand::Segment64 { ref segname, ref sections, .. } = cmd {
+//!             println!("segment: {}", segname);
 //!
-//! 				for ref sect in sections {
-//! 					println!("  section: {}", sect.sectname);
-//! 			}
-//! 		}
-//! 	}
+//!                 for ref sect in sections {
+//!                     println!("  section: {}", sect.sectname);
+//!             }
+//!         }
+//!     }
 //! }
 //! ```
 //!
-//! For more detail, please check the unit tests and the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
+//! For more detail, please check the unit tests
+//! and the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
 //!
 #[macro_use]
 extern crate log;
@@ -43,8 +44,10 @@ mod consts;
 mod errors;
 mod commands;
 mod loader;
+mod symbol;
 
 pub use consts::*;
 pub use errors::Error;
 pub use commands::*;
 pub use loader::{OFile, MachHeader, MachCommand, FatArch, FatHeader, ArHeader, RanLib};
+pub use symbol::{Symbol, SymbolIter, SymbolProvider};

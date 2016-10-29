@@ -245,12 +245,16 @@ impl<'a> Iterator for SymbolIter<'a> {
     }
 }
 
-pub trait SymbolProvider {
-    fn symbols<'a>(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<SymbolIter<'a>>;
+pub trait SymbolProvider<'a> {
+    type Iter: Iterator<Item = Symbol<'a>>;
+
+    fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter>;
 }
 
-impl SymbolProvider for OFile {
-    fn symbols<'a>(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<SymbolIter<'a>> {
+impl<'a> SymbolProvider<'a> for OFile {
+    type Iter = SymbolIter<'a>;
+
+    fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {
         if let &OFile::MachFile { ref header, ref commands } = self {
             let sections = commands.iter()
                 .filter_map(|cmd| match cmd.0 {

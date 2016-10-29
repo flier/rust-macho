@@ -391,11 +391,12 @@ impl MachCommand {
                             "         name {} (offset {})\n",
                             dylib.name,
                             dylib.name.0));
-                let ts = time::at(time::Timespec::new(dylib.timestamp as i64, 0));
+                let ts = time::at_utc(time::Timespec::new(dylib.timestamp as i64, 0));
                 try!(write!(f,
                             "   time stamp {} {}\n",
                             dylib.timestamp,
-                            try!(time::strftime("%a %b %e %T %Y", &ts).map_err(|_| fmt::Error))));
+                            try!(time::strftime("%a %b %e %T %Y %Z", &ts)
+                                .map_err(|_| fmt::Error))));
                 try!(write!(f,
                             "      current version {}.{}.{}\n",
                             dylib.current_version.major(),

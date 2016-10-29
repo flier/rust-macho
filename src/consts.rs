@@ -866,7 +866,6 @@ pub const DICE_KIND_JUMP_TABLE16: u16 = 0x0003;
 pub const DICE_KIND_JUMP_TABLE32: u16 = 0x0004;
 pub const DICE_KIND_ABS_JUMP_TABLE32: u16 = 0x0005;
 
-
 pub const N_GSYM: u8 = 0x20;    /* global symbol: name,,NO_SECT,type,0 */
 pub const N_FNAME: u8 = 0x22;    /* procedure name (f77 kludge): name,,NO_SECT,0,0 */
 pub const N_FUN: u8 = 0x24;    /* procedure: name,,n_sect,linenumber,address */

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::rc::Rc;
 use std::ffi::CStr;
 use std::io::{Read, BufRead, Cursor};
 
@@ -263,7 +264,7 @@ pub enum LoadCommand {
         /// flags
         flags: SegmentFlags,
         /// sections
-        sections: Vec<Section>,
+        sections: Vec<Rc<Section>>,
     },
     /// The 64-bit segment load command indicates that a part of this file is to be
     /// mapped into a 64-bit task's address space.
@@ -289,7 +290,7 @@ pub enum LoadCommand {
         /// flags
         flags: SegmentFlags,
         /// sections
-        sections: Vec<Section>,
+        sections: Vec<Rc<Section>>,
     },
 
     // A fixed virtual shared library (filetype == MH_FVMLIB in the mach header)
@@ -719,7 +720,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(try!(Section::parse_section::<Cursor<&[u8]>, O>(buf)));
+                    sections.push(Rc::new(try!(Section::parse_section::<Cursor<&[u8]>, O>(buf))));
                 }
 
                 LoadCommand::Segment {
@@ -747,7 +748,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(try!(Section::parse_section64::<Cursor<&[u8]>, O>(buf)));
+                    sections.push(Rc::new(try!(Section::parse_section64::<Cursor<&[u8]>, O>(buf))));
                 }
 
                 LoadCommand::Segment64 {
@@ -1240,7 +1241,7 @@ pub mod tests {
             assert_eq!(sections.len(), 8);
 
             assert_eq!(sections.iter()
-                           .map(|sec: &Section| sec.sectname.clone())
+                           .map(|ref sec| (*sec).sectname.clone())
                            .collect::<Vec<String>>(),
                        vec![SECT_TEXT,
                             "__stubs",
@@ -1276,7 +1277,7 @@ pub mod tests {
             assert_eq!(sections.len(), 10);
 
             assert_eq!(sections.iter()
-                           .map(|sec: &Section| sec.sectname.clone())
+                           .map(|ref sec| (*sec).sectname.clone())
                            .collect::<Vec<String>>(),
                        vec!["__nl_symbol_ptr",
                             "__got",

@@ -1,11 +1,13 @@
 use std::str;
 use std::fmt;
-use std::io::{BufRead, Cursor, Seek, SeekFrom};
+use std::rc::Rc;
+use std::io::{Cursor, Seek, SeekFrom};
 
 use byteorder::{ByteOrder, ReadBytesExt, LittleEndian, BigEndian};
 
 use errors::*;
-use commands::LoadCommand;
+use consts::*;
+use commands::{LoadCommand, Section};
 use loader::{OFile, MachCommand};
 
 #[derive(Debug)]
@@ -22,7 +24,7 @@ pub enum Symbol<'a> {
     Defined {
         name: Option<&'a str>,
         external: bool,
-        section: u8,
+        section: Option<Rc<Section>>,
         entry: usize,
     },
     Prebound {
@@ -52,17 +54,39 @@ impl<'a> fmt::Display for Symbol<'a> {
                        if external { "A" } else { "a" },
                        name.unwrap_or(""))
             }
-            &Symbol::Defined { ref name, external, section, entry } => {
+            &Symbol::Defined { ref name, external, ref section, entry } => {
+                let mut symtype = "s";
+
+                if let &Some(ref section) = section {
+                    let Section { ref sectname, ref segname, .. } = **section;
+
+                    if segname == SEG_TEXT && sectname == SECT_TEXT {
+                        symtype = "t"
+                    } else if segname == SEG_DATA {
+                        if sectname == SECT_DATA {
+                            symtype = "d"
+                        } else if sectname == SECT_BSS {
+                            symtype = "b"
+                        } else if sectname == SECT_COMMON {
+                            symtype = "c"
+                        }
+                    }
+                }
+
                 write!(f,
                        "{:016x} {} {}",
                        entry,
-                       if external { "D" } else { "d" },
+                       if external {
+                           symtype.to_uppercase()
+                       } else {
+                           symtype.to_lowercase()
+                       },
                        name.unwrap_or(""))
             }
             &Symbol::Prebound { ref name, external } => {
                 write!(f,
                        "                 {} {}",
-                       if external { "U" } else { "u" },
+                       if external { "P" } else { "p" },
                        name.unwrap_or(""))
             }
             &Symbol::Indirect { ref name, external, ref refsym } => {
@@ -77,6 +101,7 @@ impl<'a> fmt::Display for Symbol<'a> {
 
 pub struct SymbolIter<'a> {
     cur: &'a mut Cursor<&'a [u8]>,
+    sections: Vec<Rc<Section>>,
     nsyms: u32,
     stroff: u32,
     strsize: u32,
@@ -126,7 +151,11 @@ impl<'a> SymbolIter<'a> {
                 Ok(Symbol::Defined {
                     name: try!(self.load_str(strx)),
                     external: external,
-                    section: sect,
+                    section: if sect == NO_SECT {
+                        None
+                    } else {
+                        Some(self.sections[(sect - 1) as usize].clone())
+                    },
                     entry: value,
                 })
             }
@@ -187,6 +216,15 @@ pub trait SymbolProvider {
 impl SymbolProvider for OFile {
     fn symbols<'a>(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<SymbolIter<'a>> {
         if let &OFile::MachFile { ref header, ref commands } = self {
+            let sections = commands.iter()
+                .filter_map(|cmd| match cmd.0 {
+                    LoadCommand::Segment { ref sections, .. } |
+                    LoadCommand::Segment64 { ref sections, .. } => Some(sections),
+                    _ => None,
+                })
+                .flat_map(|sections| sections.clone())
+                .collect();
+
             for cmd in commands {
                 let &MachCommand(ref cmd, _) = cmd;
 
@@ -194,6 +232,7 @@ impl SymbolProvider for OFile {
                     if let Ok(_) = cur.seek(SeekFrom::Start(symoff as u64)) {
                         return Some(SymbolIter {
                             cur: cur,
+                            sections: sections,
                             nsyms: nsyms,
                             stroff: stroff,
                             strsize: strsize,
@@ -230,3 +269,6 @@ const N_ABS: u8 = 0x2;    /* absolute, n_sect == NO_SECT */
 const N_SECT: u8 = 0xe;    /* defined in section number n_sect */
 const N_PBUD: u8 = 0xc;    /* prebound undefined (defined in a dylib) */
 const N_INDR: u8 = 0xa;    /* indirect */
+
+const NO_SECT: u8 = 0;   /* symbol is not in any section */
+const MAX_SECT: u8 = 255; /* 1 thru 255 inclusive */

@@ -897,3 +897,120 @@ pub const N_ECOMM: u8 = 0xe4;  /* end common: name,,n_sect,0,0 */
 pub const N_ECOML: u8 = 0xe8;  /* end common (local name): 0,,n_sect,0,address */
 pub const N_LENG: u8 = 0xfe;  /* second stab entry with length information */
 pub const N_PC: u8 = 0x30;    /* global pascal symbol: name,,NO_SECT,subtype,line */
+
+// To support the lazy binding of undefined symbols in the dynamic link-editor,
+// the undefined symbols in the symbol table (the nlist structures) are marked
+// with the indication if the undefined reference is a lazy reference or
+// non-lazy reference.  If both a non-lazy reference and a lazy reference is
+// made to the same symbol the non-lazy reference takes precedence.  A reference
+// is lazy only when all references to that symbol are made through a symbol
+// pointer in a lazy symbol pointer section.
+//
+// The implementation of marking nlist structures in the symbol table for
+// undefined symbols will be to use some of the bits of the n_desc field as a
+// reference type.  The mask REFERENCE_TYPE will be applied to the n_desc field
+// of an nlist structure for an undefined symbol to determine the type of
+// undefined reference (lazy or non-lazy).
+//
+// The constants for the REFERENCE FLAGS are propagated to the reference table
+// in a shared library file.  In that case the constant for a defined symbol,
+// REFERENCE_FLAG_DEFINED, is also used.
+//
+// Reference type bits of the n_desc field of undefined symbols
+pub const REFERENCE_TYPE: u8 = 0x7;
+// types of references
+pub const REFERENCE_FLAG_UNDEFINED_NON_LAZY: u8 = 0;
+pub const REFERENCE_FLAG_UNDEFINED_LAZY: u8 = 1;
+pub const REFERENCE_FLAG_DEFINED: u8 = 2;
+pub const REFERENCE_FLAG_PRIVATE_DEFINED: u8 = 3;
+pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_NON_LAZY: u8 = 4;
+pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_LAZY: u8 = 5;
+
+// To simplify stripping of objects that use are used with the dynamic link
+// editor, the static link editor marks the symbols defined an object that are
+// referenced by a dynamicly bound object (dynamic shared libraries, bundles).
+// With this marking strip knows not to strip these symbols.
+//
+pub const REFERENCED_DYNAMICALLY: u8 = 0x0010;
+
+// For images created by the static link editor with the -twolevel_namespace
+// option in effect the flags field of the mach header is marked with
+// MH_TWOLEVEL.  And the binding of the undefined references of the image are
+// determined by the static link editor.  Which library an undefined symbol is
+// bound to is recorded by the static linker in the high 8 bits of the n_desc
+// field using the SET_LIBRARY_ORDINAL macro below.  The ordinal recorded
+// references the libraries listed in the Mach-O's LC_LOAD_DYLIB,
+// LC_LOAD_WEAK_DYLIB, LC_REEXPORT_DYLIB, LC_LOAD_UPWARD_DYLIB, and
+// LC_LAZY_LOAD_DYLIB, etc. load commands in the order they appear in the
+// headers.   The library ordinals start from 1.
+// For a dynamic library that is built as a two-level namespace image the
+// undefined references from module defined in another use the same nlist struct
+// an in that case SELF_LIBRARY_ORDINAL is used as the library ordinal.  For
+// defined symbols in all images they also must have the library ordinal set to
+// SELF_LIBRARY_ORDINAL.  The EXECUTABLE_ORDINAL refers to the executable
+// image for references from plugins that refer to the executable that loads
+// them.
+//
+// The DYNAMIC_LOOKUP_ORDINAL is for undefined symbols in a two-level namespace
+// image that are looked up by the dynamic linker with flat namespace semantics.
+// This ordinal was added as a feature in Mac OS X 10.3 by reducing the
+// value of MAX_LIBRARY_ORDINAL by one.  So it is legal for existing binaries
+// or binaries built with older tools to have 0xfe (254) dynamic libraries.  In
+// this case the ordinal value 0xfe (254) must be treated as a library ordinal
+// for compatibility.
+//
+pub const SELF_LIBRARY_ORDINAL: u8 = 0x0;
+pub const MAX_LIBRARY_ORDINAL: u8 = 0xfd;
+pub const DYNAMIC_LOOKUP_ORDINAL: u8 = 0xfe;
+pub const EXECUTABLE_ORDINAL: u8 = 0xff;
+
+// The bit 0x0020 of the n_desc field is used for two non-overlapping purposes
+// and has two different symbolic names, N_NO_DEAD_STRIP and N_DESC_DISCARDED.
+//
+
+// The N_NO_DEAD_STRIP bit of the n_desc field only ever appears in a
+// relocatable .o file (MH_OBJECT filetype). And is used to indicate to the
+// static link editor it is never to dead strip the symbol.
+//
+pub const N_NO_DEAD_STRIP: u16 = 0x0020; /* symbol is not to be dead stripped */
+
+// The N_DESC_DISCARDED bit of the n_desc field never appears in linked image.
+// But is used in very rare cases by the dynamic link editor to mark an in
+// memory symbol as discared and longer used for linking.
+//
+pub const N_DESC_DISCARDED: u16 = 0x0020; /* symbol is discarded */
+
+// The N_WEAK_REF bit of the n_desc field indicates to the dynamic linker that
+// the undefined symbol is allowed to be missing and is to have the address of
+// zero when missing.
+//
+pub const N_WEAK_REF: u16 = 0x0040; /* symbol is weak referenced */
+
+// The N_WEAK_DEF bit of the n_desc field indicates to the static and dynamic
+// linkers that the symbol definition is weak, allowing a non-weak symbol to
+// also be used which causes the weak definition to be discared.  Currently this
+// is only supported for symbols in coalesed sections.
+//
+pub const N_WEAK_DEF: u16 = 0x0080; /* coalesed symbol is a weak definition */
+
+// The N_REF_TO_WEAK bit of the n_desc field indicates to the dynamic linker
+// that the undefined symbol should be resolved using flat namespace searching.
+//
+pub const N_REF_TO_WEAK: u16 = 0x0080; /* reference to a weak symbol */
+
+// The N_ARM_THUMB_DEF bit of the n_desc field indicates that the symbol is
+// a defintion of a Thumb function.
+//
+pub const N_ARM_THUMB_DEF: u16 = 0x0008; /* symbol is a Thumb function (ARM) */
+
+// The N_SYMBOL_RESOLVER bit of the n_desc field indicates that the
+// that the function is actually a resolver function and should
+// be called to get the address of the real function to use.
+// This bit is only available in .o files (MH_OBJECT filetype)
+//
+pub const N_SYMBOL_RESOLVER: u16 = 0x0100;
+
+// The N_ALT_ENTRY bit of the n_desc field indicates that the
+// symbol is pinned to the previous content.
+//
+pub const N_ALT_ENTRY: u16 = 0x0200;

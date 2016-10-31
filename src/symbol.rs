@@ -49,6 +49,30 @@ pub enum Symbol<'a> {
     },
 }
 
+impl<'a> Symbol<'a> {
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            &Symbol::Undefined { name, .. } |
+            &Symbol::Absolute { name, .. } |
+            &Symbol::Defined { name, .. } |
+            &Symbol::Prebound { name, .. } |
+            &Symbol::Indirect { name, .. } |
+            &Symbol::Debug { name, .. } => name,
+        }
+    }
+
+    pub fn is_external(&self) -> bool {
+        match self {
+            &Symbol::Undefined { external, .. } |
+            &Symbol::Absolute { external, .. } |
+            &Symbol::Defined { external, .. } |
+            &Symbol::Prebound { external, .. } |
+            &Symbol::Indirect { external, .. } => external,
+            _ => false,
+        }
+    }
+}
+
 impl<'a> fmt::Display for Symbol<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

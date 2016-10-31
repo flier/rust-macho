@@ -931,7 +931,7 @@ pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_LAZY: u8 = 5;
 // referenced by a dynamicly bound object (dynamic shared libraries, bundles).
 // With this marking strip knows not to strip these symbols.
 //
-pub const REFERENCED_DYNAMICALLY: u8 = 0x0010;
+pub const REFERENCED_DYNAMICALLY: u16 = 0x0010;
 
 // For images created by the static link editor with the -twolevel_namespace
 // option in effect the flags field of the mach header is marked with

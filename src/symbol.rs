@@ -141,6 +141,79 @@ impl<'a> fmt::Display for Symbol<'a> {
     }
 }
 
+pub trait Reference {
+    fn desc(&self) -> u16;
+
+    // types of references
+    fn ref_type(&self) -> u8 {
+        self.desc() as u8 & REFERENCE_TYPE
+    }
+
+    // To simplify stripping of objects that use are used with the dynamic link
+    // editor, the static link editor marks the symbols defined an object that are
+    // referenced by a dynamicly bound object (dynamic shared libraries, bundles).
+    // With this marking strip knows not to strip these symbols.
+    //
+    fn is_ref_dyn(&self) -> bool {
+        (self.desc() & REFERENCED_DYNAMICALLY) == REFERENCED_DYNAMICALLY
+    }
+
+    fn lib_ordinal(&self) -> u8 {
+        ((self.desc() >> 8) & 0xff) as u8
+    }
+
+    // symbol is not to be dead stripped
+    fn is_no_dead_strip(&self) -> bool {
+        (self.desc() & N_NO_DEAD_STRIP) == N_NO_DEAD_STRIP
+    }
+
+    // symbol is discarded
+    fn is_discarded(&self) -> bool {
+        (self.desc() & N_DESC_DISCARDED) == N_DESC_DISCARDED
+    }
+
+    // symbol is weak referenced
+    fn is_weak_ref(&self) -> bool {
+        (self.desc() & N_WEAK_REF) == N_WEAK_REF
+    }
+
+    // coalesed symbol is a weak definition
+    fn is_weak_def(&self) -> bool {
+        (self.desc() & N_WEAK_DEF) == N_WEAK_DEF
+    }
+
+    // reference to a weak symbol
+    fn is_ref_to_weak(&self) -> bool {
+        (self.desc() & N_REF_TO_WEAK) == N_REF_TO_WEAK
+    }
+
+    // symbol is a Thumb function (ARM)
+    fn is_arm_thumb_def(&self) -> bool {
+        (self.desc() & N_ARM_THUMB_DEF) == N_ARM_THUMB_DEF
+    }
+
+    fn is_resolver(&self) -> bool {
+        (self.desc() & N_SYMBOL_RESOLVER) == N_SYMBOL_RESOLVER
+    }
+
+    fn is_alt_entry(&self) -> bool {
+        (self.desc() & N_ALT_ENTRY) == N_ALT_ENTRY
+    }
+}
+
+impl<'a> Reference for Symbol<'a> {
+    fn desc(&self) -> u16 {
+        match self {
+            &Symbol::Undefined { desc, .. } |
+            &Symbol::Absolute { desc, .. } |
+            &Symbol::Defined { desc, .. } |
+            &Symbol::Prebound { desc, .. } |
+            &Symbol::Indirect { desc, .. } |
+            &Symbol::Debug { desc, .. } => desc,
+        }
+    }
+}
+
 pub struct SymbolIter<'a> {
     cur: &'a mut Cursor<&'a [u8]>,
     sections: Vec<Rc<Section>>,

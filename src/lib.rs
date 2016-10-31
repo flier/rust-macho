@@ -50,4 +50,4 @@ pub use consts::*;
 pub use errors::Error;
 pub use commands::*;
 pub use loader::{OFile, MachHeader, MachCommand, FatArch, FatHeader, ArHeader, RanLib};
-pub use symbol::{Symbol, SymbolIter, SymbolProvider};
+pub use symbol::{Symbol, Reference, SymbolIter, SymbolProvider};

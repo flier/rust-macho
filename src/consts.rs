@@ -586,8 +586,10 @@ pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 /// build for Watch min OS version
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 
+bitflags! {
+
 /// Constants for the flags field of the segment_command
-bitflags! { pub flags SegmentFlags: u32 {
+pub flags SegmentFlags: u32 {
     /// the file contents for this segment is for the high part of the VM space,
     /// the low part is zero filled (for stacks in core files)
     const SG_HIGHVM = 0x1,
@@ -601,7 +603,9 @@ bitflags! { pub flags SegmentFlags: u32 {
     /// the first page of the segment is not protected.
     /// All other pages of the segment are protected.
     const SG_PROTECTED_VERSION_1 = 0x8,
-} }
+}
+
+}
 
 // The flags field of a section structure is separated into two parts a section
 // type and section attributes.  The section types are mutually exclusive (it
@@ -677,10 +681,10 @@ pub const S_THREAD_LOCAL_VARIABLE_POINTERS: u32 = 0x14;
 /// functions to call to initialize TLV values
 pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS: u32 = 0x15;
 
-// Constants for the section attributes part of the flags field of a section
-// structure.
-//
-bitflags! { pub flags SectionAttributes: u32 {
+bitflags! {
+
+/// Constants for the section attributes part of the flags field of a section structure.
+pub flags SectionAttributes: u32 {
     /// User setable attributes
     const SECTION_ATTRIBUTES_USR = 0xff000000,
     /// section contains only true machine instructions
@@ -715,7 +719,8 @@ bitflags! { pub flags SectionAttributes: u32 {
     const S_ATTR_EXT_RELOC = 0x00000200,
     /// section has local relocation entries
     const S_ATTR_LOC_RELOC = 0x00000100,
-} }
+}
+}
 
 // The names of segments and sections in them are mostly meaningless to the
 // link-editor.  But there are few things to support traditional UNIX
@@ -846,19 +851,17 @@ pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: u32 = 0xA0;
 pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u32 = 0xB0;
 pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u32 = 0xC0;
 
-
-// The following are used on the flags byte of a terminal node
-// in the export information.
-//
-
-bitflags! { pub flags ExportSymbolFlags: u32 {
+bitflags! {
+/// The following are used on the flags byte of a terminal node in the export information.
+pub flags ExportSymbolFlags: u32 {
     const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03,
     const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00,
     const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01,
     const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04,
     const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08,
     const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10,
-}}
+}
+}
 
 pub const DICE_KIND_DATA: u16 = 0x0001;
 pub const DICE_KIND_JUMP_TABLE8: u16 = 0x0002;
@@ -866,57 +869,88 @@ pub const DICE_KIND_JUMP_TABLE16: u16 = 0x0003;
 pub const DICE_KIND_JUMP_TABLE32: u16 = 0x0004;
 pub const DICE_KIND_ABS_JUMP_TABLE32: u16 = 0x0005;
 
-pub const N_GSYM: u8 = 0x20;    /* global symbol: name,,NO_SECT,type,0 */
-pub const N_FNAME: u8 = 0x22;    /* procedure name (f77 kludge): name,,NO_SECT,0,0 */
-pub const N_FUN: u8 = 0x24;    /* procedure: name,,n_sect,linenumber,address */
-pub const N_STSYM: u8 = 0x26;    /* static symbol: name,,n_sect,type,address */
-pub const N_LCSYM: u8 = 0x28;   /* .lcomm symbol: name,,n_sect,type,address */
-pub const N_BNSYM: u8 = 0x2e;  /* begin nsect sym: 0,,n_sect,0,address */
-pub const N_AST: u8 = 0x32;   /* AST file path: name,,NO_SECT,0,0 */
-pub const N_OPT: u8 = 0x3c; /* emitted with gcc2_compiled and in gcc source */
-pub const N_RSYM: u8 = 0x40;   /* register sym: name,,NO_SECT,type,register */
-pub const N_SLINE: u8 = 0x44;   /* src line: 0,,n_sect,linenumber,address */
-pub const N_ENSYM: u8 = 0x4e;  /* end nsect sym: 0,,n_sect,0,address */
-pub const N_SSYM: u8 = 0x60;  /* structure elt: name,,NO_SECT,type,struct_offset */
-pub const N_SO: u8 = 0x64;  /* source file name: name,,n_sect,0,address */
-pub const N_OSO: u8 = 0x66;  /* object file name: name,,0,0,st_mtime */
-pub const N_LSYM: u8 = 0x80;  /* local sym: name,,NO_SECT,type,offset */
-pub const N_BINCL: u8 = 0x82;  /* include file beginning: name,,NO_SECT,0,sum */
-pub const N_SOL: u8 = 0x84;  /* #included file name: name,,n_sect,0,address */
-pub const N_PARAMS: u8 = 0x86;  /* compiler parameters: name,,NO_SECT,0,0 */
-pub const N_VERSION: u8 = 0x88;  /* compiler version: name,,NO_SECT,0,0 */
-pub const N_OLEVEL: u8 = 0x8A;  /* compiler -O level: name,,NO_SECT,0,0 */
-pub const N_PSYM: u8 = 0xa0;  /* parameter: name,,NO_SECT,type,offset */
-pub const N_EINCL: u8 = 0xa2;  /* include file end: name,,NO_SECT,0,0 */
-pub const N_ENTRY: u8 = 0xa4;  /* alternate entry: name,,n_sect,linenumber,address */
-pub const N_LBRAC: u8 = 0xc0;  /* left bracket: 0,,NO_SECT,nesting level,address */
-pub const N_EXCL: u8 = 0xc2;  /* deleted include file: name,,NO_SECT,0,sum */
-pub const N_RBRAC: u8 = 0xe0;  /* right bracket: 0,,NO_SECT,nesting level,address */
-pub const N_BCOMM: u8 = 0xe2;  /* begin common: name,,NO_SECT,0,0 */
-pub const N_ECOMM: u8 = 0xe4;  /* end common: name,,n_sect,0,0 */
-pub const N_ECOML: u8 = 0xe8;  /* end common (local name): 0,,n_sect,0,address */
-pub const N_LENG: u8 = 0xfe;  /* second stab entry with length information */
-pub const N_PC: u8 = 0x30;    /* global pascal symbol: name,,NO_SECT,subtype,line */
+/// global symbol: name,,NO_SECT,type,0
+pub const N_GSYM: u8 = 0x20;
+/// procedure name (f77 kludge): name,,NO_SECT,0,0
+pub const N_FNAME: u8 = 0x22;
+/// procedure: name,,n_sect,linenumber,address
+pub const N_FUN: u8 = 0x24;
+/// static symbol: name,,n_sect,type,address
+pub const N_STSYM: u8 = 0x26;
+/// .lcomm symbol: name,,n_sect,type,address
+pub const N_LCSYM: u8 = 0x28;
+/// begin nsect sym: 0,,n_sect,0,address
+pub const N_BNSYM: u8 = 0x2e;
+/// AST file path: name,,NO_SECT,0,0
+pub const N_AST: u8 = 0x32;
+/// emitted with gcc2_compiled and in gcc source
+pub const N_OPT: u8 = 0x3c;
+/// register sym: name,,NO_SECT,type,register
+pub const N_RSYM: u8 = 0x40;
+/// src line: 0,,n_sect,linenumber,address
+pub const N_SLINE: u8 = 0x44;
+/// end nsect sym: 0,,n_sect,0,address
+pub const N_ENSYM: u8 = 0x4e;
+/// structure elt: name,,NO_SECT,type,struct_offset
+pub const N_SSYM: u8 = 0x60;
+/// source file name: name,,n_sect,0,address
+pub const N_SO: u8 = 0x64;
+/// object file name: name,,0,0,st_mtime
+pub const N_OSO: u8 = 0x66;
+/// local sym: name,,NO_SECT,type,offset
+pub const N_LSYM: u8 = 0x80;
+/// include file beginning: name,,NO_SECT,0,sum
+pub const N_BINCL: u8 = 0x82;
+/// #included file name: name,,n_sect,0,address
+pub const N_SOL: u8 = 0x84;
+/// compiler parameters: name,,NO_SECT,0,0
+pub const N_PARAMS: u8 = 0x86;
+/// compiler version: name,,NO_SECT,0,0
+pub const N_VERSION: u8 = 0x88;
+/// compiler -O level: name,,NO_SECT,0,0
+pub const N_OLEVEL: u8 = 0x8A;
+/// parameter: name,,NO_SECT,type,offset
+pub const N_PSYM: u8 = 0xa0;
+/// include file end: name,,NO_SECT,0,0
+pub const N_EINCL: u8 = 0xa2;
+/// alternate entry: name,,n_sect,linenumber,address
+pub const N_ENTRY: u8 = 0xa4;
+/// left bracket: 0,,NO_SECT,nesting level,address
+pub const N_LBRAC: u8 = 0xc0;
+/// deleted include file: name,,NO_SECT,0,sum
+pub const N_EXCL: u8 = 0xc2;
+/// right bracket: 0,,NO_SECT,nesting level,address
+pub const N_RBRAC: u8 = 0xe0;
+/// begin common: name,,NO_SECT,0,0
+pub const N_BCOMM: u8 = 0xe2;
+/// end common: name,,n_sect,0,0
+pub const N_ECOMM: u8 = 0xe4;
+/// end common (local name): 0,,n_sect,0,address
+pub const N_ECOML: u8 = 0xe8;
+/// second stab entry with length information
+pub const N_LENG: u8 = 0xfe;
+/// global pascal symbol: name,,NO_SECT,subtype,line
+pub const N_PC: u8 = 0x30;
 
-// To support the lazy binding of undefined symbols in the dynamic link-editor,
-// the undefined symbols in the symbol table (the nlist structures) are marked
-// with the indication if the undefined reference is a lazy reference or
-// non-lazy reference.  If both a non-lazy reference and a lazy reference is
-// made to the same symbol the non-lazy reference takes precedence.  A reference
-// is lazy only when all references to that symbol are made through a symbol
-// pointer in a lazy symbol pointer section.
-//
-// The implementation of marking nlist structures in the symbol table for
-// undefined symbols will be to use some of the bits of the n_desc field as a
-// reference type.  The mask REFERENCE_TYPE will be applied to the n_desc field
-// of an nlist structure for an undefined symbol to determine the type of
-// undefined reference (lazy or non-lazy).
-//
-// The constants for the REFERENCE FLAGS are propagated to the reference table
-// in a shared library file.  In that case the constant for a defined symbol,
-// REFERENCE_FLAG_DEFINED, is also used.
-//
-// Reference type bits of the n_desc field of undefined symbols
+/// To support the lazy binding of undefined symbols in the dynamic link-editor,
+/// the undefined symbols in the symbol table (the nlist structures) are marked
+/// with the indication if the undefined reference is a lazy reference or
+/// non-lazy reference.  If both a non-lazy reference and a lazy reference is
+/// made to the same symbol the non-lazy reference takes precedence.  A reference
+/// is lazy only when all references to that symbol are made through a symbol
+/// pointer in a lazy symbol pointer section.
+///
+/// The implementation of marking nlist structures in the symbol table for
+/// undefined symbols will be to use some of the bits of the n_desc field as a
+/// reference type.  The mask REFERENCE_TYPE will be applied to the n_desc field
+/// of an nlist structure for an undefined symbol to determine the type of
+/// undefined reference (lazy or non-lazy).
+///
+/// The constants for the REFERENCE FLAGS are propagated to the reference table
+/// in a shared library file.  In that case the constant for a defined symbol,
+/// REFERENCE_FLAG_DEFINED, is also used.
+///
+/// Reference type bits of the n_desc field of undefined symbols
 pub const REFERENCE_TYPE: u8 = 0x7;
 // types of references
 pub const REFERENCE_FLAG_UNDEFINED_NON_LAZY: u8 = 0;
@@ -926,11 +960,11 @@ pub const REFERENCE_FLAG_PRIVATE_DEFINED: u8 = 3;
 pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_NON_LAZY: u8 = 4;
 pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_LAZY: u8 = 5;
 
-// To simplify stripping of objects that use are used with the dynamic link
-// editor, the static link editor marks the symbols defined an object that are
-// referenced by a dynamicly bound object (dynamic shared libraries, bundles).
-// With this marking strip knows not to strip these symbols.
-//
+/// To simplify stripping of objects that use are used with the dynamic link
+/// editor, the static link editor marks the symbols defined an object that are
+/// referenced by a dynamicly bound object (dynamic shared libraries, bundles).
+/// With this marking strip knows not to strip these symbols.
+///
 pub const REFERENCED_DYNAMICALLY: u16 = 0x0010;
 
 // For images created by the static link editor with the -twolevel_namespace
@@ -968,49 +1002,49 @@ pub const EXECUTABLE_ORDINAL: u8 = 0xff;
 // and has two different symbolic names, N_NO_DEAD_STRIP and N_DESC_DISCARDED.
 //
 
-// The N_NO_DEAD_STRIP bit of the n_desc field only ever appears in a
-// relocatable .o file (MH_OBJECT filetype). And is used to indicate to the
-// static link editor it is never to dead strip the symbol.
-//
+/// The N_NO_DEAD_STRIP bit of the n_desc field only ever appears in a
+/// relocatable .o file (MH_OBJECT filetype). And is used to indicate to the
+/// static link editor it is never to dead strip the symbol.
+///
 pub const N_NO_DEAD_STRIP: u16 = 0x0020; /* symbol is not to be dead stripped */
 
-// The N_DESC_DISCARDED bit of the n_desc field never appears in linked image.
-// But is used in very rare cases by the dynamic link editor to mark an in
-// memory symbol as discared and longer used for linking.
-//
+/// The N_DESC_DISCARDED bit of the n_desc field never appears in linked image.
+/// But is used in very rare cases by the dynamic link editor to mark an in
+/// memory symbol as discared and longer used for linking.
+///
 pub const N_DESC_DISCARDED: u16 = 0x0020; /* symbol is discarded */
 
-// The N_WEAK_REF bit of the n_desc field indicates to the dynamic linker that
-// the undefined symbol is allowed to be missing and is to have the address of
-// zero when missing.
-//
+/// The N_WEAK_REF bit of the n_desc field indicates to the dynamic linker that
+/// the undefined symbol is allowed to be missing and is to have the address of
+/// zero when missing.
+///
 pub const N_WEAK_REF: u16 = 0x0040; /* symbol is weak referenced */
 
-// The N_WEAK_DEF bit of the n_desc field indicates to the static and dynamic
-// linkers that the symbol definition is weak, allowing a non-weak symbol to
-// also be used which causes the weak definition to be discared.  Currently this
-// is only supported for symbols in coalesed sections.
-//
+/// The N_WEAK_DEF bit of the n_desc field indicates to the static and dynamic
+/// linkers that the symbol definition is weak, allowing a non-weak symbol to
+/// also be used which causes the weak definition to be discared.  Currently this
+/// is only supported for symbols in coalesed sections.
+///
 pub const N_WEAK_DEF: u16 = 0x0080; /* coalesed symbol is a weak definition */
 
-// The N_REF_TO_WEAK bit of the n_desc field indicates to the dynamic linker
-// that the undefined symbol should be resolved using flat namespace searching.
-//
+/// The N_REF_TO_WEAK bit of the n_desc field indicates to the dynamic linker
+/// that the undefined symbol should be resolved using flat namespace searching.
+///
 pub const N_REF_TO_WEAK: u16 = 0x0080; /* reference to a weak symbol */
 
-// The N_ARM_THUMB_DEF bit of the n_desc field indicates that the symbol is
-// a defintion of a Thumb function.
-//
+/// The N_ARM_THUMB_DEF bit of the n_desc field indicates that the symbol is
+/// a defintion of a Thumb function.
+///
 pub const N_ARM_THUMB_DEF: u16 = 0x0008; /* symbol is a Thumb function (ARM) */
 
-// The N_SYMBOL_RESOLVER bit of the n_desc field indicates that the
-// that the function is actually a resolver function and should
-// be called to get the address of the real function to use.
-// This bit is only available in .o files (MH_OBJECT filetype)
-//
+/// The N_SYMBOL_RESOLVER bit of the n_desc field indicates that the
+/// that the function is actually a resolver function and should
+/// be called to get the address of the real function to use.
+/// This bit is only available in .o files (MH_OBJECT filetype)
+///
 pub const N_SYMBOL_RESOLVER: u16 = 0x0100;
 
-// The N_ALT_ENTRY bit of the n_desc field indicates that the
-// symbol is pinned to the previous content.
-//
+/// The N_ALT_ENTRY bit of the n_desc field indicates that the
+/// symbol is pinned to the previous content.
+///
 pub const N_ALT_ENTRY: u16 = 0x0200;

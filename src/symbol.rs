@@ -10,6 +10,7 @@ use consts::*;
 use commands::{LoadCommand, Section};
 use loader::{OFile, MachCommand};
 
+/// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]
 pub enum Symbol<'a> {
     Undefined {
@@ -141,67 +142,72 @@ impl<'a> fmt::Display for Symbol<'a> {
     }
 }
 
-pub trait Reference {
+/// Reference type and flags of symbol
+pub trait SymbolReference {
+    /// raw `desc` value
     fn desc(&self) -> u16;
 
-    // types of references
+    /// types of references
     fn ref_type(&self) -> u8 {
         self.desc() as u8 & REFERENCE_TYPE
     }
 
-    // To simplify stripping of objects that use are used with the dynamic link
-    // editor, the static link editor marks the symbols defined an object that are
-    // referenced by a dynamicly bound object (dynamic shared libraries, bundles).
-    // With this marking strip knows not to strip these symbols.
-    //
+    /// To simplify stripping of objects that use are used with the dynamic link
+    /// editor, the static link editor marks the symbols defined an object that are
+    /// referenced by a dynamicly bound object (dynamic shared libraries, bundles).
+    /// With this marking strip knows not to strip these symbols.
     fn is_ref_dyn(&self) -> bool {
         (self.desc() & REFERENCED_DYNAMICALLY) == REFERENCED_DYNAMICALLY
     }
 
+    /// The ordinal recorded references the libraries listed in the Mach-O file
     fn lib_ordinal(&self) -> u8 {
         ((self.desc() >> 8) & 0xff) as u8
     }
 
-    // symbol is not to be dead stripped
+    /// symbol is not to be dead stripped
     fn is_no_dead_strip(&self) -> bool {
         (self.desc() & N_NO_DEAD_STRIP) == N_NO_DEAD_STRIP
     }
 
-    // symbol is discarded
+    /// symbol is discarded
     fn is_discarded(&self) -> bool {
         (self.desc() & N_DESC_DISCARDED) == N_DESC_DISCARDED
     }
 
-    // symbol is weak referenced
+    /// symbol is weak referenced
     fn is_weak_ref(&self) -> bool {
         (self.desc() & N_WEAK_REF) == N_WEAK_REF
     }
 
-    // coalesed symbol is a weak definition
+    /// coalesed symbol is a weak definition
     fn is_weak_def(&self) -> bool {
         (self.desc() & N_WEAK_DEF) == N_WEAK_DEF
     }
 
-    // reference to a weak symbol
+    /// reference to a weak symbol
     fn is_ref_to_weak(&self) -> bool {
         (self.desc() & N_REF_TO_WEAK) == N_REF_TO_WEAK
     }
 
-    // symbol is a Thumb function (ARM)
+    /// symbol is a Thumb function (ARM)
     fn is_arm_thumb_def(&self) -> bool {
         (self.desc() & N_ARM_THUMB_DEF) == N_ARM_THUMB_DEF
     }
 
+    /// the function is actually a resolver function and
+    /// should be called to get the address of the real function to use.
     fn is_resolver(&self) -> bool {
         (self.desc() & N_SYMBOL_RESOLVER) == N_SYMBOL_RESOLVER
     }
 
+    /// symbol is pinned to the previous content.
     fn is_alt_entry(&self) -> bool {
         (self.desc() & N_ALT_ENTRY) == N_ALT_ENTRY
     }
 }
 
-impl<'a> Reference for Symbol<'a> {
+impl<'a> SymbolReference for Symbol<'a> {
     fn desc(&self) -> u16 {
         match self {
             &Symbol::Undefined { desc, .. } |
@@ -214,6 +220,7 @@ impl<'a> Reference for Symbol<'a> {
     }
 }
 
+/// `Symbol` Iter
 pub struct SymbolIter<'a> {
     cur: &'a mut Cursor<&'a [u8]>,
     sections: Vec<Rc<Section>>,
@@ -342,13 +349,15 @@ impl<'a> Iterator for SymbolIter<'a> {
     }
 }
 
-pub trait SymbolProvider<'a> {
+/// Read symbols from a Mach-O file
+pub trait SymbolReader<'a> {
     type Iter: Iterator<Item = Symbol<'a>>;
 
+    /// Read symbols from Mach-O file
     fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter>;
 }
 
-impl<'a> SymbolProvider<'a> for OFile {
+impl<'a> SymbolReader<'a> for OFile {
     type Iter = SymbolIter<'a>;
 
     fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {

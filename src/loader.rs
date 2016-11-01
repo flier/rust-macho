@@ -61,12 +61,19 @@ impl MachArch for Arch64 {
 ///
 #[derive(Debug, Default, Clone)]
 pub struct MachHeader {
+    /// mach magic number identifier
     pub magic: u32,
+    /// cpu specifier
     pub cputype: cpu_type_t,
+    /// machine specifier
     pub cpusubtype: cpu_subtype_t,
+    /// type of file
     pub filetype: u32,
+    /// number of load commands
     pub ncmds: u32,
+    /// the size of all the load commands
     pub sizeofcmds: u32,
+    /// flags
     pub flags: u32,
 }
 
@@ -99,6 +106,7 @@ impl fmt::Display for MachHeader {
     }
 }
 
+/// Wrap load command with size in the Mach-O file
 #[derive(Debug, Clone)]
 pub struct MachCommand(pub LoadCommand, pub usize);
 
@@ -506,7 +514,9 @@ impl MachCommand {
 ///
 #[derive(Debug, Default, Clone)]
 pub struct FatHeader {
+    /// fat magic number identifier
     pub magic: u32,
+    /// number of structs that follow
     pub archs: Vec<FatArch>,
 }
 

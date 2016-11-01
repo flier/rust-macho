@@ -8,7 +8,7 @@ Use OFile::parse to read the mach-o file from a &[u8] slice.
 ```rust
 use std::io::{Read, Cursor};
 use std::fs::File;
-use macho::{OFile, CPU_TYPE_X86_64, MachCommand, LoadCommand};
+use mach_object::{OFile, CPU_TYPE_X86_64, MachCommand, LoadCommand};
 
 let mut f = File::open("test/helloworld").unwrap();
 let mut buf = Vec::new();
@@ -32,4 +32,4 @@ if let OFile::MachFile { ref header, ref commands } = OFile::parse(&mut cur).unw
 For more detail, please check the unit tests and the [otool](examples/otool.rs) example.
 
 ## Document
-[API Reference](http://flier.github.io/rust-macho/doc/macho/index.html)
+[API Reference](http://flier.github.io/rust-macho/doc/mach_object/index.html)

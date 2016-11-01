@@ -4,7 +4,7 @@ extern crate env_logger;
 extern crate getopts;
 extern crate byteorder;
 extern crate memmap;
-extern crate macho;
+extern crate mach_object;
 
 use std::env;
 use std::mem::size_of;
@@ -16,7 +16,7 @@ use getopts::Options;
 use byteorder::ReadBytesExt;
 use memmap::{Mmap, Protection};
 
-use macho::*;
+use mach_object::*;
 
 const APP_VERSION: &'static str = "0.1.1";
 

@@ -5,7 +5,7 @@
 //! ```
 //! use std::io::{Read, Cursor};
 //! use std::fs::File;
-//! use macho::{OFile, CPU_TYPE_X86_64, MachCommand, LoadCommand};
+//! use mach_object::{OFile, CPU_TYPE_X86_64, MachCommand, LoadCommand};
 //!
 //! let mut f = File::open("test/helloworld").unwrap();
 //! let mut buf = Vec::new();

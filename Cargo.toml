@@ -1,5 +1,5 @@
 [package]
-name = "macho"
+name = "mach_object"
 version = "0.1.1"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
 description = "Mach-O File Format Parser for Rust"
@@ -24,7 +24,7 @@ getopts = "0.2"
 memmap = "0.3"
 
 [lib]
-name = "macho"
+name = "mach_object"
 
 [[example]]
 name = "otool"

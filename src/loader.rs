@@ -11,7 +11,7 @@ use consts::*;
 use errors::*;
 use commands::{LoadCommand, LcString, ReadStringExt};
 
-/// The architecture of mach header 
+/// The architecture of mach header
 ///
 pub trait MachArch {
     /// parse mach header
@@ -68,6 +68,16 @@ pub struct MachHeader {
     pub ncmds: u32,
     pub sizeofcmds: u32,
     pub flags: u32,
+}
+
+impl MachHeader {
+    pub fn is_64bit(&self) -> bool {
+        (self.cputype & CPU_ARCH_MASK) == CPU_ARCH_ABI64
+    }
+
+    pub fn is_bigend(&self) -> bool {
+        self.magic == MH_CIGAM || self.magic == MH_CIGAM_64
+    }
 }
 
 impl fmt::Display for MachHeader {
@@ -381,11 +391,12 @@ impl MachCommand {
                             "         name {} (offset {})\n",
                             dylib.name,
                             dylib.name.0));
-                let ts = time::at(time::Timespec::new(dylib.timestamp as i64, 0));
+                let ts = time::at_utc(time::Timespec::new(dylib.timestamp as i64, 0));
                 try!(write!(f,
                             "   time stamp {} {}\n",
                             dylib.timestamp,
-                            try!(time::strftime("%a %b %e %T %Y", &ts).map_err(|_| fmt::Error))));
+                            try!(time::strftime("%a %b %e %T %Y %Z", &ts)
+                                .map_err(|_| fmt::Error))));
                 try!(write!(f,
                             "      current version {}.{}.{}\n",
                             dylib.current_version.major(),
@@ -489,9 +500,9 @@ impl MachCommand {
     }
 }
 
-/// The structures of the file format for "fat" architecture specific file (wrapper design).  
+/// The structures of the file format for "fat" architecture specific file (wrapper design).
 /// At the begining of the file there is one FatHeader structure followed by a number of FatArch
-/// structures.  
+/// structures.
 ///
 #[derive(Debug, Default, Clone)]
 pub struct FatHeader {
@@ -523,8 +534,8 @@ impl fmt::Display for FatHeader {
     }
 }
 
-/// For each architecture in the file, specified by a pair of cputype and cpusubtype, 
-/// the FatArch describes the file offset, file size and alignment 
+/// For each architecture in the file, specified by a pair of cputype and cpusubtype,
+/// the FatArch describes the file offset, file size and alignment
 /// in the file of the architecture specific member.
 ///
 #[derive(Debug, Default, Clone)]
@@ -637,7 +648,8 @@ pub struct RanLib {
     pub ran_off: off_t,
 }
 
-/// The abstract file block, including mach-o file, fat/universal file, archive file and symdef block
+/// The abstract file block, including mach-o file, fat/universal file,
+/// archive file and symdef block
 #[derive(Debug, Clone)]
 pub enum OFile {
     MachFile {
@@ -648,12 +660,8 @@ pub enum OFile {
         magic: u32,
         files: Vec<(FatArch, OFile)>,
     },
-    ArFile {
-        files: Vec<(ArHeader, OFile)>,
-    },
-    SymDef {
-        ranlibs: Vec<RanLib>,
-    },
+    ArFile { files: Vec<(ArHeader, OFile)> },
+    SymDef { ranlibs: Vec<RanLib> },
 }
 
 impl OFile {
@@ -845,10 +853,9 @@ pub mod tests {
           magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
      0xfeedfacf 16777223          3  0x80           2    15       2080 0x00a18085
     **/
-    const MACH_HEADER_64_DATA: [u8; 32] = [0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0,
-                                           0x0, 0x80, 0x2, 0x0, 0x0, 0x0, 0xf, 0x0, 0x0, 0x0,
-                                           0x20, 0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0,
-                                           0x0, 0x0];
+    const MACH_HEADER_64_DATA: [u8; 32] =
+        [0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0, 0x80, 0x2, 0x0, 0x0, 0x0, 0xf,
+         0x0, 0x0, 0x0, 0x20, 0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0, 0x0, 0x0];
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
     static HELLO_WORLD_LC: &'static str = include_str!("../test/helloworld.lc");
@@ -984,8 +991,8 @@ pub mod tests {
             assert_eq!(files.len(), 2);
 
             for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC]
-                                      .iter()
-                                      .enumerate() {
+                .iter()
+                .enumerate() {
                 let mut w = Vec::<u8>::new();
 
                 write!(w, "helloworld.universal:\n").unwrap();

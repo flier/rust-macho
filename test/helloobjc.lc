@@ -318,28 +318,28 @@ Load command 12
           cmd LC_LOAD_DYLIB
       cmdsize 96
          name /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation (offset 24)
-   time stamp 2 Thu Jan  1 00:00:02 1970
+   time stamp 2 Thu Jan  1 00:00:02 1970 UTC
       current version 1258.0.0
 compatibility version 300.0.0
 Load command 13
           cmd LC_LOAD_DYLIB
       cmdsize 56
          name /usr/lib/libSystem.B.dylib (offset 24)
-   time stamp 2 Thu Jan  1 00:00:02 1970
+   time stamp 2 Thu Jan  1 00:00:02 1970 UTC
       current version 1226.10.1
 compatibility version 1.0.0
 Load command 14
           cmd LC_LOAD_DYLIB
       cmdsize 104
          name /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (offset 24)
-   time stamp 2 Thu Jan  1 00:00:02 1970
+   time stamp 2 Thu Jan  1 00:00:02 1970 UTC
       current version 1258.1.0
 compatibility version 150.0.0
 Load command 15
           cmd LC_LOAD_DYLIB
       cmdsize 56
          name /usr/lib/libobjc.A.dylib (offset 24)
-   time stamp 2 Thu Jan  1 00:00:02 1970
+   time stamp 2 Thu Jan  1 00:00:02 1970 UTC
       current version 228.0.0
 compatibility version 1.0.0
 Load command 16

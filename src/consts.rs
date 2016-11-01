@@ -46,8 +46,11 @@ pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
 
 // Capability bits used in the definition of cpu_subtype.
 //
-pub const CPU_SUBTYPE_MASK: cpu_subtype_t = 0xff000000u64 as cpu_subtype_t;  /* mask for feature flags */
-pub const CPU_SUBTYPE_LIB64: cpu_subtype_t = 0x80000000u64 as cpu_subtype_t;  /* 64 bit libraries */
+
+/// mask for feature flags
+pub const CPU_SUBTYPE_MASK: cpu_subtype_t = 0xff000000u64 as cpu_subtype_t;
+/// 64 bit libraries
+pub const CPU_SUBTYPE_LIB64: cpu_subtype_t = 0x80000000u64 as cpu_subtype_t;
 
 pub fn get_cpu_subtype_type(subtype: cpu_subtype_t) -> u32 {
     (subtype as u32) & !(CPU_SUBTYPE_MASK as u32)
@@ -399,7 +402,8 @@ pub const MH_KEXT_BUNDLE: u32 = 0xb;
 
 /// the object file has no undefined references
 pub const MH_NOUNDEFS: u32 = 0x1;
-/// the object file is the output of an incremental link against a base file and can't be link edited again
+/// the object file is the output of an incremental link
+/// against a base file and can't be link edited again
 pub const MH_INCRLINK: u32 = 0x2;
 // the object file is input for the dynamic linker and can't be staticly link edited again
 pub const MH_DYLDLINK: u32 = 0x4;
@@ -409,17 +413,20 @@ pub const MH_BINDATLOAD: u32 = 0x8;
 pub const MH_PREBOUND: u32 = 0x10;
 /// the file has its read-only and read-write segments split
 pub const MH_SPLIT_SEGS: u32 = 0x20;
-/// the shared library init routine is to be run lazily via catching memory faults to its writeable segments (obsolete)
+/// the shared library init routine is to be run lazily
+/// via catching memory faults to its writeable segments (obsolete)
 pub const MH_LAZY_INIT: u32 = 0x40;
 /// the image is using two-level name space bindings
 pub const MH_TWOLEVEL: u32 = 0x80;
 /// the executable is forcing all images to use flat name space bindings
 pub const MH_FORCE_FLAT: u32 = 0x100;
-/// this umbrella guarantees no multiple defintions of symbols in its sub-images so the two-level namespace hints can always be used.
+/// this umbrella guarantees no multiple defintions of symbols
+/// in its sub-images so the two-level namespace hints can always be used.
 pub const MH_NOMULTIDEFS: u32 = 0x200;
 /// do not have dyld notify the prebinding agent about this executable
 pub const MH_NOFIXPREBINDING: u32 = 0x400;
-/// the binary is not prebound but can have its prebinding redone. only used when MH_PREBOUND is not set.
+/// the binary is not prebound but can have its prebinding redone.
+/// only used when MH_PREBOUND is not set.
 pub const MH_PREBINDABLE: u32 = 0x800;
 /// indicates that this binary binds to all two-level namespace modules of its dependent libraries.
 /// only used when MH_PREBINDABLE and MH_TWOLEVEL are both set.
@@ -435,13 +442,17 @@ pub const MH_BINDS_TO_WEAK: u32 = 0x10000;
 /// When this bit is set, all stacks in the task will be given stack execution privilege.
 /// Only used in MH_EXECUTE filetypes.
 pub const MH_ALLOW_STACK_EXECUTION: u32 = 0x20000;
-/// When this bit is set, the binary declares it is safe for use in processes with uid zero
+/// When this bit is set, the binary declares it is safe
+/// for use in processes with uid zero
 pub const MH_ROOT_SAFE: u32 = 0x40000;
-/// When this bit is set, the binary declares it is safe for use in processes when issetugid() is true
+/// When this bit is set, the binary declares it is safe
+/// for use in processes when issetugid() is true
 pub const MH_SETUID_SAFE: u32 = 0x80000;
-/// When this bit is set on a dylib, the static linker does not need to examine dependent dylibs to see if any are re-exported
+/// When this bit is set on a dylib, the static linker does not need to examine dependent dylibs
+/// to see if any are re-exported
 pub const MH_NO_REEXPORTED_DYLIBS: u32 = 0x100000;
-/// When this bit is set, the OS will load the main executable at a random address.  Only used in MH_EXECUTE filetypes.
+/// When this bit is set, the OS will load the main executable at a random address.
+/// Only used in MH_EXECUTE filetypes.
 pub const MH_PIE: u32 = 0x200000;
 /// Only for use on dylibs.  When linking against a dylib that has this bit set,
 /// the static linker will automatically not create a LC_LOAD_DYLIB load command
@@ -449,7 +460,8 @@ pub const MH_PIE: u32 = 0x200000;
 pub const MH_DEAD_STRIPPABLE_DYLIB: u32 = 0x400000;
 /// Contains a section of type S_THREAD_LOCAL_VARIABLES
 pub const MH_HAS_TLV_DESCRIPTORS: u32 = 0x800000;
-/// When this bit is set, the OS will run the main executable with a non-executable heap even on platforms (e.g. i386)
+/// When this bit is set, the OS will run the main executable
+/// with a non-executable heap even on platforms (e.g. i386)
 /// that don't require it. Only used in MH_EXECUTE filetypes.
 pub const MH_NO_HEAP_EXECUTION: u32 = 0x1000000;
 /// The code was linked for use in an application extension.
@@ -853,3 +865,152 @@ pub const DICE_KIND_JUMP_TABLE8: u16 = 0x0002;
 pub const DICE_KIND_JUMP_TABLE16: u16 = 0x0003;
 pub const DICE_KIND_JUMP_TABLE32: u16 = 0x0004;
 pub const DICE_KIND_ABS_JUMP_TABLE32: u16 = 0x0005;
+
+pub const N_GSYM: u8 = 0x20;    /* global symbol: name,,NO_SECT,type,0 */
+pub const N_FNAME: u8 = 0x22;    /* procedure name (f77 kludge): name,,NO_SECT,0,0 */
+pub const N_FUN: u8 = 0x24;    /* procedure: name,,n_sect,linenumber,address */
+pub const N_STSYM: u8 = 0x26;    /* static symbol: name,,n_sect,type,address */
+pub const N_LCSYM: u8 = 0x28;   /* .lcomm symbol: name,,n_sect,type,address */
+pub const N_BNSYM: u8 = 0x2e;  /* begin nsect sym: 0,,n_sect,0,address */
+pub const N_AST: u8 = 0x32;   /* AST file path: name,,NO_SECT,0,0 */
+pub const N_OPT: u8 = 0x3c; /* emitted with gcc2_compiled and in gcc source */
+pub const N_RSYM: u8 = 0x40;   /* register sym: name,,NO_SECT,type,register */
+pub const N_SLINE: u8 = 0x44;   /* src line: 0,,n_sect,linenumber,address */
+pub const N_ENSYM: u8 = 0x4e;  /* end nsect sym: 0,,n_sect,0,address */
+pub const N_SSYM: u8 = 0x60;  /* structure elt: name,,NO_SECT,type,struct_offset */
+pub const N_SO: u8 = 0x64;  /* source file name: name,,n_sect,0,address */
+pub const N_OSO: u8 = 0x66;  /* object file name: name,,0,0,st_mtime */
+pub const N_LSYM: u8 = 0x80;  /* local sym: name,,NO_SECT,type,offset */
+pub const N_BINCL: u8 = 0x82;  /* include file beginning: name,,NO_SECT,0,sum */
+pub const N_SOL: u8 = 0x84;  /* #included file name: name,,n_sect,0,address */
+pub const N_PARAMS: u8 = 0x86;  /* compiler parameters: name,,NO_SECT,0,0 */
+pub const N_VERSION: u8 = 0x88;  /* compiler version: name,,NO_SECT,0,0 */
+pub const N_OLEVEL: u8 = 0x8A;  /* compiler -O level: name,,NO_SECT,0,0 */
+pub const N_PSYM: u8 = 0xa0;  /* parameter: name,,NO_SECT,type,offset */
+pub const N_EINCL: u8 = 0xa2;  /* include file end: name,,NO_SECT,0,0 */
+pub const N_ENTRY: u8 = 0xa4;  /* alternate entry: name,,n_sect,linenumber,address */
+pub const N_LBRAC: u8 = 0xc0;  /* left bracket: 0,,NO_SECT,nesting level,address */
+pub const N_EXCL: u8 = 0xc2;  /* deleted include file: name,,NO_SECT,0,sum */
+pub const N_RBRAC: u8 = 0xe0;  /* right bracket: 0,,NO_SECT,nesting level,address */
+pub const N_BCOMM: u8 = 0xe2;  /* begin common: name,,NO_SECT,0,0 */
+pub const N_ECOMM: u8 = 0xe4;  /* end common: name,,n_sect,0,0 */
+pub const N_ECOML: u8 = 0xe8;  /* end common (local name): 0,,n_sect,0,address */
+pub const N_LENG: u8 = 0xfe;  /* second stab entry with length information */
+pub const N_PC: u8 = 0x30;    /* global pascal symbol: name,,NO_SECT,subtype,line */
+
+// To support the lazy binding of undefined symbols in the dynamic link-editor,
+// the undefined symbols in the symbol table (the nlist structures) are marked
+// with the indication if the undefined reference is a lazy reference or
+// non-lazy reference.  If both a non-lazy reference and a lazy reference is
+// made to the same symbol the non-lazy reference takes precedence.  A reference
+// is lazy only when all references to that symbol are made through a symbol
+// pointer in a lazy symbol pointer section.
+//
+// The implementation of marking nlist structures in the symbol table for
+// undefined symbols will be to use some of the bits of the n_desc field as a
+// reference type.  The mask REFERENCE_TYPE will be applied to the n_desc field
+// of an nlist structure for an undefined symbol to determine the type of
+// undefined reference (lazy or non-lazy).
+//
+// The constants for the REFERENCE FLAGS are propagated to the reference table
+// in a shared library file.  In that case the constant for a defined symbol,
+// REFERENCE_FLAG_DEFINED, is also used.
+//
+// Reference type bits of the n_desc field of undefined symbols
+pub const REFERENCE_TYPE: u8 = 0x7;
+// types of references
+pub const REFERENCE_FLAG_UNDEFINED_NON_LAZY: u8 = 0;
+pub const REFERENCE_FLAG_UNDEFINED_LAZY: u8 = 1;
+pub const REFERENCE_FLAG_DEFINED: u8 = 2;
+pub const REFERENCE_FLAG_PRIVATE_DEFINED: u8 = 3;
+pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_NON_LAZY: u8 = 4;
+pub const REFERENCE_FLAG_PRIVATE_UNDEFINED_LAZY: u8 = 5;
+
+// To simplify stripping of objects that use are used with the dynamic link
+// editor, the static link editor marks the symbols defined an object that are
+// referenced by a dynamicly bound object (dynamic shared libraries, bundles).
+// With this marking strip knows not to strip these symbols.
+//
+pub const REFERENCED_DYNAMICALLY: u16 = 0x0010;
+
+// For images created by the static link editor with the -twolevel_namespace
+// option in effect the flags field of the mach header is marked with
+// MH_TWOLEVEL.  And the binding of the undefined references of the image are
+// determined by the static link editor.  Which library an undefined symbol is
+// bound to is recorded by the static linker in the high 8 bits of the n_desc
+// field using the SET_LIBRARY_ORDINAL macro below.  The ordinal recorded
+// references the libraries listed in the Mach-O's LC_LOAD_DYLIB,
+// LC_LOAD_WEAK_DYLIB, LC_REEXPORT_DYLIB, LC_LOAD_UPWARD_DYLIB, and
+// LC_LAZY_LOAD_DYLIB, etc. load commands in the order they appear in the
+// headers.   The library ordinals start from 1.
+// For a dynamic library that is built as a two-level namespace image the
+// undefined references from module defined in another use the same nlist struct
+// an in that case SELF_LIBRARY_ORDINAL is used as the library ordinal.  For
+// defined symbols in all images they also must have the library ordinal set to
+// SELF_LIBRARY_ORDINAL.  The EXECUTABLE_ORDINAL refers to the executable
+// image for references from plugins that refer to the executable that loads
+// them.
+//
+// The DYNAMIC_LOOKUP_ORDINAL is for undefined symbols in a two-level namespace
+// image that are looked up by the dynamic linker with flat namespace semantics.
+// This ordinal was added as a feature in Mac OS X 10.3 by reducing the
+// value of MAX_LIBRARY_ORDINAL by one.  So it is legal for existing binaries
+// or binaries built with older tools to have 0xfe (254) dynamic libraries.  In
+// this case the ordinal value 0xfe (254) must be treated as a library ordinal
+// for compatibility.
+//
+pub const SELF_LIBRARY_ORDINAL: u8 = 0x0;
+pub const MAX_LIBRARY_ORDINAL: u8 = 0xfd;
+pub const DYNAMIC_LOOKUP_ORDINAL: u8 = 0xfe;
+pub const EXECUTABLE_ORDINAL: u8 = 0xff;
+
+// The bit 0x0020 of the n_desc field is used for two non-overlapping purposes
+// and has two different symbolic names, N_NO_DEAD_STRIP and N_DESC_DISCARDED.
+//
+
+// The N_NO_DEAD_STRIP bit of the n_desc field only ever appears in a
+// relocatable .o file (MH_OBJECT filetype). And is used to indicate to the
+// static link editor it is never to dead strip the symbol.
+//
+pub const N_NO_DEAD_STRIP: u16 = 0x0020; /* symbol is not to be dead stripped */
+
+// The N_DESC_DISCARDED bit of the n_desc field never appears in linked image.
+// But is used in very rare cases by the dynamic link editor to mark an in
+// memory symbol as discared and longer used for linking.
+//
+pub const N_DESC_DISCARDED: u16 = 0x0020; /* symbol is discarded */
+
+// The N_WEAK_REF bit of the n_desc field indicates to the dynamic linker that
+// the undefined symbol is allowed to be missing and is to have the address of
+// zero when missing.
+//
+pub const N_WEAK_REF: u16 = 0x0040; /* symbol is weak referenced */
+
+// The N_WEAK_DEF bit of the n_desc field indicates to the static and dynamic
+// linkers that the symbol definition is weak, allowing a non-weak symbol to
+// also be used which causes the weak definition to be discared.  Currently this
+// is only supported for symbols in coalesed sections.
+//
+pub const N_WEAK_DEF: u16 = 0x0080; /* coalesed symbol is a weak definition */
+
+// The N_REF_TO_WEAK bit of the n_desc field indicates to the dynamic linker
+// that the undefined symbol should be resolved using flat namespace searching.
+//
+pub const N_REF_TO_WEAK: u16 = 0x0080; /* reference to a weak symbol */
+
+// The N_ARM_THUMB_DEF bit of the n_desc field indicates that the symbol is
+// a defintion of a Thumb function.
+//
+pub const N_ARM_THUMB_DEF: u16 = 0x0008; /* symbol is a Thumb function (ARM) */
+
+// The N_SYMBOL_RESOLVER bit of the n_desc field indicates that the
+// that the function is actually a resolver function and should
+// be called to get the address of the real function to use.
+// This bit is only available in .o files (MH_OBJECT filetype)
+//
+pub const N_SYMBOL_RESOLVER: u16 = 0x0100;
+
+// The N_ALT_ENTRY bit of the n_desc field indicates that the
+// symbol is pinned to the previous content.
+//
+pub const N_ALT_ENTRY: u16 = 0x0200;

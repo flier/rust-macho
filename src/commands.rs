@@ -140,7 +140,6 @@ impl fmt::Display for LcString {
 /// The target pathname (the name of the library as found for execution),
 /// and the minor version number.  The address of where the headers are loaded is in
 /// header_addr. (THIS IS OBSOLETE and no longer supported).
-///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FvmLib {
     /// library's target pathname
@@ -152,7 +151,7 @@ pub struct FvmLib {
 }
 
 
-/// Dynamicly linked shared libraries are identified by two things.
+/// Dynamically linked shared libraries are identified by two things.
 ///
 /// The pathname (the name of the library as found for execution), and the
 /// compatibility version number.  The pathname must match and the compatibility
@@ -160,8 +159,6 @@ pub struct FvmLib {
 /// library being used.  The time stamp is used to record the time a library was
 /// built and copied into user so it can be use to determined if the library used
 /// at runtime is exactly the same as used to built the program.
-///
-///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DyLib {
     /// library's path name

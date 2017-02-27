@@ -10,7 +10,7 @@ mach_object = "0.1"
 ```
 or alternatively,
 ```
-hyperscan = { git = "https://github.com/flier/rust-macho.git" }
+mach_object = { git = "https://github.com/flier/rust-macho.git" }
 ```
 
 ## Examples

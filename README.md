@@ -9,7 +9,7 @@ To use, add the following line to Cargo.toml under [dependencies]:
 mach_object = "0.1"
 ```
 or alternatively,
-```
+```toml
 mach_object = { git = "https://github.com/flier/rust-macho.git" }
 ```
 

@@ -1,5 +1,17 @@
-# rust-macho [![travis](https://travis-ci.org/flier/rust-macho.svg?branch=master)](https://travis-ci.org/flier/rust-macho)
+# rust-macho [![travis](https://travis-ci.org/flier/rust-macho.svg?branch=master)](https://travis-ci.org/flier/rust-macho) [![crate](https://img.shields.io/crates/v/mach_object.svg)](https://crates.io/crates/mach_object) [![docs](https://docs.rs/mach_object/badge.svg)](https://docs.rs/mach_object)
 Mach-O File Format Parser for Rust
+
+## Usage
+
+To use, add the following line to Cargo.toml under [dependencies]:
+
+```toml
+mach_object = "0.1"
+```
+or alternatively,
+```
+hyperscan = { git = "https://github.com/flier/rust-macho.git" }
+```
 
 ## Examples
 
@@ -30,6 +42,3 @@ if let OFile::MachFile { ref header, ref commands } = OFile::parse(&mut cur).unw
 ```
 
 For more detail, please check the unit tests and the [otool](examples/otool.rs) example.
-
-## Document
-[API Reference](http://flier.github.io/rust-macho/doc/mach_object/index.html)

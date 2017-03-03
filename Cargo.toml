@@ -11,17 +11,17 @@ license = "Apache-2.0"
 [dependencies]
 log = "0.3"
 libc = "0.2"
-byteorder = "0.5"
+byteorder = "1.0"
 uuid = "0.4"
 time = "0.1"
-bitflags = "0.5"
-lazy_static = "0.1"
+bitflags = "0.8"
+lazy_static = "0.2"
 
 [dev-dependencies]
-env_logger = "0.3"
+env_logger = "0.4"
 diff = "0.1"
 getopts = "0.2"
-memmap = "0.3"
+memmap = "0.5"
 
 [lib]
 name = "mach_object"

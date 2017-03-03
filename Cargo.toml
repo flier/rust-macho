@@ -1,6 +1,6 @@
 [package]
 name = "mach_object"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
 description = "Mach-O File Format Parser for Rust"
 documentation = "http://flier.github.io/rust-macho/"

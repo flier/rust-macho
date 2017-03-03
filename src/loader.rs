@@ -225,9 +225,7 @@ impl MachCommand {
                                     S_SYMBOL_STUBS |
                                     S_LAZY_SYMBOL_POINTERS |
                                     S_LAZY_DYLIB_SYMBOL_POINTERS |
-                                    S_NON_LAZY_SYMBOL_POINTERS => {
-                                        " (index into indirect symbol table)\n"
-                                    }
+                                    S_NON_LAZY_SYMBOL_POINTERS => " (index into indirect symbol table)\n",
                                     _ => "\n",
                                 }));
                     try!(write!(f,
@@ -403,8 +401,7 @@ impl MachCommand {
                 try!(write!(f,
                             "   time stamp {} {}\n",
                             dylib.timestamp,
-                            try!(time::strftime("%a %b %e %T %Y %Z", &ts)
-                                .map_err(|_| fmt::Error))));
+                            try!(time::strftime("%a %b %e %T %Y %Z", &ts).map_err(|_| fmt::Error))));
                 try!(write!(f,
                             "      current version {}.{}.{}\n",
                             dylib.current_version.major(),
@@ -589,8 +586,7 @@ impl ArHeader {
             ar_date: try!(try!(buf.read_fixed_size_string(12)).trim().parse()),
             ar_uid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
             ar_gid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
-            ar_mode: try!(Self::parse_octal(try!(buf.read_fixed_size_string(8))
-                                                .trim())) as libc::mode_t,
+            ar_mode: try!(Self::parse_octal(try!(buf.read_fixed_size_string(8)).trim())) as libc::mode_t,
             ar_size: try!(try!(buf.read_fixed_size_string(10)).trim().parse()),
             ar_fmag: try!(buf.read_u16::<NativeEndian>()),
             ar_member_name: None,
@@ -763,9 +759,9 @@ impl OFile {
                    arch.offset,
                    arch);
 
-            try!(buf.seek(SeekFrom::Start(arch.offset as u64)));
+            let mut cur = Cursor::new(&buf.get_ref()[arch.offset as usize..(arch.offset + arch.size) as usize]);
 
-            let file = try!(OFile::parse(buf));
+            let file = try!(OFile::parse(&mut cur));
 
             files.push((arch, file));
         }
@@ -863,9 +859,9 @@ pub mod tests {
           magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
      0xfeedfacf 16777223          3  0x80           2    15       2080 0x00a18085
     **/
-    const MACH_HEADER_64_DATA: [u8; 32] =
-        [0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0, 0x80, 0x2, 0x0, 0x0, 0x0, 0xf,
-         0x0, 0x0, 0x0, 0x20, 0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0, 0x0, 0x0];
+    const MACH_HEADER_64_DATA: [u8; 32] = [0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0, 0x80, 0x2, 0x0,
+                                           0x0, 0x0, 0xf, 0x0, 0x0, 0x0, 0x20, 0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0,
+                                           0x0, 0x0, 0x0, 0x0];
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
     static HELLO_WORLD_LC: &'static str = include_str!("../test/helloworld.lc");

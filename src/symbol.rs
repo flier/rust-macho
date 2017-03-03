@@ -257,7 +257,7 @@ impl<'a> SymbolIter<'a> {
                 section: if sect == NO_SECT {
                     None
                 } else {
-                    Some(self.sections[(sect - 1) as usize].clone())
+                    self.sections.get((sect - 1) as usize).map(|x| x.clone())
                 },
                 desc: desc,
                 addr: value,
@@ -290,7 +290,7 @@ impl<'a> SymbolIter<'a> {
                         section: if sect == NO_SECT {
                             None
                         } else {
-                            Some(self.sections[(sect - 1) as usize].clone())
+                            self.sections.get((sect - 1) as usize).map(|x| x.clone())
                         },
                         desc: desc,
                         entry: value,

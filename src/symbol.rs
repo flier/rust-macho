@@ -1,9 +1,13 @@
 use std::str;
 use std::fmt;
 use std::rc::Rc;
-use std::io::{Cursor, Seek, SeekFrom};
+use std::io::prelude::*;
+use std::io::{Cursor, SeekFrom};
 
 use byteorder::{ByteOrder, ReadBytesExt, LittleEndian, BigEndian};
+
+use dwarf;
+use uuid::Uuid;
 
 use errors::*;
 use consts::*;
@@ -401,20 +405,101 @@ impl<'a> SymbolReader<'a> for OFile {
 //            N_EXT:1;
 // which are used via the following masks.
 //
-const N_STAB: u8 = 0xe0;  /* if any of these bits set, a symbolic debugging entry */
+const N_STAB: u8 = 0xe0; /* if any of these bits set, a symbolic debugging entry */
 #[allow(dead_code)]
-const N_PEXT: u8 = 0x10;  /* private external symbol bit */
-const N_TYPE: u8 = 0x0e;  /* mask for the type bits */
-const N_EXT: u8 = 0x01;  /* external symbol bit, set for external symbols */
+const N_PEXT: u8 = 0x10; /* private external symbol bit */
+const N_TYPE: u8 = 0x0e; /* mask for the type bits */
+const N_EXT: u8 = 0x01; /* external symbol bit, set for external symbols */
 
 
 
 // Values for N_TYPE bits of the n_type field.
 //
-const N_UNDF: u8 = 0x0;    /* undefined, n_sect == NO_SECT */
-const N_ABS: u8 = 0x2;    /* absolute, n_sect == NO_SECT */
-const N_SECT: u8 = 0xe;    /* defined in section number n_sect */
-const N_PBUD: u8 = 0xc;    /* prebound undefined (defined in a dylib) */
-const N_INDR: u8 = 0xa;    /* indirect */
+const N_UNDF: u8 = 0x0; /* undefined, n_sect == NO_SECT */
+const N_ABS: u8 = 0x2; /* absolute, n_sect == NO_SECT */
+const N_SECT: u8 = 0xe; /* defined in section number n_sect */
+const N_PBUD: u8 = 0xc; /* prebound undefined (defined in a dylib) */
+const N_INDR: u8 = 0xa; /* indirect */
 
-const NO_SECT: u8 = 0;   /* symbol is not in any section */
+const NO_SECT: u8 = 0; /* symbol is not in any section */
+
+pub struct Dwarf {
+    pub uuid: Uuid,
+    pub sections: dwarf::Sections,
+    pub debug_pubnames: Option<Vec<u8>>,
+    pub debug_pubtypes: Option<Vec<u8>>,
+    pub debug_line: Option<Vec<u8>>,
+    pub debug_ranges: Option<Vec<u8>>,
+    pub debug_aranges: Option<Vec<u8>>,
+}
+
+impl OFile {
+    pub fn load_dwarf<T: AsRef<[u8]>>(&self, buf: &mut Cursor<T>) -> Result<Dwarf> {
+        if let OFile::MachFile { ref header, ref commands } = *self {
+            let mut debug_uuid = None;
+            let mut debug_info = None;
+            let mut debug_str = None;
+            let mut debug_abbrev = None;
+            let mut debug_pubnames = None;
+            let mut debug_pubtypes = None;
+            let mut debug_line = None;
+            let mut debug_ranges = None;
+            let mut debug_aranges = None;
+
+            for command in commands {
+                match *command {
+                    MachCommand(LoadCommand::Uuid(ref uuid), ..) => {
+                        debug_uuid = Some(uuid.clone())
+                    },
+                    MachCommand(LoadCommand::Segment{ref segname, ref sections, ..}, ..) |
+                    MachCommand(LoadCommand::Segment{ref segname, ref sections, ..}, ..) if segname == "__DWARF" => {
+                        let mut read_bytes = |section: &Section| -> Result<Vec<u8>> {
+                            let mut data = vec![0; section.size];
+
+                            buf.seek(SeekFrom::Start(section.offset as u64))?;
+                            buf.read(&mut data)?;
+
+                            Ok(data)
+                        };
+
+                        for section in sections {
+                            match section.sectname.as_ref() {
+                                "__debug_info" => debug_info = Some(read_bytes(section)?),
+                                "__debug_str" => debug_str = Some(read_bytes(section)?),
+                                "__debug_abbrev" => debug_abbrev = Some(read_bytes(section)?),
+                                "__debug_pubnames" => debug_pubnames = Some(read_bytes(section)?),
+                                "__debug_pubtypes" => debug_pubtypes = Some(read_bytes(section)?),
+                                "__debug_line" =>  debug_line = Some(read_bytes(section)?),
+                                "__debug_ranges" => debug_ranges = Some(read_bytes(section)?),
+                                "__debug_aranges" => debug_aranges = Some(read_bytes(section)?),
+                                _ => {}
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+            }
+
+            if let (Some(debug_info), Some(debug_str), Some(debug_abbrev)) = (debug_info, debug_str, debug_abbrev) {
+                Ok(Dwarf{
+                    uuid: debug_uuid.unwrap_or(Default::default()),
+                    sections: dwarf::Sections {
+                        endian: if header.is_bigend() {dwarf::Endian::Big} else { dwarf::Endian::Little},
+                        debug_info: debug_info,
+                        debug_str: debug_str,
+                        debug_abbrev: debug_abbrev,
+                    },
+                    debug_pubnames: debug_pubnames,
+                    debug_pubtypes: debug_pubtypes,
+                    debug_line: debug_line,
+                    debug_ranges: debug_ranges,
+                    debug_aranges: debug_aranges,
+                })
+            } else {
+                Err(Error::LoadError("dwarf not complete".to_owned()))
+            }
+        } else {
+            Err(Error::LoadError("not mach file".to_owned()))
+        }
+    }
+}

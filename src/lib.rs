@@ -39,7 +39,7 @@ extern crate time;
 extern crate bitflags;
 #[macro_use]
 extern crate lazy_static;
-extern crate dwarf;
+extern crate gimli;
 
 mod consts;
 mod errors;

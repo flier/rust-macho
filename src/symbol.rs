@@ -6,8 +6,7 @@ use std::io::{Cursor, SeekFrom};
 
 use byteorder::{ByteOrder, ReadBytesExt, LittleEndian, BigEndian};
 
-use dwarf;
-use uuid::Uuid;
+use gimli;
 
 use errors::*;
 use consts::*;
@@ -87,18 +86,33 @@ impl<'a> fmt::Display for Symbol<'a> {
                        if external { "U" } else { "u" },
                        name.unwrap_or(""))
             }
-            &Symbol::Absolute { ref name, external, entry, .. } => {
+            &Symbol::Absolute {
+                 ref name,
+                 external,
+                 entry,
+                 ..
+             } => {
                 write!(f,
                        "{:016x} {} {}",
                        entry,
                        if external { "A" } else { "a" },
                        name.unwrap_or(""))
             }
-            &Symbol::Defined { ref name, external, ref section, entry, .. } => {
+            &Symbol::Defined {
+                 ref name,
+                 external,
+                 ref section,
+                 entry,
+                 ..
+             } => {
                 let mut symtype = "s";
 
                 if let &Some(ref section) = section {
-                    let Section { ref sectname, ref segname, .. } = **section;
+                    let Section {
+                        ref sectname,
+                        ref segname,
+                        ..
+                    } = **section;
 
                     if segname == SEG_TEXT && sectname == SECT_TEXT {
                         symtype = "t"
@@ -257,15 +271,17 @@ impl<'a> SymbolIter<'a> {
 
         if (flags & N_STAB) != 0 {
             Ok(Symbol::Debug {
-                name: try!(self.load_str(strx)),
-                section: if sect == NO_SECT {
-                    None
-                } else {
-                    self.sections.get((sect - 1) as usize).map(|x| x.clone())
-                },
-                desc: desc,
-                addr: value,
-            })
+                   name: try!(self.load_str(strx)),
+                   section: if sect == NO_SECT {
+                       None
+                   } else {
+                       self.sections
+                           .get((sect - 1) as usize)
+                           .map(|x| x.clone())
+                   },
+                   desc: desc,
+                   addr: value,
+               })
         } else {
             let external = (flags & N_EXT) == N_EXT;
 
@@ -274,46 +290,48 @@ impl<'a> SymbolIter<'a> {
             match typ {
                 N_UNDF => {
                     Ok(Symbol::Undefined {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                    })
+                           name: try!(self.load_str(strx)),
+                           external: external,
+                           desc: desc,
+                       })
                 }
                 N_ABS => {
                     Ok(Symbol::Absolute {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                        entry: value,
-                    })
+                           name: try!(self.load_str(strx)),
+                           external: external,
+                           desc: desc,
+                           entry: value,
+                       })
                 }
                 N_SECT => {
                     Ok(Symbol::Defined {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        section: if sect == NO_SECT {
-                            None
-                        } else {
-                            self.sections.get((sect - 1) as usize).map(|x| x.clone())
-                        },
-                        desc: desc,
-                        entry: value,
-                    })
+                           name: try!(self.load_str(strx)),
+                           external: external,
+                           section: if sect == NO_SECT {
+                               None
+                           } else {
+                               self.sections
+                                   .get((sect - 1) as usize)
+                                   .map(|x| x.clone())
+                           },
+                           desc: desc,
+                           entry: value,
+                       })
                 }
                 N_PBUD => {
                     Ok(Symbol::Prebound {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                    })
+                           name: try!(self.load_str(strx)),
+                           external: external,
+                           desc: desc,
+                       })
                 }
                 N_INDR => {
                     Ok(Symbol::Indirect {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                        symbol: try!(self.load_str(value)),
-                    })
+                           name: try!(self.load_str(strx)),
+                           external: external,
+                           desc: desc,
+                           symbol: try!(self.load_str(value)),
+                       })
                 }
                 _ => Err(Error::LoadError(format!("unknown symbol type 0x{:x}", typ))),
             }
@@ -328,9 +346,9 @@ impl<'a> SymbolIter<'a> {
         } else {
             let buf = *self.cur.get_ref();
             let s = *&buf[self.stroff as usize + off as usize..]
-                .split(|x| *x == 0)
-                .next()
-                .unwrap();
+                          .split(|x| *x == 0)
+                          .next()
+                          .unwrap();
 
             Ok(Some(try!(str::from_utf8(s))))
         }
@@ -365,30 +383,39 @@ impl<'a> SymbolReader<'a> for OFile {
     type Iter = SymbolIter<'a>;
 
     fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {
-        if let &OFile::MachFile { ref header, ref commands } = self {
-            let sections = commands.iter()
+        if let &OFile::MachFile {
+                    ref header,
+                    ref commands,
+                } = self {
+            let sections = commands
+                .iter()
                 .filter_map(|cmd| match cmd.0 {
-                    LoadCommand::Segment { ref sections, .. } |
-                    LoadCommand::Segment64 { ref sections, .. } => Some(sections),
-                    _ => None,
-                })
+                                LoadCommand::Segment { ref sections, .. } |
+                                LoadCommand::Segment64 { ref sections, .. } => Some(sections),
+                                _ => None,
+                            })
                 .flat_map(|sections| sections.clone())
                 .collect();
 
             for cmd in commands {
                 let &MachCommand(ref cmd, _) = cmd;
 
-                if let &LoadCommand::SymTab { symoff, nsyms, stroff, strsize } = cmd {
+                if let &LoadCommand::SymTab {
+                            symoff,
+                            nsyms,
+                            stroff,
+                            strsize,
+                        } = cmd {
                     if let Ok(_) = cur.seek(SeekFrom::Start(symoff as u64)) {
                         return Some(SymbolIter {
-                            cur: cur,
-                            sections: sections,
-                            nsyms: nsyms,
-                            stroff: stroff,
-                            strsize: strsize,
-                            is_bigend: header.is_bigend(),
-                            is_64bit: header.is_64bit(),
-                        });
+                                        cur: cur,
+                                        sections: sections,
+                                        nsyms: nsyms,
+                                        stroff: stroff,
+                                        strsize: strsize,
+                                        is_bigend: header.is_bigend(),
+                                        is_64bit: header.is_64bit(),
+                                    });
                     }
                 }
             }
@@ -423,83 +450,79 @@ const N_INDR: u8 = 0xa; /* indirect */
 
 const NO_SECT: u8 = 0; /* symbol is not in any section */
 
-pub struct Dwarf {
-    pub uuid: Uuid,
-    pub sections: dwarf::Sections,
-    pub debug_pubnames: Option<Vec<u8>>,
-    pub debug_pubtypes: Option<Vec<u8>>,
-    pub debug_line: Option<Vec<u8>>,
-    pub debug_ranges: Option<Vec<u8>>,
-    pub debug_aranges: Option<Vec<u8>>,
+pub struct Dwarf<'a, Endian: 'a + gimli::Endianity> {
+    /// Abbreviations used in the .debug_info section
+    pub debug_abbrev: Option<gimli::DebugAbbrev<'a, Endian>>,
+    /// Lookup table for mapping addresses to compilation units
+    pub debug_aranges: Option<gimli::DebugAranges<'a, Endian>>,
+    /// Call frame information
+    pub debug_frame: Option<gimli::DebugFrame<'a, Endian>>,
+    /// Core DWARF information section
+    pub debug_info: Option<gimli::DebugInfo<'a, Endian>>,
+    /// Line number information
+    pub debug_line: Option<gimli::DebugLine<'a, Endian>>,
+    /// Location lists used in the DW_AT_location attributes
+    pub debug_loc: Option<gimli::DebugLoc<'a, Endian>>,
+    /// Lookup table for global objects and functions
+    pub debug_pubnames: Option<gimli::DebugPubNames<'a, Endian>>,
+    /// Lookup table for global types
+    pub debug_pubtypes: Option<gimli::DebugPubTypes<'a, Endian>>,
+    /// Address ranges used in the DW_AT_ranges attributes
+    pub debug_ranges: Option<gimli::DebugRanges<'a, Endian>>,
+    /// String table used in .debug_info
+    pub debug_str: Option<gimli::DebugStr<'a, Endian>>,
+    /// Type descriptions
+    pub debug_types: Option<gimli::DebugTypes<'a, Endian>>,
 }
 
 impl OFile {
-    pub fn load_dwarf<T: AsRef<[u8]>>(&self, buf: &mut Cursor<T>) -> Result<Dwarf> {
-        if let OFile::MachFile { ref header, ref commands } = *self {
-            let mut debug_uuid = None;
-            let mut debug_info = None;
-            let mut debug_str = None;
-            let mut debug_abbrev = None;
-            let mut debug_pubnames = None;
-            let mut debug_pubtypes = None;
-            let mut debug_line = None;
-            let mut debug_ranges = None;
-            let mut debug_aranges = None;
+    fn load_dwarf<'a, T: AsRef<[u8]>, Endian: 'a + gimli::Endianity>(&self,
+                                                                     buf: &'a mut Cursor<T>,
+                                                                     sections: &[Rc<Section>])
+                                                                     -> Dwarf<'a, Endian> {
+        let mut debug_abbrev = None;
+        let mut debug_aranges = None;
+        let mut debug_frame = None;
+        let mut debug_info = None;
+        let mut debug_line = None;
+        let mut debug_loc = None;
+        let mut debug_pubnames = None;
+        let mut debug_pubtypes = None;
+        let mut debug_ranges = None;
+        let mut debug_str = None;
+        let mut debug_types = None;
 
-            for command in commands {
-                match *command {
-                    MachCommand(LoadCommand::Uuid(ref uuid), ..) => {
-                        debug_uuid = Some(uuid.clone())
-                    },
-                    MachCommand(LoadCommand::Segment{ref segname, ref sections, ..}, ..) |
-                    MachCommand(LoadCommand::Segment{ref segname, ref sections, ..}, ..) if segname == "__DWARF" => {
-                        let mut read_bytes = |section: &Section| -> Result<Vec<u8>> {
-                            let mut data = vec![0; section.size];
+        for section in sections {
+            let content = &buf.get_ref().as_ref()[section.offset as usize..(section.offset as usize + section.size)];
 
-                            buf.seek(SeekFrom::Start(section.offset as u64))?;
-                            buf.read(&mut data)?;
-
-                            Ok(data)
-                        };
-
-                        for section in sections {
-                            match section.sectname.as_ref() {
-                                "__debug_info" => debug_info = Some(read_bytes(section)?),
-                                "__debug_str" => debug_str = Some(read_bytes(section)?),
-                                "__debug_abbrev" => debug_abbrev = Some(read_bytes(section)?),
-                                "__debug_pubnames" => debug_pubnames = Some(read_bytes(section)?),
-                                "__debug_pubtypes" => debug_pubtypes = Some(read_bytes(section)?),
-                                "__debug_line" =>  debug_line = Some(read_bytes(section)?),
-                                "__debug_ranges" => debug_ranges = Some(read_bytes(section)?),
-                                "__debug_aranges" => debug_aranges = Some(read_bytes(section)?),
-                                _ => {}
-                            }
-                        }
-                    },
-                    _ => {}
-                }
+            match section.sectname.as_ref() {
+                "__debug_abbrev" => debug_abbrev = Some(gimli::DebugAbbrev::new(content)),
+                "__debug_aranges" => debug_aranges = Some(gimli::DebugAranges::new(content)),
+                "__debug_frame" => debug_frame = Some(gimli::DebugFrame::new(content)),
+                "__debug_info" => debug_info = Some(gimli::DebugInfo::new(content)),
+                "__debug_line" => debug_line = Some(gimli::DebugLine::new(content)),
+                "__debug_loc" => debug_loc = Some(gimli::DebugLoc::new(content)),
+                "__debug_pubnames" => debug_pubnames = Some(gimli::DebugPubNames::new(content)),
+                "__debug_pubtypes" => debug_pubtypes = Some(gimli::DebugPubTypes::new(content)),
+                "__debug_ranges" => debug_ranges = Some(gimli::DebugRanges::new(content)),
+                "__debug_str" => debug_str = Some(gimli::DebugStr::new(content)),
+                "__debug_types" => debug_types = Some(gimli::DebugTypes::new(content)),
+                _ => {}
             }
+        }
 
-            if let (Some(debug_info), Some(debug_str), Some(debug_abbrev)) = (debug_info, debug_str, debug_abbrev) {
-                Ok(Dwarf{
-                    uuid: debug_uuid.unwrap_or(Default::default()),
-                    sections: dwarf::Sections {
-                        endian: if header.is_bigend() {dwarf::Endian::Big} else { dwarf::Endian::Little},
-                        debug_info: debug_info,
-                        debug_str: debug_str,
-                        debug_abbrev: debug_abbrev,
-                    },
-                    debug_pubnames: debug_pubnames,
-                    debug_pubtypes: debug_pubtypes,
-                    debug_line: debug_line,
-                    debug_ranges: debug_ranges,
-                    debug_aranges: debug_aranges,
-                })
-            } else {
-                Err(Error::LoadError("dwarf not complete".to_owned()))
-            }
-        } else {
-            Err(Error::LoadError("not mach file".to_owned()))
+        Dwarf {
+            debug_abbrev: debug_abbrev,
+            debug_aranges: debug_aranges,
+            debug_frame: debug_frame,
+            debug_info: debug_info,
+            debug_line: debug_line,
+            debug_loc: debug_loc,
+            debug_pubnames: debug_pubnames,
+            debug_pubtypes: debug_pubtypes,
+            debug_ranges: debug_ranges,
+            debug_str: debug_str,
+            debug_types: debug_types,
         }
     }
 }

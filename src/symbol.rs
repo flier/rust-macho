@@ -476,10 +476,9 @@ pub struct Dwarf<'a, Endian: 'a + gimli::Endianity> {
 }
 
 impl OFile {
-    fn load_dwarf<'a, T: AsRef<[u8]>, Endian: 'a + gimli::Endianity>(&self,
-                                                                     buf: &'a mut Cursor<T>,
-                                                                     sections: &[Rc<Section>])
-                                                                     -> Dwarf<'a, Endian> {
+    pub fn load_dwarf<'a, T: AsRef<[u8]>, Endian: 'a + gimli::Endianity>(buf: &'a mut Cursor<T>,
+                                                                         sections: &[Rc<Section>])
+                                                                         -> Dwarf<'a, Endian> {
         let mut debug_abbrev = None;
         let mut debug_aranges = None;
         let mut debug_frame = None;

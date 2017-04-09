@@ -23,6 +23,8 @@ env_logger = "0.4"
 diff = "0.1"
 getopts = "0.2"
 memmap = "0.5"
+regex = "0.2"
+error-chain = "0.10"
 
 [lib]
 name = "mach_object"

@@ -1,9 +1,13 @@
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+#[macro_use]
+extern crate error_chain;
 extern crate getopts;
 extern crate byteorder;
 extern crate memmap;
+extern crate regex;
+extern crate gimli;
 extern crate mach_object;
 
 use std::env;
@@ -15,8 +19,17 @@ use std::process::exit;
 use getopts::Options;
 use byteorder::ReadBytesExt;
 use memmap::{Mmap, Protection};
+use gimli::CompilationUnitHeader;
 
 use mach_object::*;
+
+error_chain! {
+    foreign_links {
+        IoError(::std::io::Error);
+        DwarfError(::gimli::Error);
+        MachError(::mach_object::Error);
+    }
+}
 
 const APP_VERSION: &'static str = "0.1.1";
 
@@ -31,7 +44,11 @@ fn main() {
     env_logger::init().unwrap();
 
     let args: Vec<String> = env::args().collect();
-    let program = Path::new(args[0].as_str()).file_name().unwrap().to_str().unwrap();
+    let program = Path::new(args[0].as_str())
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
 
     let mut opts = Options::new();
 
@@ -48,6 +65,42 @@ fn main() {
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
+    opts.optflag("i",
+                 "ignore-case",
+                 "ignore case distinctions in when finding by name using strings or regular expressions.");
+    opts.optflag("x",
+                 "regex",
+                 "treat any <pattern> strings as regular expressions when searching instead of just as an exact string match.");
+    opts.optflag("", "debug-all", "print all the DWARF sections");
+    opts.optflag("", "debug-abbrev", "print the DWARF abbreviations");
+    opts.optflag("",
+                 "debug-aranges",
+                 "print the DWARF lookup table for mapping addresses to compilation units");
+    opts.optopt("",
+                "debug-frame",
+                "print the DWARF call frame information",
+                "<offset>");
+    opts.optopt("",
+                "debug-info",
+                "print the core DWARF information section",
+                "<offset>");
+    opts.optopt("",
+                "debug-line",
+                "print the DWARF line number information",
+                "<offset>");
+    opts.optopt("",
+                "debug-pubnames",
+                "print the DWARF lookup table for global objects and functions",
+                "<pattern>");
+    opts.optopt("",
+                "debug-pubtypes",
+                "print the DWARF lookup table for global types",
+                "<pattern>");
+    opts.optflag("", "debug-str", "print the DWARF string table");
+    opts.optopt("",
+                "debug-types",
+                "print the DWARF type descriptions",
+                "<offset>");
     opts.optflag("",
                  "version",
                  format!("print the version of {}", program).as_str());
@@ -88,16 +141,49 @@ fn main() {
         print_text_section: matches.opt_present("t"),
         print_data_section: matches.opt_present("d"),
         print_symbol_table: matches.opt_present("n"),
-        print_section: matches.opt_str("s").map(|s| {
-            let names: Vec<&str> = s.splitn(2, ':').collect();
+        print_section: matches
+            .opt_str("s")
+            .map(|s| {
+                let names: Vec<&str> = s.splitn(2, ':').collect();
 
-            if names.len() == 2 {
-                (String::from(names[0]), Some(String::from(names[1])))
-            } else {
-                (String::from(names[0]), None)
-            }
-        }),
+                if names.len() == 2 {
+                    (String::from(names[0]), Some(String::from(names[1])))
+                } else {
+                    (String::from(names[0]), None)
+                }
+            }),
         print_lib_toc: matches.opt_present("S"),
+        print_dwarf: DwarfProcessor {
+            w: stdout(),
+            ignore_case: matches.opt_present("i"),
+            use_regex: matches.opt_present("x"),
+            print_debug_all: matches.opt_present("debug-all"),
+            print_debug_abbrev: matches.opt_present("debug-abbrev"),
+            print_debug_aranges: matches.opt_present("debug-aranges"),
+            print_debug_frame: matches
+                .opt_strs("debug-frame")
+                .iter()
+                .map(|s| gimli::DebugFrameOffset(s.parse().unwrap()))
+                .collect(),
+            print_debug_info: matches
+                .opt_strs("debug-info")
+                .iter()
+                .map(|s| gimli::DebugInfoOffset(s.parse().unwrap()))
+                .collect(),
+            print_debug_line: matches
+                .opt_strs("debug-line")
+                .iter()
+                .map(|s| gimli::DebugLineOffset(s.parse().unwrap()))
+                .collect(),
+            print_debug_pubnames: matches.opt_strs("debug-pubnames"),
+            print_debug_pubtypes: matches.opt_strs("debug-pubtypes"),
+            print_debug_str: matches.opt_present("debug-str"),
+            print_debug_types: matches
+                .opt_strs("debug-types")
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect(),
+        },
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -107,7 +193,7 @@ fn main() {
             write!(stderr(),
                    "unknown architecture specification flag: arch {}\n",
                    flags)
-                .unwrap();
+                    .unwrap();
 
             exit(-1);
         }
@@ -137,6 +223,7 @@ struct FileProcessor<T: Write> {
     print_symbol_table: bool,
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
+    print_dwarf: DwarfProcessor<T>,
 }
 
 struct FileProcessContext<'a> {
@@ -145,7 +232,7 @@ struct FileProcessContext<'a> {
 }
 
 impl<'a> FileProcessContext<'a> {
-    fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, Error> {
+    fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>> {
         let mut w = Vec::new();
 
         for off in 0..size {
@@ -167,7 +254,7 @@ impl<'a> FileProcessContext<'a> {
 }
 
 impl<T: Write> FileProcessor<T> {
-    fn process(&mut self, filename: &str) -> Result<(), Error> {
+    fn process(&mut self, filename: &str) -> Result<()> {
         let file_mmap = try!(Mmap::open_path(filename, Protection::Read));
         let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
         let file = try!(OFile::parse(&mut cur));
@@ -193,11 +280,12 @@ impl<T: Write> FileProcessor<T> {
         Ok(())
     }
 
-    fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<(), Error> {
+    fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<()> {
         match ofile {
-            &OFile::MachFile { ref header, ref commands } => {
-                self.process_mach_file(&header, &commands, ctxt)
-            }
+            &OFile::MachFile {
+                 ref header,
+                 ref commands,
+             } => self.process_mach_file(&header, &commands, ctxt),
             &OFile::FatFile { magic, ref files } => self.process_fat_file(magic, files, ctxt),
             &OFile::ArFile { ref files } => self.process_ar_file(files, ctxt),
             &OFile::SymDef { ref ranlibs } => self.process_symdef(ranlibs, ctxt),
@@ -205,15 +293,15 @@ impl<T: Write> FileProcessor<T> {
     }
 
     fn print_mach_file(&self) -> bool {
-        self.print_mach_header | self.print_load_commands | self.print_text_section |
-        self.print_data_section | self.print_shared_lib
+        self.print_mach_header | self.print_load_commands | self.print_text_section | self.print_data_section |
+        self.print_shared_lib
     }
 
     fn process_mach_file(&mut self,
                          header: &MachHeader,
                          commands: &Vec<MachCommand>,
                          ctxt: &mut FileProcessContext)
-                         -> Result<(), Error> {
+                         -> Result<()> {
         if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
             return Ok(());
         }
@@ -227,7 +315,7 @@ impl<T: Write> FileProcessor<T> {
                                 .unwrap_or(format!("cputype {} cpusubtype {}",
                                                    header.cputype,
                                                    header.cpusubtype)
-                                    .as_str())));
+                                                   .as_str())));
             } else {
                 try!(write!(self.w, "{}:\n", ctxt.filename));
             }
@@ -248,16 +336,22 @@ impl<T: Write> FileProcessor<T> {
             let &MachCommand(ref cmd, _) = cmd;
 
             match cmd {
-                &LoadCommand::Segment { ref sections, .. } |
-                &LoadCommand::Segment64 { ref sections, .. } => {
+                &LoadCommand::Segment {
+                     ref segname,
+                     ref sections,
+                     ..
+                 } |
+                &LoadCommand::Segment64 {
+                     ref segname,
+                     ref sections,
+                     ..
+                 } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
-                        if name == self.print_section ||
-                           Some((sect.segname.clone(), None)) == self.print_section ||
+                        if name == self.print_section || Some((sect.segname.clone(), None)) == self.print_section ||
                            (self.print_text_section &&
-                            name ==
-                            Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
+                            name == Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
                            (self.print_data_section &&
                             name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
 
@@ -275,11 +369,20 @@ impl<T: Write> FileProcessor<T> {
                             try!(self.w.write(&dump[..]));
                         }
                     }
+
+                    if segname == "__DWARF" {
+                        if header.is_bigend() {
+                            self.print_dwarf
+                                .process(OFile::load_dwarf::<&[u8], gimli::BigEndian>(ctxt.cur, sections))?;
+                        } else {
+                            self.print_dwarf
+                                .process(OFile::load_dwarf::<&[u8], gimli::LittleEndian>(ctxt.cur, sections))?;
+                        }
+                    }
                 }
 
                 &LoadCommand::IdFvmLib(ref fvmlib) |
-                &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib &&
-                                                        !self.print_shared_lib_just_id => {
+                &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib && !self.print_shared_lib_just_id => {
                     try!(write!(self.w,
                                 "\t{} (minor version {})\n",
                                 fvmlib.name,
@@ -320,11 +423,14 @@ impl<T: Write> FileProcessor<T> {
                         magic: u32,
                         files: &Vec<(FatArch, OFile)>,
                         ctxt: &mut FileProcessContext)
-                        -> Result<(), Error> {
+                        -> Result<()> {
         if self.print_fat_header {
             let header = FatHeader {
                 magic: magic,
-                archs: files.iter().map(|&(ref arch, _)| arch.clone()).collect(),
+                archs: files
+                    .iter()
+                    .map(|&(ref arch, _)| arch.clone())
+                    .collect(),
             };
 
             try!(write!(self.w, "{}", header));
@@ -337,10 +443,7 @@ impl<T: Write> FileProcessor<T> {
         Ok(())
     }
 
-    fn process_ar_file(&mut self,
-                       files: &Vec<(ArHeader, OFile)>,
-                       ctxt: &mut FileProcessContext)
-                       -> Result<(), Error> {
+    fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<()> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
             try!(write!(self.w, "Archive :{}\n", ctxt.filename));
         }
@@ -354,22 +457,19 @@ impl<T: Write> FileProcessor<T> {
         for &(ref header, ref file) in files {
             try!(self.process_ofile(file,
                                     &mut FileProcessContext {
-                                        filename: if let Some(ref name) = header.ar_member_name {
-                                            format!("{}({})", ctxt.filename, name)
-                                        } else {
-                                            ctxt.filename.clone()
-                                        },
-                                        cur: &mut ctxt.cur.clone(),
-                                    }));
+                                             filename: if let Some(ref name) = header.ar_member_name {
+                                                 format!("{}({})", ctxt.filename, name)
+                                             } else {
+                                                 ctxt.filename.clone()
+                                             },
+                                             cur: &mut ctxt.cur.clone(),
+                                         }));
         }
 
         Ok(())
     }
 
-    fn process_symdef(&mut self,
-                      ranlibs: &Vec<RanLib>,
-                      ctxt: &mut FileProcessContext)
-                      -> Result<(), Error> {
+    fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<()> {
         if self.print_lib_toc {
             try!(write!(self.w, "Table of contents from: {}\n", ctxt.filename));
             try!(write!(self.w,
@@ -385,4 +485,216 @@ impl<T: Write> FileProcessor<T> {
 
         Ok(())
     }
+}
+
+struct DwarfProcessor<T: Write> {
+    w: T,
+    ignore_case: bool,
+    use_regex: bool,
+    print_debug_all: bool,
+    print_debug_abbrev: bool,
+    print_debug_aranges: bool,
+    print_debug_frame: Vec<gimli::DebugFrameOffset>,
+    print_debug_info: Vec<gimli::DebugInfoOffset>,
+    print_debug_line: Vec<gimli::DebugLineOffset>,
+    print_debug_pubnames: Vec<String>,
+    print_debug_pubtypes: Vec<String>,
+    print_debug_str: bool,
+    print_debug_types: Vec<String>,
+}
+
+impl<T: Write> DwarfProcessor<T> {
+    fn process<Endian: gimli::Endianity>(&mut self, dwarf: Dwarf<Endian>) -> Result<()> {
+        if self.print_debug_all || self.print_debug_abbrev {
+            self.process_debug_abbrev()
+        }
+        if self.print_debug_all || self.print_debug_aranges {
+            self.process_debug_aranges()
+        }
+
+        for offset in self.print_debug_frame.iter() {}
+
+        for offset in self.print_debug_info.iter() {}
+
+        if self.print_debug_all || !self.print_debug_line.is_empty() {
+            write!(self.w, ".debug_line\n")?;
+
+            if let Dwarf {
+                       debug_abbrev: Some(ref debug_abbrev),
+                       debug_line: Some(ref debug_line),
+                       debug_info: Some(ref debug_info),
+                       debug_str: Some(ref debug_str),
+                       ..
+                   } = dwarf {
+                self.process_debug_line(debug_abbrev, debug_line, debug_info, debug_str);
+            } else {
+                write!(self.w, "< EMPTY >\n\n")?;
+            }
+        }
+
+        for offset in self.print_debug_line.iter() {}
+
+        for offset in self.print_debug_pubnames.iter() {}
+
+        for offset in self.print_debug_pubtypes.iter() {}
+
+        if self.print_debug_all || self.print_debug_str {
+            self.process_debug_str()
+        }
+
+        for offset in self.print_debug_types.iter() {}
+
+        Ok(())
+    }
+
+    fn process_debug_abbrev(&self) {}
+
+    fn process_debug_aranges(&self) {}
+
+    fn process_debug_line<Endian: gimli::Endianity>(&mut self,
+                                                    debug_abbrev: &gimli::DebugAbbrev<Endian>,
+                                                    debug_line: &gimli::DebugLine<Endian>,
+                                                    debug_info: &gimli::DebugInfo<Endian>,
+                                                    debug_str: &gimli::DebugStr<Endian>)
+                                                    -> Result<()> {
+        let mut iter = debug_info.units();
+
+        while let Some(unit) = iter.next()? {
+            let abbrevs = unit.abbreviations(debug_abbrev.clone())?;
+            let mut cursor = unit.entries(&abbrevs);
+            cursor.next_dfs()?;
+            let root = cursor.current().unwrap();
+            let offset = match root.attr_value(gimli::DW_AT_stmt_list)? {
+                Some(gimli::AttributeValue::DebugLineRef(offset)) => offset,
+                _ => continue,
+            };
+
+            if self.print_debug_all || self.print_debug_line.iter().any(|off| *off == offset) {
+                let comp_dir = root.attr(gimli::DW_AT_comp_dir)?
+                    .and_then(|attr| attr.string_value(&debug_str));
+                let comp_name = root.attr(gimli::DW_AT_name)?
+                    .and_then(|attr| attr.string_value(&debug_str));
+
+                if let Ok(program) = debug_line.program(offset, unit.address_size(), comp_dir, comp_name) {
+                    {
+                        let header = program.header();
+
+                        write!(self.w,
+                               "Offset:                             0x{:x}\n",
+                               offset.0)?;
+                        write!(self.w,
+                               "Length:                             {}\n",
+                               header.unit_length())?;
+                        write!(self.w,
+                               "DWARF version:                      {}\n",
+                               header.version())?;
+                        write!(self.w,
+                               "Prologue length:                    {}\n",
+                               header.header_length())?;
+                        write!(self.w,
+                               "Minimum instruction length:         {}\n",
+                               header.minimum_instruction_length())?;
+                        write!(self.w,
+                               "Maximum operations per instruction: {}\n",
+                               header.maximum_operations_per_instruction())?;
+                        write!(self.w,
+                               "Default is_stmt:                    {}\n",
+                               header.default_is_stmt())?;
+                        write!(self.w,
+                               "Line base:                          {}\n",
+                               header.line_base())?;
+                        write!(self.w,
+                               "Line range:                         {}\n",
+                               header.line_range())?;
+                        write!(self.w,
+                               "Opcode base:                        {}\n",
+                               header.opcode_base())?;
+
+                        write!(self.w, "\nOpcodes:\n")?;
+                        for (i, length) in header.standard_opcode_lengths().iter().enumerate() {
+                            write!(self.w, "  Opcode {} as {} args\n", i + 1, length)?;
+                        }
+
+                        write!(self.w, "\nThe Directory Table:\n")?;
+                        for (i, dir) in header.include_directories().iter().enumerate() {
+                            write!(self.w, "  {} {}\n", i + 1, dir.to_string_lossy())?;
+                        }
+
+                        write!(self.w, "\nThe File Name Table\n")?;
+                        write!(self.w, "  Entry\tDir\tTime\tSize\tName\n")?;
+                        for (i, file) in header.file_names().iter().enumerate() {
+                            write!(self.w,
+                                   "  {}\t{}\t{}\t{}\t{}\n",
+                                   i + 1,
+                                   file.directory_index(),
+                                   file.last_modification(),
+                                   file.length(),
+                                   file.path_name().to_string_lossy())?;
+                        }
+
+                        write!(self.w, "\nLine Number Statements:\n")?;
+                        let mut opcodes = header.opcodes();
+                        while let Some(opcode) = opcodes.next_opcode(&header)? {
+                            write!(self.w, "  {}\n", opcode)?;
+                        }
+
+                        write!(self.w, "\nLine Number Rows:\n")?;
+                        write!(self.w, "<pc>        [lno,col]\n")?;
+                    }
+
+                    {
+                        let mut rows = program.rows();
+                        let mut file_index = 0;
+                        while let Some((header, row)) = rows.next_row().expect("Should parse row OK") {
+                            let line = row.line().unwrap_or(0);
+                            let column = match row.column() {
+                                gimli::ColumnType::Column(column) => column,
+                                gimli::ColumnType::LeftEdge => 0,
+                            };
+                            write!(self.w, "0x{:08x}  [{:4},{:2}]", row.address(), line, column)?;
+                            if row.is_stmt() {
+                                write!(self.w, " NS")?;
+                            }
+                            if row.basic_block() {
+                                write!(self.w, " BB")?;
+                            }
+                            if row.end_sequence() {
+                                write!(self.w, " ET")?;
+                            }
+                            if row.prologue_end() {
+                                write!(self.w, " PE")?;
+                            }
+                            if row.epilogue_begin() {
+                                write!(self.w, " EB")?;
+                            }
+                            if row.isa() != 0 {
+                                write!(self.w, " IS={}", row.isa())?;
+                            }
+                            if row.discriminator() != 0 {
+                                write!(self.w, " DI={}", row.discriminator())?;
+                            }
+                            if file_index != row.file_index() {
+                                file_index = row.file_index();
+                                if let Some(file) = row.file(header) {
+                                    if let Some(directory) = file.directory(header) {
+                                        write!(self.w,
+                                               " uri: \"{}/{}\"",
+                                               directory.to_string_lossy(),
+                                               file.path_name().to_string_lossy())?;
+                                    } else {
+                                        write!(self.w, " uri: \"{}\"", file.path_name().to_string_lossy())?;
+                                    }
+                                }
+                            }
+                            write!(self.w, "\n")?;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn process_debug_str(&self) {}
 }

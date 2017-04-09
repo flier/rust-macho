@@ -33,6 +33,19 @@ error_chain! {
 
 const APP_VERSION: &'static str = "0.1.1";
 
+static DW_LNS_opcode_names: &'static [&'static str] = &["DW_LNS_copy",
+                                                        "DW_LNS_advance_pc",
+                                                        "DW_LNS_advance_line",
+                                                        "DW_LNS_set_file",
+                                                        "DW_LNS_set_column",
+                                                        "DW_LNS_negate_stmt",
+                                                        "DW_LNS_set_basic_block",
+                                                        "DW_LNS_const_add_pc",
+                                                        "DW_LNS_fixed_advance_pc",
+                                                        "DW_LNS_set_prologue_end",
+                                                        "DW_LNS_set_epilogue_begin",
+                                                        "DW_LNS_set_isa"];
+
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [-arch arch_type] [options] [--version] <object file> ...",
                         program);
@@ -517,7 +530,7 @@ impl<T: Write> DwarfProcessor<T> {
         for offset in self.print_debug_info.iter() {}
 
         if self.print_debug_all || !self.print_debug_line.is_empty() {
-            write!(self.w, ".debug_line\n")?;
+            write!(self.w, ".debug_line contents:\n")?;
 
             if let Dwarf {
                        debug_abbrev: Some(ref debug_abbrev),
@@ -570,6 +583,12 @@ impl<T: Write> DwarfProcessor<T> {
             };
 
             if self.print_debug_all || self.print_debug_line.iter().any(|off| *off == offset) {
+                write!(self.w,
+                       "----------------------------------------------------------------------\n")?;
+                write!(self.w, "debug_line[0x{:08x}]\n", offset.0)?;
+                write!(self.w,
+                       "----------------------------------------------------------------------\n")?;
+
                 let comp_dir = root.attr(gimli::DW_AT_comp_dir)?
                     .and_then(|attr| attr.string_value(&debug_str));
                 let comp_name = root.attr(gimli::DW_AT_name)?
@@ -579,52 +598,41 @@ impl<T: Write> DwarfProcessor<T> {
                     {
                         let header = program.header();
 
+                        write!(self.w, "Line table prologue:\n")?;
+                        write!(self.w, "   total_length: 0x{:08x}\n", header.unit_length())?;
+                        write!(self.w, "        version: 0x{:04x}\n", header.version())?;
                         write!(self.w,
-                               "Offset:                             0x{:x}\n",
-                               offset.0)?;
-                        write!(self.w,
-                               "Length:                             {}\n",
-                               header.unit_length())?;
-                        write!(self.w,
-                               "DWARF version:                      {}\n",
-                               header.version())?;
-                        write!(self.w,
-                               "Prologue length:                    {}\n",
+                               "prologue_length: 0x{:08x}\n",
                                header.header_length())?;
                         write!(self.w,
-                               "Minimum instruction length:         {}\n",
+                               "min_inst_length: 0x{:02x}\n",
                                header.minimum_instruction_length())?;
-                        write!(self.w,
-                               "Maximum operations per instruction: {}\n",
-                               header.maximum_operations_per_instruction())?;
-                        write!(self.w,
-                               "Default is_stmt:                    {}\n",
-                               header.default_is_stmt())?;
-                        write!(self.w,
-                               "Line base:                          {}\n",
-                               header.line_base())?;
-                        write!(self.w,
-                               "Line range:                         {}\n",
-                               header.line_range())?;
-                        write!(self.w,
-                               "Opcode base:                        {}\n",
-                               header.opcode_base())?;
+                        write!(self.w, "default_is_stmt: {}\n", header.default_is_stmt())?;
+                        write!(self.w, "      line_base: {}\n", header.line_base())?;
+                        write!(self.w, "     line_range: {}\n", header.line_range())?;
+                        write!(self.w, "    opcode_base: 0x{:02x}\n", header.opcode_base())?;
 
-                        write!(self.w, "\nOpcodes:\n")?;
                         for (i, length) in header.standard_opcode_lengths().iter().enumerate() {
-                            write!(self.w, "  Opcode {} as {} args\n", i + 1, length)?;
+                            write!(self.w,
+                                   "standard_opcode_lengths[ {:26} ] = {}\n",
+                                   DW_LNS_opcode_names[i],
+                                   length)?;
                         }
 
-                        write!(self.w, "\nThe Directory Table:\n")?;
                         for (i, dir) in header.include_directories().iter().enumerate() {
-                            write!(self.w, "  {} {}\n", i + 1, dir.to_string_lossy())?;
+                            write!(self.w,
+                                   "include_directories[{:>3}] = '{}'\n",
+                                   i + 1,
+                                   dir.to_string_lossy())?;
                         }
 
-                        write!(self.w, "\nThe File Name Table\n")?;
-                        write!(self.w, "  Entry\tDir\tTime\tSize\tName\n")?;
+                        write!(self.w,
+                               "                Dir  Mod Time   File Len   File Name\n")?;
+                        write!(self.w,
+                               "                ---- ---------- ---------- ---------------------------\n")?;
                         for (i, file) in header.file_names().iter().enumerate() {
                             write!(self.w,
-                                   "  {}\t{}\t{}\t{}\t{}\n",
+                                   "file_names[{:>3}] {:>4} 0x{:08x} 0x{:08x} {}\n",
                                    i + 1,
                                    file.directory_index(),
                                    file.last_modification(),
@@ -632,10 +640,121 @@ impl<T: Write> DwarfProcessor<T> {
                                    file.path_name().to_string_lossy())?;
                         }
 
-                        write!(self.w, "\nLine Number Statements:\n")?;
                         let mut opcodes = header.opcodes();
+                        let mut op_index = 0;
+                        let mut rows = program.clone().rows();
+
+                        let mut dump_row = |w: &mut T| -> Result<()> {
+                            if let Some((header, row)) = rows.next_row()? {
+                                let line = row.line().unwrap_or(0);
+                                let column = match row.column() {
+                                    gimli::ColumnType::Column(column) => column,
+                                    gimli::ColumnType::LeftEdge => 0,
+                                };
+
+                                write!(w,
+                                       "0x{:016x}\t{}\t{}\t{}",
+                                       row.address(),
+                                       row.file_index(),
+                                       line,
+                                       column)?;
+
+                                if row.is_stmt() {
+                                    write!(w, " is_stmt")?;
+                                }
+
+                                if row.basic_block() {
+                                    write!(w, " basic_block")?;
+                                }
+
+                                if row.end_sequence() {
+                                    write!(w, " end_sequence")?;
+                                }
+
+                                if row.prologue_end() {
+                                    write!(w, " prologue_end")?;
+                                }
+
+                                if row.epilogue_begin() {
+                                    write!(w, " epilogue_begin")?;
+                                }
+
+                                write!(w, "\n")?;
+                            };
+
+                            Ok(())
+                        };
+
                         while let Some(opcode) = opcodes.next_opcode(&header)? {
-                            write!(self.w, "  {}\n", opcode)?;
+                            match opcode {
+                                gimli::Opcode::Special(opcode) => {
+                                    let adjusted_opcode = opcode - header.opcode_base();
+                                    let op_advance = adjusted_opcode / header.line_range();
+                                    let addr_advance = header.minimum_instruction_length() *
+                                                       ((op_index + op_advance) /
+                                                        header.maximum_operations_per_instruction());
+                                    op_index = (op_index + op_advance) % header.maximum_operations_per_instruction();
+                                    let line_advance = header.line_base() +
+                                                       (adjusted_opcode % header.line_range()) as i8;
+
+                                    write!(self.w,
+                                           "address += 0x{:x},  line += {}\n",
+                                           addr_advance,
+                                           line_advance)?;
+                                }
+                                gimli::Opcode::AdvancePc(n) => {
+                                    write!(self.w, "DW_LNS_advance_pc( {} ) \n", n)?;
+
+                                    dump_row(&mut self.w)?;
+                                }
+                                gimli::Opcode::AdvanceLine(n) => {
+                                    write!(self.w, "DW_LNS_advance_line( {} ) \n", n)?;
+                                }
+                                gimli::Opcode::SetFile(i) => {
+                                    write!(self.w,
+                                           "DW_LNS_set_file( {} ) // {}\n",
+                                           i,
+                                           header.file_names()[i as usize - 1]
+                                               .path_name()
+                                               .to_string_lossy())?;
+                                }
+                                gimli::Opcode::SetColumn(n) => {
+                                    write!(self.w, "DW_LNS_set_column( {} ) \n", n)?;
+                                }
+                                gimli::Opcode::FixedAddPc(n) => {
+                                    write!(self.w, "DW_LNS_fixed_advance_pc( {} ) \n", n)?;
+                                }
+                                gimli::Opcode::SetIsa(isa) => {
+                                    write!(self.w, "DW_LNS_set_isa( {} ) \n", isa)?;
+                                }
+                                gimli::Opcode::SetAddress(addr) => {
+                                    write!(self.w, "DW_LNE_set_address( 0x{:016x} ) \n", addr)?;
+                                }
+                                gimli::Opcode::DefineFile(ref file) => {
+                                    write!(self.w,
+                                           "DW_LNE_define_file( {} )\n",
+                                           file.path_name().to_string_lossy())?;
+                                }
+                                gimli::Opcode::SetDiscriminator(discriminator) => {
+                                    write!(self.w, "DW_LNE_set_discriminator( {} ) \n", discriminator)?;
+                                }
+
+                                gimli::Opcode::Copy |
+                                gimli::Opcode::ConstAddPc => {
+                                    write!(self.w, "{}\n", opcode)?;
+
+                                    dump_row(&mut self.w)?;
+                                }
+                                gimli::Opcode::SetPrologueEnd |
+                                gimli::Opcode::NegateStatement |
+                                gimli::Opcode::SetBasicBlock |
+                                gimli::Opcode::SetEpilogueBegin |
+                                gimli::Opcode::EndSequence |
+                                gimli::Opcode::UnknownStandard0(_) |
+                                gimli::Opcode::UnknownStandard1(..) |
+                                gimli::Opcode::UnknownStandardN(..) |
+                                gimli::Opcode::UnknownExtended(..) => write!(self.w, "  {}\n", opcode)?,
+                            }
                         }
 
                         write!(self.w, "\nLine Number Rows:\n")?;
@@ -645,7 +764,7 @@ impl<T: Write> DwarfProcessor<T> {
                     {
                         let mut rows = program.rows();
                         let mut file_index = 0;
-                        while let Some((header, row)) = rows.next_row().expect("Should parse row OK") {
+                        while let Some((header, row)) = rows.next_row()? {
                             let line = row.line().unwrap_or(0);
                             let column = match row.column() {
                                 gimli::ColumnType::Column(column) => column,

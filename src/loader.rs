@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 use std::fmt;
 use std::convert::From;
 use std::mem::size_of;
@@ -22,6 +23,19 @@ pub trait MachArch {
 pub enum Arch32 {}
 /// The 64-bit mach header
 pub enum Arch64 {}
+
+#[cfg(windows)]
+type uid_t = libc::uint32_t;
+#[cfg(windows)]
+type gid_t = libc::uint32_t;
+#[cfg(windows)]
+type mode_t = libc::uint32_t;
+#[cfg(not(windows))]
+type uid_t = libc::uid_t;
+#[cfg(not(windows))]
+type gid_t = libc::gid_t;
+#[cfg(not(windows))]
+type mode_t = libc::mode_t;
 
 impl MachArch for Arch32 {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader> {
@@ -566,11 +580,11 @@ pub struct ArHeader {
     /// modification time
     pub ar_date: libc::time_t,
     /// user id
-    pub ar_uid: libc::uid_t,
+    pub ar_uid: uid_t,
     /// group id
-    pub ar_gid: libc::gid_t,
+    pub ar_gid: gid_t,
     /// octal file permissions
-    pub ar_mode: libc::mode_t,
+    pub ar_mode: mode_t,
     /// size in bytes
     pub ar_size: usize,
     /// consistency check
@@ -586,7 +600,7 @@ impl ArHeader {
             ar_date: try!(try!(buf.read_fixed_size_string(12)).trim().parse()),
             ar_uid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
             ar_gid: try!(try!(buf.read_fixed_size_string(6)).trim().parse()),
-            ar_mode: try!(Self::parse_octal(try!(buf.read_fixed_size_string(8)).trim())) as libc::mode_t,
+            ar_mode: try!(Self::parse_octal(try!(buf.read_fixed_size_string(8)).trim())) as mode_t,
             ar_size: try!(try!(buf.read_fixed_size_string(10)).trim().parse()),
             ar_fmag: try!(buf.read_u16::<NativeEndian>()),
             ar_member_name: None,

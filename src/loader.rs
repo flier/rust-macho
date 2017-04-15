@@ -164,24 +164,28 @@ impl MachCommand {
         let MachCommand(ref cmd, cmdsize) = *self;
 
         match cmd {
-            &LoadCommand::Segment { ref segname,
-                                    vmaddr,
-                                    vmsize,
-                                    fileoff,
-                                    filesize,
-                                    maxprot,
-                                    initprot,
-                                    flags,
-                                    ref sections } |
-            &LoadCommand::Segment64 { ref segname,
-                                      vmaddr,
-                                      vmsize,
-                                      fileoff,
-                                      filesize,
-                                      maxprot,
-                                      initprot,
-                                      flags,
-                                      ref sections } => {
+            &LoadCommand::Segment {
+                 ref segname,
+                 vmaddr,
+                 vmsize,
+                 fileoff,
+                 filesize,
+                 maxprot,
+                 initprot,
+                 flags,
+                 ref sections,
+             } |
+            &LoadCommand::Segment64 {
+                 ref segname,
+                 vmaddr,
+                 vmsize,
+                 fileoff,
+                 filesize,
+                 maxprot,
+                 initprot,
+                 flags,
+                 ref sections,
+             } => {
                 let is_64bit = if cmd.cmd() == LC_SEGMENT_64 {
                     true
                 } else {
@@ -263,16 +267,18 @@ impl MachCommand {
     fn print_dyld_info_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DyldInfo { rebase_off,
-                                        rebase_size,
-                                        bind_off,
-                                        bind_size,
-                                        weak_bind_off,
-                                        weak_bind_size,
-                                        lazy_bind_off,
-                                        lazy_bind_size,
-                                        export_off,
-                                        export_size } = cmd {
+        if let &LoadCommand::DyldInfo {
+                    rebase_off,
+                    rebase_size,
+                    bind_off,
+                    bind_size,
+                    weak_bind_off,
+                    weak_bind_size,
+                    lazy_bind_off,
+                    lazy_bind_size,
+                    export_off,
+                    export_size,
+                } = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
             try!(write!(f, "     rebase_off {}\n", rebase_off));
@@ -295,7 +301,12 @@ impl MachCommand {
     fn print_symtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::SymTab { symoff, nsyms, stroff, strsize } = cmd {
+        if let &LoadCommand::SymTab {
+                    symoff,
+                    nsyms,
+                    stroff,
+                    strsize,
+                } = cmd {
             try!(write!(f, "     cmd {}\n", cmd.name()));
             try!(write!(f, " cmdsize {}\n", cmdsize));
             try!(write!(f, "  symoff {}\n", symoff));
@@ -312,24 +323,26 @@ impl MachCommand {
     fn print_dysymtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DySymTab { ilocalsym,
-                                        nlocalsym,
-                                        iextdefsym,
-                                        nextdefsym,
-                                        iundefsym,
-                                        nundefsym,
-                                        tocoff,
-                                        ntoc,
-                                        modtaboff,
-                                        nmodtab,
-                                        extrefsymoff,
-                                        nextrefsyms,
-                                        indirectsymoff,
-                                        nindirectsyms,
-                                        extreloff,
-                                        nextrel,
-                                        locreloff,
-                                        nlocrel } = cmd {
+        if let &LoadCommand::DySymTab {
+                    ilocalsym,
+                    nlocalsym,
+                    iextdefsym,
+                    nextdefsym,
+                    iundefsym,
+                    nundefsym,
+                    tocoff,
+                    ntoc,
+                    modtaboff,
+                    nmodtab,
+                    extrefsymoff,
+                    nextrefsyms,
+                    indirectsymoff,
+                    nindirectsyms,
+                    extreloff,
+                    nextrel,
+                    locreloff,
+                    nlocrel,
+                } = cmd {
             try!(write!(f, "            cmd {}\n", cmd.name()));
             try!(write!(f, "        cmdsize {}\n", cmdsize));
             try!(write!(f, "      ilocalsym {}\n", ilocalsym));
@@ -483,7 +496,10 @@ impl MachCommand {
     fn print_entry_point_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::EntryPoint { entryoff, stacksize } = cmd {
+        if let &LoadCommand::EntryPoint {
+                    entryoff,
+                    stacksize,
+                } = cmd {
             try!(write!(f, "       cmd {}\n", cmd.name()));
             try!(write!(f, "   cmdsize {}\n", cmdsize));
             try!(write!(f, "  entryoff {}\n", entryoff));
@@ -734,9 +750,9 @@ impl OFile {
         debug!("parsed {} load commands", commands.len());
 
         Ok(OFile::MachFile {
-            header: header,
-            commands: commands,
-        })
+               header: header,
+               commands: commands,
+           })
     }
 
     fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
@@ -782,9 +798,9 @@ impl OFile {
         }
 
         Ok(OFile::FatFile {
-            magic: magic,
-            files: files,
-        })
+               magic: magic,
+               files: files,
+           })
     }
 
     fn parse_ar_file<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
@@ -802,9 +818,9 @@ impl OFile {
 
                             for _ in 0..(ranlib_len / size_of::<RanLib>()) {
                                 ranlibs.push(RanLib {
-                                    ran_strx: try!(buf.read_u32::<O>()),
-                                    ran_off: try!(buf.read_u32::<O>()),
-                                })
+                                                 ran_strx: try!(buf.read_u32::<O>()),
+                                                 ran_off: try!(buf.read_u32::<O>()),
+                                             })
                             }
 
                             let toc_strsize = try!(buf.read_u32::<O>());
@@ -904,8 +920,10 @@ pub mod tests {
         ($left:expr, $right:expr) => ({
             let mut w = Vec::new();
             let mut diffs = 0;
+            let left = $left.replace("\r\n", "\n");
+            let right = $right.replace("\r\n", "\n");
 
-            for diff in diff::lines($left, $right) {
+            for diff in diff::lines(&left, &right) {
                 match diff {
                     diff::Result::Left(l) => {
                         diffs += 1;
@@ -923,7 +941,7 @@ pub mod tests {
                 info!("found {} diffs:\n{}", diffs, String::from_utf8(w).unwrap());
             }
 
-            assert_eq!($left, $right);
+            assert_eq!(&left, &right);
         })
     }
 
@@ -1012,8 +1030,8 @@ pub mod tests {
             assert_eq!(files.len(), 2);
 
             for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC]
-                .iter()
-                .enumerate() {
+                    .iter()
+                    .enumerate() {
                 let mut w = Vec::<u8>::new();
 
                 write!(w, "helloworld.universal:\n").unwrap();

@@ -698,7 +698,7 @@ pub trait ReadStringExt: Read {
 impl<R: Read + ?Sized> ReadStringExt for R {}
 
 impl LoadCommand {
-    pub fn parse<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<(LoadCommand, usize)> {
+    pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
         let cmd = try!(buf.read_u32::<O>());
         let cmdsize = try!(buf.read_u32::<O>());
@@ -717,7 +717,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(Rc::new(try!(Section::parse_section::<Cursor<&[u8]>, O>(buf))));
+                    sections.push(Rc::new(try!(Section::parse_section::<Cursor<T>, O>(buf))));
                 }
 
                 LoadCommand::Segment {
@@ -745,7 +745,7 @@ impl LoadCommand {
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(Rc::new(try!(Section::parse_section64::<Cursor<&[u8]>, O>(buf))));
+                    sections.push(Rc::new(try!(Section::parse_section64::<Cursor<T>, O>(buf))));
                 }
 
                 LoadCommand::Segment64 {
@@ -760,19 +760,19 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
-            LC_IDFVMLIB => LoadCommand::IdFvmLib(try!(Self::read_fvmlib::<O>(buf))),
-            LC_LOADFVMLIB => LoadCommand::LoadFvmLib(try!(Self::read_fvmlib::<O>(buf))),
+            LC_IDFVMLIB => LoadCommand::IdFvmLib(try!(Self::read_fvmlib::<O, T>(buf))),
+            LC_LOADFVMLIB => LoadCommand::LoadFvmLib(try!(Self::read_fvmlib::<O, T>(buf))),
 
-            LC_ID_DYLIB => LoadCommand::IdDyLib(try!(Self::read_dylib::<O>(buf))),
-            LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O>(buf))),
-            LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O>(buf))),
-            LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(try!(Self::read_dylib::<O>(buf))),
-            LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(try!(Self::read_dylib::<O>(buf))),
-            LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(try!(Self::read_dylib::<O>(buf))),
+            LC_ID_DYLIB => LoadCommand::IdDyLib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(try!(Self::read_dylib::<O, T>(buf))),
 
-            LC_ID_DYLINKER => LoadCommand::IdDyLinker(try!(Self::read_dylinker::<O>(buf))),
-            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(try!(Self::read_dylinker::<O>(buf))),
-            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(try!(Self::read_dylinker::<O>(buf))),
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(try!(Self::read_dylinker::<O, T>(buf))),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(try!(Self::read_dylinker::<O, T>(buf))),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(try!(Self::read_dylinker::<O, T>(buf))),
 
             LC_SYMTAB => {
                 LoadCommand::SymTab {
@@ -811,21 +811,13 @@ impl LoadCommand {
 
                 LoadCommand::Uuid(try!(Uuid::from_bytes(&uuid[..])))
             }
-            LC_CODE_SIGNATURE => {
-                LoadCommand::CodeSignature(try!(Self::read_linkedit_data::<O>(buf)))
-            }
-            LC_SEGMENT_SPLIT_INFO => {
-                LoadCommand::SegmentSplitInfo(try!(Self::read_linkedit_data::<O>(buf)))
-            }
-            LC_FUNCTION_STARTS => {
-                LoadCommand::FunctionStarts(try!(Self::read_linkedit_data::<O>(buf)))
-            }
-            LC_DATA_IN_CODE => LoadCommand::DataInCode(try!(Self::read_linkedit_data::<O>(buf))),
-            LC_DYLIB_CODE_SIGN_DRS => {
-                LoadCommand::DylibCodeSignDrs(try!(Self::read_linkedit_data::<O>(buf)))
-            }
+            LC_CODE_SIGNATURE => LoadCommand::CodeSignature(try!(Self::read_linkedit_data::<O, T>(buf))),
+            LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(try!(Self::read_linkedit_data::<O, T>(buf))),
+            LC_FUNCTION_STARTS => LoadCommand::FunctionStarts(try!(Self::read_linkedit_data::<O, T>(buf))),
+            LC_DATA_IN_CODE => LoadCommand::DataInCode(try!(Self::read_linkedit_data::<O, T>(buf))),
+            LC_DYLIB_CODE_SIGN_DRS => LoadCommand::DylibCodeSignDrs(try!(Self::read_linkedit_data::<O, T>(buf))),
             LC_LINKER_OPTIMIZATION_HINT => {
-                LoadCommand::LinkerOptimizationHint(try!(Self::read_linkedit_data::<O>(buf)))
+                LoadCommand::LinkerOptimizationHint(try!(Self::read_linkedit_data::<O, T>(buf)))
             }
 
             LC_VERSION_MIN_MACOSX |
@@ -858,9 +850,7 @@ impl LoadCommand {
                     stacksize: try!(buf.read_u64::<O>()),
                 }
             }
-            LC_SOURCE_VERSION => {
-                LoadCommand::SourceVersion(SourceVersionTag(try!(buf.read_u64::<O>())))
-            }
+            LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(try!(buf.read_u64::<O>()))),
             _ => {
                 let mut payload = Vec::new();
 
@@ -891,7 +881,7 @@ impl LoadCommand {
         Ok((cmd, cmdsize as usize))
     }
 
-    fn read_lc_string<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<String> {
+    fn read_lc_string<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<String> {
         let mut s = Vec::new();
 
         try!(buf.read_until(0, &mut s));
@@ -899,15 +889,15 @@ impl LoadCommand {
         unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const i8).to_str()))) }
     }
 
-    fn read_dylinker<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LcString> {
+    fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
         let off = try!(buf.read_u32::<O>()) as usize;
 
         buf.consume(off - 12);
 
-        Ok(LcString(off, try!(Self::read_lc_string::<O>(buf))))
+        Ok(LcString(off, try!(Self::read_lc_string::<O, T>(buf))))
     }
 
-    fn read_fvmlib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<FvmLib> {
+    fn read_fvmlib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<FvmLib> {
         let off = try!(buf.read_u32::<O>()) as usize;
         let minor_version = try!(buf.read_u32::<O>());
         let header_addr = try!(buf.read_u32::<O>());
@@ -915,13 +905,13 @@ impl LoadCommand {
         buf.consume(off - 20);
 
         Ok(FvmLib {
-            name: LcString(off, try!(Self::read_lc_string::<O>(buf))),
+            name: LcString(off, try!(Self::read_lc_string::<O, T>(buf))),
             minor_version: minor_version,
             header_addr: header_addr,
         })
     }
 
-    fn read_dylib<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<DyLib> {
+    fn read_dylib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<DyLib> {
         let off = try!(buf.read_u32::<O>()) as usize;
         let timestamp = try!(buf.read_u32::<O>());
         let current_version = try!(buf.read_u32::<O>());
@@ -930,14 +920,14 @@ impl LoadCommand {
         buf.consume(off - 24);
 
         Ok(DyLib {
-            name: LcString(off, try!(Self::read_lc_string::<O>(buf))),
+            name: LcString(off, try!(Self::read_lc_string::<O, T>(buf))),
             timestamp: timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),
         })
     }
 
-    fn read_linkedit_data<O: ByteOrder>(buf: &mut Cursor<&[u8]>) -> Result<LinkEditData> {
+    fn read_linkedit_data<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LinkEditData> {
         Ok(LinkEditData {
             off: try!(buf.read_u32::<O>()),
             size: try!(buf.read_u32::<O>()),
@@ -1184,9 +1174,9 @@ pub mod tests {
 
             buf.extend_from_slice(&$buf[..]);
 
-            let mut cur = Cursor::new(buf.as_slice());
+            let mut cur = Cursor::new(buf);
 
-            LoadCommand::parse::<LittleEndian>(&mut cur).unwrap()
+            LoadCommand::parse::<LittleEndian, Vec<u8>>(&mut cur).unwrap()
         })
     }
 
@@ -1346,8 +1336,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_symtab_command() {
-        if let (LoadCommand::SymTab { symoff, nsyms, stroff, strsize }, cmdsize) =
-               parse_command!(LC_SYMTAB_DATA) {
+        if let (LoadCommand::SymTab { symoff, nsyms, stroff, strsize }, cmdsize) = parse_command!(LC_SYMTAB_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(symoff, 0x200d88);
             assert_eq!(nsyms, 36797);
@@ -1405,8 +1394,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_load_dylinker_command() {
-        if let (LoadCommand::LoadDyLinker(LcString(off, ref name)), cmdsize) =
-               parse_command!(LC_LOAD_DYLINKER_DATA) {
+        if let (LoadCommand::LoadDyLinker(LcString(off, ref name)), cmdsize) = parse_command!(LC_LOAD_DYLINKER_DATA) {
             assert_eq!(cmdsize, 32);
             assert_eq!(off, 12);
             assert_eq!(name, "/usr/lib/dyld");
@@ -1429,7 +1417,7 @@ pub mod tests {
     #[test]
     fn test_parse_min_version_command() {
         if let (LoadCommand::VersionMin { target, version, sdk }, cmdsize) =
-               parse_command!(LC_VERSION_MIN_MACOSX_DATA) {
+            parse_command!(LC_VERSION_MIN_MACOSX_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
             assert_eq!(version.to_string(), "10.11");
@@ -1441,8 +1429,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_source_version_command() {
-        if let (LoadCommand::SourceVersion(version), cmdsize) =
-               parse_command!(LC_SOURCE_VERSION_DATA) {
+        if let (LoadCommand::SourceVersion(version), cmdsize) = parse_command!(LC_SOURCE_VERSION_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(version.to_string(), "0.0");
         } else {
@@ -1452,8 +1439,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_main_command() {
-        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) =
-               parse_command!(LC_MAIN_DATA) {
+        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) = parse_command!(LC_MAIN_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(entryoff, 0x11400);
             assert_eq!(stacksize, 0);
@@ -1479,7 +1465,7 @@ pub mod tests {
     #[test]
     fn test_parse_link_edit_data_command() {
         if let (LoadCommand::FunctionStarts(LinkEditData { off, size }), cmdsize) =
-               parse_command!(LC_FUNCTION_STARTS_DATA) {
+            parse_command!(LC_FUNCTION_STARTS_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(off, 0x1fec50);
             assert_eq!(size, 8504);
@@ -1487,8 +1473,7 @@ pub mod tests {
             panic!();
         }
 
-        if let (LoadCommand::DataInCode(LinkEditData { off, size }), cmdsize) =
-               parse_command!(LC_DATA_IN_CODE_DATA) {
+        if let (LoadCommand::DataInCode(LinkEditData { off, size }), cmdsize) = parse_command!(LC_DATA_IN_CODE_DATA) {
             assert_eq!(cmdsize, 16);
             assert_eq!(off, 0x200d88);
             assert_eq!(size, 0);

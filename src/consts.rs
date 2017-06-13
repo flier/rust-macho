@@ -153,7 +153,7 @@ pub const CPU_SUBTYPE_INTEL_MODEL_ALL: cpu_subtype_t = 0;
 pub const CPU_SUBTYPE_X86_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_64_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_ARCH1: cpu_subtype_t = 4;
-pub const CPU_SUBTYPE_X86_64_H: cpu_subtype_t = 8;  /* Haswell feature subset */
+pub const CPU_SUBTYPE_X86_64_H: cpu_subtype_t = 8; /* Haswell feature subset */
 
 
 //  Mips subtypes.
@@ -311,12 +311,9 @@ pub fn get_arch_from_flag(name: &str) -> Option<&(cpu_type_t, cpu_subtype_t)> {
     get_arch_flags().get(&name)
 }
 
-pub fn get_arch_name_from_types(cputype: cpu_type_t,
-                                subtype: cpu_subtype_t)
-                                -> Option<&'static str> {
+pub fn get_arch_name_from_types(cputype: cpu_type_t, subtype: cpu_subtype_t) -> Option<&'static str> {
     for (name, &(cpu_type, cpu_subtype)) in get_arch_flags() {
-        if cpu_type == cputype &&
-           get_cpu_subtype_type(cpu_subtype) == get_cpu_subtype_type(subtype) {
+        if cpu_type == cputype && get_cpu_subtype_type(cpu_subtype) == get_cpu_subtype_type(subtype) {
             return Some(name);
         }
     }
@@ -341,7 +338,7 @@ pub const MH_MAGIC_64: u32 = 0xfeedfacf;
 pub const MH_CIGAM_64: u32 = 0xcffaedfe;
 
 pub const FAT_MAGIC: u32 = 0xcafebabe;
-pub const FAT_CIGAM: u32 = 0xbebafeca;  /* NXSwapLong(FAT_MAGIC) */
+pub const FAT_CIGAM: u32 = 0xbebafeca; /* NXSwapLong(FAT_MAGIC) */
 
 
 pub const ARMAG: &'static [u8] = b"!<arch>\n";
@@ -587,24 +584,22 @@ pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 
 bitflags! {
-
-/// Constants for the flags field of the segment_command
-pub flags SegmentFlags: u32 {
-    /// the file contents for this segment is for the high part of the VM space,
-    /// the low part is zero filled (for stacks in core files)
-    const SG_HIGHVM = 0x1,
-    /// this segment is the VM that is allocated by a fixed VM library,
-    /// for overlap checking in the link editor
-    const SG_FVMLIB = 0x2,
-    /// this segment has nothing that was relocated in it and nothing relocated to it,
-    /// that is it maybe safely replaced without relocation
-    const SG_NORELOC = 0x4,
-    /// This segment is protected.  If the segment starts at file offset 0,
-    /// the first page of the segment is not protected.
-    /// All other pages of the segment are protected.
-    const SG_PROTECTED_VERSION_1 = 0x8,
-}
-
+    /// Constants for the flags field of the segment_command
+    pub struct SegmentFlags: u32 {
+        /// the file contents for this segment is for the high part of the VM space,
+        /// the low part is zero filled (for stacks in core files)
+        const SG_HIGHVM = 0x1;
+        /// this segment is the VM that is allocated by a fixed VM library,
+        /// for overlap checking in the link editor
+        const SG_FVMLIB = 0x2;
+        /// this segment has nothing that was relocated in it and nothing relocated to it,
+        /// that is it maybe safely replaced without relocation
+        const SG_NORELOC = 0x4;
+        /// This segment is protected.  If the segment starts at file offset 0,
+        /// the first page of the segment is not protected.
+        /// All other pages of the segment are protected.
+        const SG_PROTECTED_VERSION_1 = 0x8;
+    }
 }
 
 // The flags field of a section structure is separated into two parts a section
@@ -682,44 +677,43 @@ pub const S_THREAD_LOCAL_VARIABLE_POINTERS: u32 = 0x14;
 pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS: u32 = 0x15;
 
 bitflags! {
+    /// Constants for the section attributes part of the flags field of a section structure.
+    pub struct SectionAttributes: u32 {
+        /// User setable attributes
+        const SECTION_ATTRIBUTES_USR = 0xff000000;
+        /// section contains only true machine instructions
+        const S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
+        /// section contains coalesced symbols that are not to be in a ranlib table of contents
+        const S_ATTR_NO_TOC = 0x40000000;
+        /// ok to strip static symbols in this section in files with the MH_DYLDLINK flag
+        const S_ATTR_STRIP_STATIC_SYMS = 0x20000000;
+        /// no dead stripping
+        const S_ATTR_NO_DEAD_STRIP = 0x10000000;
+        /// blocks are live if they reference live blocks
+        const S_ATTR_LIVE_SUPPORT = 0x08000000;
+        /// Used with i386 code stubs written on by dyld
+        const S_ATTR_SELF_MODIFYING_CODE = 0x04000000;
 
-/// Constants for the section attributes part of the flags field of a section structure.
-pub flags SectionAttributes: u32 {
-    /// User setable attributes
-    const SECTION_ATTRIBUTES_USR = 0xff000000,
-    /// section contains only true machine instructions
-    const S_ATTR_PURE_INSTRUCTIONS = 0x80000000,
-    /// section contains coalesced symbols that are not to be in a ranlib table of contents
-    const S_ATTR_NO_TOC = 0x40000000,
-    /// ok to strip static symbols in this section in files with the MH_DYLDLINK flag
-    const S_ATTR_STRIP_STATIC_SYMS = 0x20000000,
-    /// no dead stripping
-    const S_ATTR_NO_DEAD_STRIP = 0x10000000,
-    /// blocks are live if they reference live blocks
-    const S_ATTR_LIVE_SUPPORT = 0x08000000,
-    /// Used with i386 code stubs written on by dyld
-    const S_ATTR_SELF_MODIFYING_CODE = 0x04000000,
+        // If a segment contains any sections marked with S_ATTR_DEBUG then all
+        // sections in that segment must have this attribute.  No section other than
+        // a section marked with this attribute may reference the contents of this
+        // section.  A section with this attribute may contain no symbols and must have
+        // a section type S_REGULAR.  The static linker will not copy section contents
+        // from sections with this attribute into its output file.  These sections
+        // generally contain DWARF debugging info.
+        //
 
-    // If a segment contains any sections marked with S_ATTR_DEBUG then all
-    // sections in that segment must have this attribute.  No section other than
-    // a section marked with this attribute may reference the contents of this
-    // section.  A section with this attribute may contain no symbols and must have
-    // a section type S_REGULAR.  The static linker will not copy section contents
-    // from sections with this attribute into its output file.  These sections
-    // generally contain DWARF debugging info.
-    //
-
-    /// a debug section
-    const S_ATTR_DEBUG = 0x02000000,
-    /// system setable attributes
-    const SECTION_ATTRIBUTES_SYS = 0x00ffff00,
-    /// section contains some machine instructions
-    const S_ATTR_SOME_INSTRUCTIONS = 0x00000400,
-    /// section has external relocation entries
-    const S_ATTR_EXT_RELOC = 0x00000200,
-    /// section has local relocation entries
-    const S_ATTR_LOC_RELOC = 0x00000100,
-}
+        /// a debug section
+        const S_ATTR_DEBUG = 0x02000000;
+        /// system setable attributes
+        const SECTION_ATTRIBUTES_SYS = 0x00ffff00;
+        /// section contains some machine instructions
+        const S_ATTR_SOME_INSTRUCTIONS = 0x00000400;
+        /// section has external relocation entries
+        const S_ATTR_EXT_RELOC = 0x00000200;
+        /// section has local relocation entries
+        const S_ATTR_LOC_RELOC = 0x00000100;
+    }
 }
 
 // The names of segments and sections in them are mostly meaningless to the
@@ -852,15 +846,15 @@ pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u32 = 0xB0;
 pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u32 = 0xC0;
 
 bitflags! {
-/// The following are used on the flags byte of a terminal node in the export information.
-pub flags ExportSymbolFlags: u32 {
-    const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03,
-    const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00,
-    const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01,
-    const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04,
-    const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08,
-    const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10,
-}
+    /// The following are used on the flags byte of a terminal node in the export information.
+    pub struct ExportSymbolFlags: u32 {
+        const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03;
+        const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00;
+        const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01;
+        const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04;
+        const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08;
+        const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10;
+    }
 }
 
 pub const DICE_KIND_DATA: u16 = 0x0001;

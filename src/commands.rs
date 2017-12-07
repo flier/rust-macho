@@ -2,6 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::ffi::CStr;
 use std::io::{Read, BufRead, Cursor};
+use std::os::raw::c_char;
 
 use uuid::Uuid;
 use byteorder::{ByteOrder, ReadBytesExt};
@@ -691,7 +692,7 @@ pub trait ReadStringExt: Read {
 
         try!(self.read_exact(buf.as_mut()));
 
-        unsafe { Ok(String::from(try!(CStr::from_ptr(buf.as_ptr() as *const i8).to_str()))) }
+        unsafe { Ok(String::from(try!(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()))) }
     }
 }
 
@@ -886,7 +887,7 @@ impl LoadCommand {
 
         try!(buf.read_until(0, &mut s));
 
-        unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const i8).to_str()))) }
+        unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()))) }
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {

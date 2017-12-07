@@ -14,14 +14,14 @@ libc = "0.2"
 byteorder = "1.0"
 uuid = "0.5"
 time = "0.1"
-bitflags = "0.9"
-lazy_static = "0.2"
+bitflags = "1.0"
+lazy_static = "1.0"
 
 [dev-dependencies]
 env_logger = "0.4"
 diff = "0.1"
 getopts = "0.2"
-memmap = "0.5"
+memmap = "0.6"
 
 [lib]
 name = "mach_object"

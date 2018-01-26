@@ -1,28 +1,31 @@
-#[macro_use]
-extern crate log;
+extern crate byteorder;
 extern crate env_logger;
 extern crate getopts;
-extern crate byteorder;
-extern crate memmap;
+#[macro_use]
+extern crate log;
 extern crate mach_object;
+extern crate memmap;
 
 use std::env;
 use std::mem::size_of;
-use std::io::{Write, Cursor, Seek, SeekFrom, stdout, stderr};
+use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::fs::File;
 use std::process::exit;
 
 use getopts::Options;
 use byteorder::ReadBytesExt;
-use memmap::{Mmap, Protection};
+use memmap::Mmap;
 
 use mach_object::*;
 
 const APP_VERSION: &'static str = "0.1.1";
 
 fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} [-arch arch_type] [options] [--version] <object file> ...",
-                        program);
+    let brief = format!(
+        "Usage: {} [-arch arch_type] [options] [--version] <object file> ...",
+        program
+    );
 
     print!("{}", opts.usage(&brief));
 }
@@ -31,7 +34,11 @@ fn main() {
     env_logger::init().unwrap();
 
     let args: Vec<String> = env::args().collect();
-    let program = Path::new(args[0].as_str()).file_name().unwrap().to_str().unwrap();
+    let program = Path::new(args[0].as_str())
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
 
     let mut opts = Options::new();
 
@@ -48,9 +55,11 @@ fn main() {
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
-    opts.optflag("",
-                 "version",
-                 format!("print the version of {}", program).as_str());
+    opts.optflag(
+        "",
+        "version",
+        format!("print the version of {}", program).as_str(),
+    );
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -104,10 +113,11 @@ fn main() {
         if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
             processor.cpu_type = cpu_type;
         } else {
-            write!(stderr(),
-                   "unknown architecture specification flag: arch {}\n",
-                   flags)
-                .unwrap();
+            write!(
+                stderr(),
+                "unknown architecture specification flag: arch {}\n",
+                flags
+            ).unwrap();
 
             exit(-1);
         }
@@ -168,15 +178,16 @@ impl<'a> FileProcessContext<'a> {
 
 impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
-        let file_mmap = try!(Mmap::open_path(filename, Protection::Read));
-        let mut cur = Cursor::new(unsafe { file_mmap.as_slice() });
+        let file = File::open(filename)?;
+        let mmap = try!(unsafe { Mmap::map(&file) });
+        let mut cur = Cursor::new(mmap.as_ref());
         let file = try!(OFile::parse(&mut cur));
         let mut ctxt = FileProcessContext {
             filename: String::from(filename),
             cur: &mut cur,
         };
 
-        debug!("process file {} with {} bytes", filename, file_mmap.len());
+        debug!("process file {} with {} bytes", filename, mmap.len());
 
         try!(self.process_ofile(&file, &mut ctxt));
 
@@ -195,9 +206,10 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ofile(&mut self, ofile: &OFile, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         match ofile {
-            &OFile::MachFile { ref header, ref commands } => {
-                self.process_mach_file(&header, &commands, ctxt)
-            }
+            &OFile::MachFile {
+                ref header,
+                ref commands,
+            } => self.process_mach_file(&header, &commands, ctxt),
             &OFile::FatFile { magic, ref files } => self.process_fat_file(magic, files, ctxt),
             &OFile::ArFile { ref files } => self.process_ar_file(files, ctxt),
             &OFile::SymDef { ref ranlibs } => self.process_symdef(ranlibs, ctxt),
@@ -205,29 +217,34 @@ impl<T: Write> FileProcessor<T> {
     }
 
     fn print_mach_file(&self) -> bool {
-        self.print_mach_header | self.print_load_commands | self.print_text_section |
-        self.print_data_section | self.print_shared_lib
+        self.print_mach_header | self.print_load_commands | self.print_text_section | self.print_data_section
+            | self.print_shared_lib
     }
 
-    fn process_mach_file(&mut self,
-                         header: &MachHeader,
-                         commands: &Vec<MachCommand>,
-                         ctxt: &mut FileProcessContext)
-                         -> Result<(), Error> {
+    fn process_mach_file(
+        &mut self,
+        header: &MachHeader,
+        commands: &Vec<MachCommand>,
+        ctxt: &mut FileProcessContext,
+    ) -> Result<(), Error> {
         if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
             return Ok(());
         }
 
         if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
-                try!(write!(self.w,
-                            "{} (architecture {}):\n",
-                            ctxt.filename,
-                            get_arch_name_from_types(header.cputype, header.cpusubtype)
-                                .unwrap_or(format!("cputype {} cpusubtype {}",
-                                                   header.cputype,
-                                                   header.cpusubtype)
-                                    .as_str())));
+                try!(write!(
+                    self.w,
+                    "{} (architecture {}):\n",
+                    ctxt.filename,
+                    get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
+                        format!(
+                            "cputype {} cpusubtype {}",
+                            header.cputype,
+                            header.cpusubtype
+                        ).as_str()
+                    )
+                ));
             } else {
                 try!(write!(self.w, "{}:\n", ctxt.filename));
             }
@@ -248,24 +265,23 @@ impl<T: Write> FileProcessor<T> {
             let &MachCommand(ref cmd, _) = cmd;
 
             match cmd {
-                &LoadCommand::Segment { ref sections, .. } |
-                &LoadCommand::Segment64 { ref sections, .. } => {
+                &LoadCommand::Segment { ref sections, .. } | &LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
-                        if name == self.print_section ||
-                           Some((sect.segname.clone(), None)) == self.print_section ||
-                           (self.print_text_section &&
-                            name ==
-                            Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT))))) ||
-                           (self.print_data_section &&
-                            name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA))))) {
-
+                        if name == self.print_section || Some((sect.segname.clone(), None)) == self.print_section
+                            || (self.print_text_section
+                                && name == Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT)))))
+                            || (self.print_data_section
+                                && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
+                        {
                             if self.print_headers {
-                                try!(write!(self.w,
-                                            "Contents of ({},{}) section\n",
-                                            sect.segname,
-                                            sect.sectname));
+                                try!(write!(
+                                    self.w,
+                                    "Contents of ({},{}) section\n",
+                                    sect.segname,
+                                    sect.sectname
+                                ));
                             }
 
                             try!(ctxt.cur.seek(SeekFrom::Start(sect.offset as u64)));
@@ -277,36 +293,40 @@ impl<T: Write> FileProcessor<T> {
                     }
                 }
 
-                &LoadCommand::IdFvmLib(ref fvmlib) |
-                &LoadCommand::LoadFvmLib(ref fvmlib) if self.print_shared_lib &&
-                                                        !self.print_shared_lib_just_id => {
-                    try!(write!(self.w,
-                                "\t{} (minor version {})\n",
-                                fvmlib.name,
-                                fvmlib.minor_version));
+                &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
+                    if self.print_shared_lib && !self.print_shared_lib_just_id =>
+                {
+                    try!(write!(
+                        self.w,
+                        "\t{} (minor version {})\n",
+                        fvmlib.name,
+                        fvmlib.minor_version
+                    ));
                 }
 
-                &LoadCommand::IdDyLib(ref dylib) |
-                &LoadCommand::LoadDyLib(ref dylib) |
-                &LoadCommand::LoadWeakDyLib(ref dylib) |
-                &LoadCommand::ReexportDyLib(ref dylib) |
-                &LoadCommand::LoadUpwardDylib(ref dylib) |
-                &LoadCommand::LazyLoadDylib(ref dylib) if self.print_shared_lib &&
-                                                          (cmd.cmd() == LC_ID_DYLIB ||
-                                                           !self.print_shared_lib_just_id) => {
+                &LoadCommand::IdDyLib(ref dylib)
+                | &LoadCommand::LoadDyLib(ref dylib)
+                | &LoadCommand::LoadWeakDyLib(ref dylib)
+                | &LoadCommand::ReexportDyLib(ref dylib)
+                | &LoadCommand::LoadUpwardDylib(ref dylib)
+                | &LoadCommand::LazyLoadDylib(ref dylib)
+                    if self.print_shared_lib && (cmd.cmd() == LC_ID_DYLIB || !self.print_shared_lib_just_id) =>
+                {
                     if self.print_shared_lib_just_id {
                         try!(write!(self.w, "{}", dylib.name));
                     } else {
-                        try!(write!(self.w,
-                                    "\t{} (compatibility version {}.{}.{}, current version \
-                                     {}.{}.{})\n",
-                                    dylib.name,
-                                    dylib.compatibility_version.major(),
-                                    dylib.compatibility_version.minor(),
-                                    dylib.compatibility_version.release(),
-                                    dylib.current_version.major(),
-                                    dylib.current_version.minor(),
-                                    dylib.current_version.release()));
+                        try!(write!(
+                            self.w,
+                            "\t{} (compatibility version {}.{}.{}, current version \
+                             {}.{}.{})\n",
+                            dylib.name,
+                            dylib.compatibility_version.major(),
+                            dylib.compatibility_version.minor(),
+                            dylib.compatibility_version.release(),
+                            dylib.current_version.major(),
+                            dylib.current_version.minor(),
+                            dylib.current_version.release()
+                        ));
                     }
                 }
                 _ => {}
@@ -316,11 +336,12 @@ impl<T: Write> FileProcessor<T> {
         Ok(())
     }
 
-    fn process_fat_file(&mut self,
-                        magic: u32,
-                        files: &Vec<(FatArch, OFile)>,
-                        ctxt: &mut FileProcessContext)
-                        -> Result<(), Error> {
+    fn process_fat_file(
+        &mut self,
+        magic: u32,
+        files: &Vec<(FatArch, OFile)>,
+        ctxt: &mut FileProcessContext,
+    ) -> Result<(), Error> {
         if self.print_fat_header {
             let header = FatHeader {
                 magic: magic,
@@ -337,10 +358,7 @@ impl<T: Write> FileProcessor<T> {
         Ok(())
     }
 
-    fn process_ar_file(&mut self,
-                       files: &Vec<(ArHeader, OFile)>,
-                       ctxt: &mut FileProcessContext)
-                       -> Result<(), Error> {
+    fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
             try!(write!(self.w, "Archive :{}\n", ctxt.filename));
         }
@@ -352,34 +370,44 @@ impl<T: Write> FileProcessor<T> {
         }
 
         for &(ref header, ref file) in files {
-            try!(self.process_ofile(file,
-                                    &mut FileProcessContext {
-                                        filename: if let Some(ref name) = header.ar_member_name {
-                                            format!("{}({})", ctxt.filename, name)
-                                        } else {
-                                            ctxt.filename.clone()
-                                        },
-                                        cur: &mut ctxt.cur.clone(),
-                                    }));
+            try!(self.process_ofile(
+                file,
+                &mut FileProcessContext {
+                    filename: if let Some(ref name) = header.ar_member_name {
+                        format!("{}({})", ctxt.filename, name)
+                    } else {
+                        ctxt.filename.clone()
+                    },
+                    cur: &mut ctxt.cur.clone(),
+                }
+            ));
         }
 
         Ok(())
     }
 
-    fn process_symdef(&mut self,
-                      ranlibs: &Vec<RanLib>,
-                      ctxt: &mut FileProcessContext)
-                      -> Result<(), Error> {
+    fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            try!(write!(self.w, "Table of contents from: {}\n", ctxt.filename));
-            try!(write!(self.w,
-                        "size of ranlib structures: {} (number {})\n",
-                        ranlibs.len() * size_of::<RanLib>(),
-                        ranlibs.len()));
+            try!(write!(
+                self.w,
+                "Table of contents from: {}\n",
+                ctxt.filename
+            ));
+            try!(write!(
+                self.w,
+                "size of ranlib structures: {} (number {})\n",
+                ranlibs.len() * size_of::<RanLib>(),
+                ranlibs.len()
+            ));
             try!(write!(self.w, "object offset  string index\n"));
 
             for ref ranlib in ranlibs {
-                try!(write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx));
+                try!(write!(
+                    self.w,
+                    "{:<14} {}\n",
+                    ranlib.ran_off,
+                    ranlib.ran_strx
+                ));
             }
         }
 

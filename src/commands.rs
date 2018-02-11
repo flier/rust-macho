@@ -831,6 +831,7 @@ impl LoadCommand {
                     sdk: VersionTag(try!(buf.read_u32::<O>())),
                 }
             }
+            LC_DYLD_INFO |
             LC_DYLD_INFO_ONLY => {
                 LoadCommand::DyldInfo {
                     rebase_off: try!(buf.read_u32::<O>()),

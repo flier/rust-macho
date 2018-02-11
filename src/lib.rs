@@ -30,15 +30,15 @@
 //! and the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
 //!
 #[macro_use]
-extern crate log;
-extern crate libc;
-extern crate byteorder;
-extern crate uuid;
-extern crate time;
-#[macro_use]
 extern crate bitflags;
+extern crate byteorder;
 #[macro_use]
 extern crate lazy_static;
+extern crate libc;
+#[macro_use]
+extern crate log;
+extern crate time;
+extern crate uuid;
 
 mod consts;
 mod errors;
@@ -49,5 +49,5 @@ mod symbol;
 pub use consts::*;
 pub use errors::Error;
 pub use commands::*;
-pub use loader::{OFile, MachHeader, MachCommand, FatArch, FatHeader, ArHeader, RanLib};
-pub use symbol::{Symbol, SymbolReference, SymbolIter, SymbolReader};
+pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
+pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};

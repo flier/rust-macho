@@ -38,7 +38,6 @@ pub const CPU_TYPE_ALPHA: cpu_type_t = 16;
 pub const CPU_TYPE_POWERPC: cpu_type_t = 18;
 pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
 
-
 //  Machine subtypes (these are defined here, instead of in a machine
 //  dependent directory, so that any program can get all definitions
 //  regardless of where is it compiled).
@@ -154,7 +153,6 @@ pub const CPU_SUBTYPE_X86_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_64_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_ARCH1: cpu_subtype_t = 4;
 pub const CPU_SUBTYPE_X86_64_H: cpu_subtype_t = 8; /* Haswell feature subset */
-
 
 //  Mips subtypes.
 //
@@ -340,7 +338,6 @@ pub const MH_CIGAM_64: u32 = 0xcffaedfe;
 pub const FAT_MAGIC: u32 = 0xcafebabe;
 pub const FAT_CIGAM: u32 = 0xbebafeca; /* NXSwapLong(FAT_MAGIC) */
 
-
 pub const ARMAG: &'static [u8] = b"!<arch>\n";
 
 pub const AR_EFMT1: &'static str = "#1/"; /* extended format #1 */
@@ -463,7 +460,6 @@ pub const MH_HAS_TLV_DESCRIPTORS: u32 = 0x800000;
 pub const MH_NO_HEAP_EXECUTION: u32 = 0x1000000;
 /// The code was linked for use in an application extension.
 pub const MH_APP_EXTENSION_SAFE: u32 = 0x02000000;
-
 
 // After MacOS X 10.1 when a new load command is added that is required to be
 // understood by the dynamic linker for the image to execute properly the
@@ -625,7 +621,6 @@ pub const S_8BYTE_LITERALS: u32 = 0x4;
 /// section with only pointers to literals
 pub const S_LITERAL_POINTERS: u32 = 0x5;
 
-
 // For the two types of symbol pointers sections and the symbol stubs section
 // they have indirect symbol table entries.  For each of the entries in the
 // section the indirect symbol table entries, in corresponding order in the
@@ -784,7 +779,6 @@ pub static SEG_UNIXSTACK: &'static str = "__UNIXSTACK";
 /// the segment for the self (dyld) modifing code stubs that has read, write and execute permissions
 pub static SEG_IMPORT: &'static str = "__IMPORT";
 
-
 // An indirect symbol table entry is simply a 32bit index into the symbol table
 // to the symbol that the pointer or stub is refering to.  Unless it is for a
 // non-lazy symbol pointer section for a defined symbol which strip(1) as
@@ -793,7 +787,6 @@ pub static SEG_IMPORT: &'static str = "__IMPORT";
 //
 pub const INDIRECT_SYMBOL_LOCAL: u32 = 0x80000000;
 pub const INDIRECT_SYMBOL_ABS: u32 = 0x40000000;
-
 
 // The following are used to encode rebasing information
 //
@@ -814,7 +807,6 @@ pub const REBASE_OPCODE_DO_REBASE_IMM_TIMES: u32 = 0x50;
 pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES: u32 = 0x60;
 pub const REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: u32 = 0x70;
 pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: u32 = 0x80;
-
 
 // The following are used to encode binding information
 //

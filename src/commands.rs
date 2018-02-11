@@ -1,7 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use std::ffi::CStr;
-use std::io::{Read, BufRead, Cursor};
+use std::io::{BufRead, Cursor, Read};
 use std::os::raw::c_char;
 
 use uuid::Uuid;
@@ -62,11 +62,13 @@ impl Into<u64> for SourceVersionTag {
 
 impl Into<(u32, u32, u32, u32, u32)> for SourceVersionTag {
     fn into(self) -> (u32, u32, u32, u32, u32) {
-        (((self.0 >> 40) & 0xFFF) as u32,
-         ((self.0 >> 30) & 0x3FF) as u32,
-         ((self.0 >> 20) & 0x3FF) as u32,
-         ((self.0 >> 10) & 0x3FF) as u32,
-         (self.0 & 0x3FF) as u32)
+        (
+            ((self.0 >> 40) & 0xFFF) as u32,
+            ((self.0 >> 30) & 0x3FF) as u32,
+            ((self.0 >> 20) & 0x3FF) as u32,
+            ((self.0 >> 10) & 0x3FF) as u32,
+            (self.0 & 0x3FF) as u32,
+        )
     }
 }
 
@@ -150,7 +152,6 @@ pub struct FvmLib {
     /// library's header address
     pub header_addr: u32,
 }
-
 
 /// Dynamically linked shared libraries are identified by two things.
 ///
@@ -690,9 +691,9 @@ pub trait ReadStringExt: Read {
         buf.resize(len + 1, 0);
         buf.truncate(len);
 
-        try!(self.read_exact(buf.as_mut()));
+        self.read_exact(buf.as_mut())?;
 
-        unsafe { Ok(String::from(try!(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()))) }
+        unsafe { Ok(String::from(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?)) }
     }
 }
 
@@ -701,24 +702,24 @@ impl<R: Read + ?Sized> ReadStringExt for R {}
 impl LoadCommand {
     pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
-        let cmd = try!(buf.read_u32::<O>());
-        let cmdsize = try!(buf.read_u32::<O>());
+        let cmd = buf.read_u32::<O>()?;
+        let cmdsize = buf.read_u32::<O>()?;
 
         let cmd = match cmd {
             LC_SEGMENT => {
-                let segname = try!(buf.read_fixed_size_string(16));
-                let vmaddr = try!(buf.read_u32::<O>()) as usize;
-                let vmsize = try!(buf.read_u32::<O>()) as usize;
-                let fileoff = try!(buf.read_u32::<O>()) as usize;
-                let filesize = try!(buf.read_u32::<O>()) as usize;
-                let maxprot = try!(buf.read_i32::<O>());
-                let initprot = try!(buf.read_i32::<O>());
-                let nsects = try!(buf.read_u32::<O>());
-                let flags = try!(buf.read_u32::<O>());
+                let segname = buf.read_fixed_size_string(16)?;
+                let vmaddr = buf.read_u32::<O>()? as usize;
+                let vmsize = buf.read_u32::<O>()? as usize;
+                let fileoff = buf.read_u32::<O>()? as usize;
+                let filesize = buf.read_u32::<O>()? as usize;
+                let maxprot = buf.read_i32::<O>()?;
+                let initprot = buf.read_i32::<O>()?;
+                let nsects = buf.read_u32::<O>()?;
+                let flags = buf.read_u32::<O>()?;
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(Rc::new(try!(Section::parse_section::<Cursor<T>, O>(buf))));
+                    sections.push(Rc::new(Section::parse_section::<Cursor<T>, O>(buf)?));
                 }
 
                 LoadCommand::Segment {
@@ -734,19 +735,19 @@ impl LoadCommand {
                 }
             }
             LC_SEGMENT_64 => {
-                let segname = try!(buf.read_fixed_size_string(16));
-                let vmaddr = try!(buf.read_u64::<O>()) as usize;
-                let vmsize = try!(buf.read_u64::<O>()) as usize;
-                let fileoff = try!(buf.read_u64::<O>()) as usize;
-                let filesize = try!(buf.read_u64::<O>()) as usize;
-                let maxprot = try!(buf.read_i32::<O>());
-                let initprot = try!(buf.read_i32::<O>());
-                let nsects = try!(buf.read_u32::<O>());
-                let flags = try!(buf.read_u32::<O>());
+                let segname = buf.read_fixed_size_string(16)?;
+                let vmaddr = buf.read_u64::<O>()? as usize;
+                let vmsize = buf.read_u64::<O>()? as usize;
+                let fileoff = buf.read_u64::<O>()? as usize;
+                let filesize = buf.read_u64::<O>()? as usize;
+                let maxprot = buf.read_i32::<O>()?;
+                let initprot = buf.read_i32::<O>()?;
+                let nsects = buf.read_u32::<O>()?;
+                let flags = buf.read_u32::<O>()?;
                 let mut sections = Vec::new();
 
                 for _ in 0..nsects {
-                    sections.push(Rc::new(try!(Section::parse_section64::<Cursor<T>, O>(buf))));
+                    sections.push(Rc::new(Section::parse_section64::<Cursor<T>, O>(buf)?));
                 }
 
                 LoadCommand::Segment64 {
@@ -761,108 +762,96 @@ impl LoadCommand {
                     sections: sections,
                 }
             }
-            LC_IDFVMLIB => LoadCommand::IdFvmLib(try!(Self::read_fvmlib::<O, T>(buf))),
-            LC_LOADFVMLIB => LoadCommand::LoadFvmLib(try!(Self::read_fvmlib::<O, T>(buf))),
+            LC_IDFVMLIB => LoadCommand::IdFvmLib(Self::read_fvmlib::<O, T>(buf)?),
+            LC_LOADFVMLIB => LoadCommand::LoadFvmLib(Self::read_fvmlib::<O, T>(buf)?),
 
-            LC_ID_DYLIB => LoadCommand::IdDyLib(try!(Self::read_dylib::<O, T>(buf))),
-            LC_LOAD_DYLIB => LoadCommand::LoadDyLib(try!(Self::read_dylib::<O, T>(buf))),
-            LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(try!(Self::read_dylib::<O, T>(buf))),
-            LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(try!(Self::read_dylib::<O, T>(buf))),
-            LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(try!(Self::read_dylib::<O, T>(buf))),
-            LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(try!(Self::read_dylib::<O, T>(buf))),
+            LC_ID_DYLIB => LoadCommand::IdDyLib(Self::read_dylib::<O, T>(buf)?),
+            LC_LOAD_DYLIB => LoadCommand::LoadDyLib(Self::read_dylib::<O, T>(buf)?),
+            LC_LOAD_WEAK_DYLIB => LoadCommand::LoadWeakDyLib(Self::read_dylib::<O, T>(buf)?),
+            LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(Self::read_dylib::<O, T>(buf)?),
+            LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(Self::read_dylib::<O, T>(buf)?),
+            LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(Self::read_dylib::<O, T>(buf)?),
 
-            LC_ID_DYLINKER => LoadCommand::IdDyLinker(try!(Self::read_dylinker::<O, T>(buf))),
-            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(try!(Self::read_dylinker::<O, T>(buf))),
-            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(try!(Self::read_dylinker::<O, T>(buf))),
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_dylinker::<O, T>(buf)?),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_dylinker::<O, T>(buf)?),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(Self::read_dylinker::<O, T>(buf)?),
 
-            LC_SYMTAB => {
-                LoadCommand::SymTab {
-                    symoff: try!(buf.read_u32::<O>()),
-                    nsyms: try!(buf.read_u32::<O>()),
-                    stroff: try!(buf.read_u32::<O>()),
-                    strsize: try!(buf.read_u32::<O>()),
-                }
-            }
-            LC_DYSYMTAB => {
-                LoadCommand::DySymTab {
-                    ilocalsym: try!(buf.read_u32::<O>()),
-                    nlocalsym: try!(buf.read_u32::<O>()),
-                    iextdefsym: try!(buf.read_u32::<O>()),
-                    nextdefsym: try!(buf.read_u32::<O>()),
-                    iundefsym: try!(buf.read_u32::<O>()),
-                    nundefsym: try!(buf.read_u32::<O>()),
-                    tocoff: try!(buf.read_u32::<O>()),
-                    ntoc: try!(buf.read_u32::<O>()),
-                    modtaboff: try!(buf.read_u32::<O>()),
-                    nmodtab: try!(buf.read_u32::<O>()),
-                    extrefsymoff: try!(buf.read_u32::<O>()),
-                    nextrefsyms: try!(buf.read_u32::<O>()),
-                    indirectsymoff: try!(buf.read_u32::<O>()),
-                    nindirectsyms: try!(buf.read_u32::<O>()),
-                    extreloff: try!(buf.read_u32::<O>()),
-                    nextrel: try!(buf.read_u32::<O>()),
-                    locreloff: try!(buf.read_u32::<O>()),
-                    nlocrel: try!(buf.read_u32::<O>()),
-                }
-            }
+            LC_SYMTAB => LoadCommand::SymTab {
+                symoff: buf.read_u32::<O>()?,
+                nsyms: buf.read_u32::<O>()?,
+                stroff: buf.read_u32::<O>()?,
+                strsize: buf.read_u32::<O>()?,
+            },
+            LC_DYSYMTAB => LoadCommand::DySymTab {
+                ilocalsym: buf.read_u32::<O>()?,
+                nlocalsym: buf.read_u32::<O>()?,
+                iextdefsym: buf.read_u32::<O>()?,
+                nextdefsym: buf.read_u32::<O>()?,
+                iundefsym: buf.read_u32::<O>()?,
+                nundefsym: buf.read_u32::<O>()?,
+                tocoff: buf.read_u32::<O>()?,
+                ntoc: buf.read_u32::<O>()?,
+                modtaboff: buf.read_u32::<O>()?,
+                nmodtab: buf.read_u32::<O>()?,
+                extrefsymoff: buf.read_u32::<O>()?,
+                nextrefsyms: buf.read_u32::<O>()?,
+                indirectsymoff: buf.read_u32::<O>()?,
+                nindirectsyms: buf.read_u32::<O>()?,
+                extreloff: buf.read_u32::<O>()?,
+                nextrel: buf.read_u32::<O>()?,
+                locreloff: buf.read_u32::<O>()?,
+                nlocrel: buf.read_u32::<O>()?,
+            },
             LC_UUID => {
                 let mut uuid = [0; 16];
 
-                try!(buf.read_exact(&mut uuid[..]));
+                buf.read_exact(&mut uuid[..])?;
 
-                LoadCommand::Uuid(try!(Uuid::from_bytes(&uuid[..])))
+                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..])?)
             }
-            LC_CODE_SIGNATURE => LoadCommand::CodeSignature(try!(Self::read_linkedit_data::<O, T>(buf))),
-            LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(try!(Self::read_linkedit_data::<O, T>(buf))),
-            LC_FUNCTION_STARTS => LoadCommand::FunctionStarts(try!(Self::read_linkedit_data::<O, T>(buf))),
-            LC_DATA_IN_CODE => LoadCommand::DataInCode(try!(Self::read_linkedit_data::<O, T>(buf))),
-            LC_DYLIB_CODE_SIGN_DRS => LoadCommand::DylibCodeSignDrs(try!(Self::read_linkedit_data::<O, T>(buf))),
-            LC_LINKER_OPTIMIZATION_HINT => {
-                LoadCommand::LinkerOptimizationHint(try!(Self::read_linkedit_data::<O, T>(buf)))
-            }
+            LC_CODE_SIGNATURE => LoadCommand::CodeSignature(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_FUNCTION_STARTS => LoadCommand::FunctionStarts(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_DATA_IN_CODE => LoadCommand::DataInCode(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_DYLIB_CODE_SIGN_DRS => LoadCommand::DylibCodeSignDrs(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_LINKER_OPTIMIZATION_HINT => LoadCommand::LinkerOptimizationHint(Self::read_linkedit_data::<O, T>(buf)?),
 
-            LC_VERSION_MIN_MACOSX |
-            LC_VERSION_MIN_IPHONEOS |
-            LC_VERSION_MIN_WATCHOS |
-            LC_VERSION_MIN_TVOS => {
+            LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_WATCHOS | LC_VERSION_MIN_TVOS => {
                 LoadCommand::VersionMin {
                     target: BuildTarget::from(cmd),
-                    version: VersionTag(try!(buf.read_u32::<O>())),
-                    sdk: VersionTag(try!(buf.read_u32::<O>())),
+                    version: VersionTag(buf.read_u32::<O>()?),
+                    sdk: VersionTag(buf.read_u32::<O>()?),
                 }
             }
-            LC_DYLD_INFO |
-            LC_DYLD_INFO_ONLY => {
-                LoadCommand::DyldInfo {
-                    rebase_off: try!(buf.read_u32::<O>()),
-                    rebase_size: try!(buf.read_u32::<O>()),
-                    bind_off: try!(buf.read_u32::<O>()),
-                    bind_size: try!(buf.read_u32::<O>()),
-                    weak_bind_off: try!(buf.read_u32::<O>()),
-                    weak_bind_size: try!(buf.read_u32::<O>()),
-                    lazy_bind_off: try!(buf.read_u32::<O>()),
-                    lazy_bind_size: try!(buf.read_u32::<O>()),
-                    export_off: try!(buf.read_u32::<O>()),
-                    export_size: try!(buf.read_u32::<O>()),
-                }
-            }
-            LC_MAIN => {
-                LoadCommand::EntryPoint {
-                    entryoff: try!(buf.read_u64::<O>()),
-                    stacksize: try!(buf.read_u64::<O>()),
-                }
-            }
-            LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(try!(buf.read_u64::<O>()))),
+            LC_DYLD_INFO | LC_DYLD_INFO_ONLY => LoadCommand::DyldInfo {
+                rebase_off: buf.read_u32::<O>()?,
+                rebase_size: buf.read_u32::<O>()?,
+                bind_off: buf.read_u32::<O>()?,
+                bind_size: buf.read_u32::<O>()?,
+                weak_bind_off: buf.read_u32::<O>()?,
+                weak_bind_size: buf.read_u32::<O>()?,
+                lazy_bind_off: buf.read_u32::<O>()?,
+                lazy_bind_size: buf.read_u32::<O>()?,
+                export_off: buf.read_u32::<O>()?,
+                export_size: buf.read_u32::<O>()?,
+            },
+            LC_MAIN => LoadCommand::EntryPoint {
+                entryoff: buf.read_u64::<O>()?,
+                stacksize: buf.read_u64::<O>()?,
+            },
+            LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(buf.read_u64::<O>()?)),
             _ => {
                 let mut payload = Vec::new();
 
                 payload.resize(cmdsize as usize - 8, 0);
 
-                debug!("load {} command with {} bytes payload",
-                       LoadCommand::cmd_name(cmd),
-                       payload.len());
+                debug!(
+                    "load {} command with {} bytes payload",
+                    LoadCommand::cmd_name(cmd),
+                    payload.len()
+                );
 
-                try!(buf.read_exact(payload.as_mut()));
+                buf.read_exact(payload.as_mut())?;
 
                 let cmd = LoadCommand::Command {
                     cmd: cmd,
@@ -886,43 +875,43 @@ impl LoadCommand {
     fn read_lc_string<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<String> {
         let mut s = Vec::new();
 
-        try!(buf.read_until(0, &mut s));
+        buf.read_until(0, &mut s)?;
 
-        unsafe { Ok(String::from(try!(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()))) }
+        unsafe { Ok(String::from(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?)) }
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
-        let off = try!(buf.read_u32::<O>()) as usize;
+        let off = buf.read_u32::<O>()? as usize;
 
         buf.consume(off - 12);
 
-        Ok(LcString(off, try!(Self::read_lc_string::<O, T>(buf))))
+        Ok(LcString(off, Self::read_lc_string::<O, T>(buf)?))
     }
 
     fn read_fvmlib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<FvmLib> {
-        let off = try!(buf.read_u32::<O>()) as usize;
-        let minor_version = try!(buf.read_u32::<O>());
-        let header_addr = try!(buf.read_u32::<O>());
+        let off = buf.read_u32::<O>()? as usize;
+        let minor_version = buf.read_u32::<O>()?;
+        let header_addr = buf.read_u32::<O>()?;
 
         buf.consume(off - 20);
 
         Ok(FvmLib {
-            name: LcString(off, try!(Self::read_lc_string::<O, T>(buf))),
+            name: LcString(off, Self::read_lc_string::<O, T>(buf)?),
             minor_version: minor_version,
             header_addr: header_addr,
         })
     }
 
     fn read_dylib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<DyLib> {
-        let off = try!(buf.read_u32::<O>()) as usize;
-        let timestamp = try!(buf.read_u32::<O>());
-        let current_version = try!(buf.read_u32::<O>());
-        let compatibility_version = try!(buf.read_u32::<O>());
+        let off = buf.read_u32::<O>()? as usize;
+        let timestamp = buf.read_u32::<O>()?;
+        let current_version = buf.read_u32::<O>()?;
+        let compatibility_version = buf.read_u32::<O>()?;
 
         buf.consume(off - 24);
 
         Ok(DyLib {
-            name: LcString(off, try!(Self::read_lc_string::<O, T>(buf))),
+            name: LcString(off, Self::read_lc_string::<O, T>(buf)?),
             timestamp: timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),
@@ -931,8 +920,8 @@ impl LoadCommand {
 
     fn read_linkedit_data<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LinkEditData> {
         Ok(LinkEditData {
-            off: try!(buf.read_u32::<O>()),
-            size: try!(buf.read_u32::<O>()),
+            off: buf.read_u32::<O>()?,
+            size: buf.read_u32::<O>()?,
         })
     }
 
@@ -1110,17 +1099,17 @@ pub struct Section {
 impl Section {
     fn parse_section<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<Section> {
         let section = Section {
-            sectname: try!(buf.read_fixed_size_string(16)),
-            segname: try!(buf.read_fixed_size_string(16)),
-            addr: try!(buf.read_u32::<O>()) as usize,
-            size: try!(buf.read_u32::<O>()) as usize,
-            offset: try!(buf.read_u32::<O>()),
-            align: try!(buf.read_u32::<O>()),
-            reloff: try!(buf.read_u32::<O>()),
-            nreloc: try!(buf.read_u32::<O>()),
-            flags: SectionFlags(try!(buf.read_u32::<O>())),
-            reserved1: try!(buf.read_u32::<O>()),
-            reserved2: try!(buf.read_u32::<O>()),
+            sectname: buf.read_fixed_size_string(16)?,
+            segname: buf.read_fixed_size_string(16)?,
+            addr: buf.read_u32::<O>()? as usize,
+            size: buf.read_u32::<O>()? as usize,
+            offset: buf.read_u32::<O>()?,
+            align: buf.read_u32::<O>()?,
+            reloff: buf.read_u32::<O>()?,
+            nreloc: buf.read_u32::<O>()?,
+            flags: SectionFlags(buf.read_u32::<O>()?),
+            reserved1: buf.read_u32::<O>()?,
+            reserved2: buf.read_u32::<O>()?,
             reserved3: 0,
         };
 
@@ -1129,18 +1118,18 @@ impl Section {
 
     fn parse_section64<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<Section> {
         let section = Section {
-            sectname: try!(buf.read_fixed_size_string(16)),
-            segname: try!(buf.read_fixed_size_string(16)),
-            addr: try!(buf.read_u64::<O>()) as usize,
-            size: try!(buf.read_u64::<O>()) as usize,
-            offset: try!(buf.read_u32::<O>()),
-            align: try!(buf.read_u32::<O>()),
-            reloff: try!(buf.read_u32::<O>()),
-            nreloc: try!(buf.read_u32::<O>()),
-            flags: SectionFlags(try!(buf.read_u32::<O>())),
-            reserved1: try!(buf.read_u32::<O>()),
-            reserved2: try!(buf.read_u32::<O>()),
-            reserved3: try!(buf.read_u32::<O>()),
+            sectname: buf.read_fixed_size_string(16)?,
+            segname: buf.read_fixed_size_string(16)?,
+            addr: buf.read_u64::<O>()? as usize,
+            size: buf.read_u64::<O>()? as usize,
+            offset: buf.read_u32::<O>()?,
+            align: buf.read_u32::<O>()?,
+            reloff: buf.read_u32::<O>()?,
+            nreloc: buf.read_u32::<O>()?,
+            flags: SectionFlags(buf.read_u32::<O>()?),
+            reserved1: buf.read_u32::<O>()?,
+            reserved2: buf.read_u32::<O>()?,
+            reserved3: buf.read_u32::<O>()?,
         };
 
         Ok(section)
@@ -1155,7 +1144,7 @@ impl Section {
 pub struct DataInCodeEntry {
     pub offset: u32, // from mach_header to start of data range
     pub length: u16, // number of bytes in data range
-    pub kind: u16, // a DICE_KIND_* value
+    pub kind: u16,   // a DICE_KIND_* value
 }
 
 #[cfg(test)]
@@ -1184,16 +1173,21 @@ pub mod tests {
 
     #[test]
     fn test_parse_segments() {
-        if let (LoadCommand::Segment64 { ref segname,
-                                         vmaddr,
-                                         vmsize,
-                                         fileoff,
-                                         filesize,
-                                         maxprot,
-                                         initprot,
-                                         flags,
-                                         ref sections },
-                cmdsize) = parse_command!(LC_SEGMENT_64_PAGEZERO_DATA) {
+        if let (
+            LoadCommand::Segment64 {
+                ref segname,
+                vmaddr,
+                vmsize,
+                fileoff,
+                filesize,
+                maxprot,
+                initprot,
+                flags,
+                ref sections,
+            },
+            cmdsize,
+        ) = parse_command!(LC_SEGMENT_64_PAGEZERO_DATA)
+        {
             assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_PAGEZERO);
             assert_eq!(vmaddr, 0);
@@ -1208,16 +1202,21 @@ pub mod tests {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 { ref segname,
-                                         vmaddr,
-                                         vmsize,
-                                         fileoff,
-                                         filesize,
-                                         maxprot,
-                                         initprot,
-                                         flags,
-                                         ref sections },
-                cmdsize) = parse_command!(LC_SEGMENT_64_TEXT_DATA) {
+        if let (
+            LoadCommand::Segment64 {
+                ref segname,
+                vmaddr,
+                vmsize,
+                fileoff,
+                filesize,
+                maxprot,
+                initprot,
+                flags,
+                ref sections,
+            },
+            cmdsize,
+        ) = parse_command!(LC_SEGMENT_64_TEXT_DATA)
+        {
             assert_eq!(cmdsize, 712);
             assert_eq!(segname, SEG_TEXT);
             assert_eq!(vmaddr, 0x0000000100000000);
@@ -1229,31 +1228,41 @@ pub mod tests {
             assert!(flags.is_empty());
             assert_eq!(sections.len(), 8);
 
-            assert_eq!(sections.iter()
-                           .map(|ref sec| (*sec).sectname.clone())
-                           .collect::<Vec<String>>(),
-                       vec![SECT_TEXT,
-                            "__stubs",
-                            "__stub_helper",
-                            "__gcc_except_tab",
-                            "__const",
-                            "__cstring",
-                            "__unwind_info",
-                            "__eh_frame"]);
+            assert_eq!(
+                sections
+                    .iter()
+                    .map(|ref sec| (*sec).sectname.clone())
+                    .collect::<Vec<String>>(),
+                vec![
+                    SECT_TEXT,
+                    "__stubs",
+                    "__stub_helper",
+                    "__gcc_except_tab",
+                    "__const",
+                    "__cstring",
+                    "__unwind_info",
+                    "__eh_frame",
+                ]
+            );
         } else {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 { ref segname,
-                                         vmaddr,
-                                         vmsize,
-                                         fileoff,
-                                         filesize,
-                                         maxprot,
-                                         initprot,
-                                         flags,
-                                         ref sections },
-                cmdsize) = parse_command!(LC_SEGMENT_64_DATA_DATA) {
+        if let (
+            LoadCommand::Segment64 {
+                ref segname,
+                vmaddr,
+                vmsize,
+                fileoff,
+                filesize,
+                maxprot,
+                initprot,
+                flags,
+                ref sections,
+            },
+            cmdsize,
+        ) = parse_command!(LC_SEGMENT_64_DATA_DATA)
+        {
             assert_eq!(cmdsize, 872);
             assert_eq!(segname, SEG_DATA);
             assert_eq!(vmaddr, 0x00000001001e3000);
@@ -1265,33 +1274,43 @@ pub mod tests {
             assert!(flags.is_empty());
             assert_eq!(sections.len(), 10);
 
-            assert_eq!(sections.iter()
-                           .map(|ref sec| (*sec).sectname.clone())
-                           .collect::<Vec<String>>(),
-                       vec!["__nl_symbol_ptr",
-                            "__got",
-                            "__la_symbol_ptr",
-                            "__mod_init_func",
-                            "__const",
-                            SECT_DATA,
-                            "__thread_vars",
-                            "__thread_data",
-                            SECT_COMMON,
-                            SECT_BSS]);
+            assert_eq!(
+                sections
+                    .iter()
+                    .map(|ref sec| (*sec).sectname.clone())
+                    .collect::<Vec<String>>(),
+                vec![
+                    "__nl_symbol_ptr",
+                    "__got",
+                    "__la_symbol_ptr",
+                    "__mod_init_func",
+                    "__const",
+                    SECT_DATA,
+                    "__thread_vars",
+                    "__thread_data",
+                    SECT_COMMON,
+                    SECT_BSS,
+                ]
+            );
         } else {
             panic!();
         }
 
-        if let (LoadCommand::Segment64 { ref segname,
-                                         vmaddr,
-                                         vmsize,
-                                         fileoff,
-                                         filesize,
-                                         maxprot,
-                                         initprot,
-                                         flags,
-                                         ref sections },
-                cmdsize) = parse_command!(LC_SEGMENT_64_LINKEDIT_DATA) {
+        if let (
+            LoadCommand::Segment64 {
+                ref segname,
+                vmaddr,
+                vmsize,
+                fileoff,
+                filesize,
+                maxprot,
+                initprot,
+                flags,
+                ref sections,
+            },
+            cmdsize,
+        ) = parse_command!(LC_SEGMENT_64_LINKEDIT_DATA)
+        {
             assert_eq!(cmdsize, 72);
             assert_eq!(segname, SEG_LINKEDIT);
             assert_eq!(vmaddr, 0x00000001001f6000);
@@ -1309,17 +1328,22 @@ pub mod tests {
 
     #[test]
     fn test_parse_dyld_info_command() {
-        if let (LoadCommand::DyldInfo { rebase_off,
-                                        rebase_size,
-                                        bind_off,
-                                        bind_size,
-                                        weak_bind_off,
-                                        weak_bind_size,
-                                        lazy_bind_off,
-                                        lazy_bind_size,
-                                        export_off,
-                                        export_size },
-                cmdsize) = parse_command!(LC_DYLD_INFO_ONLY_DATA) {
+        if let (
+            LoadCommand::DyldInfo {
+                rebase_off,
+                rebase_size,
+                bind_off,
+                bind_size,
+                weak_bind_off,
+                weak_bind_size,
+                lazy_bind_off,
+                lazy_bind_size,
+                export_off,
+                export_size,
+            },
+            cmdsize,
+        ) = parse_command!(LC_DYLD_INFO_ONLY_DATA)
+        {
             assert_eq!(cmdsize, 48);
             assert_eq!(rebase_off, 0x1f5000);
             assert_eq!(rebase_size, 3368);
@@ -1338,7 +1362,16 @@ pub mod tests {
 
     #[test]
     fn test_parse_symtab_command() {
-        if let (LoadCommand::SymTab { symoff, nsyms, stroff, strsize }, cmdsize) = parse_command!(LC_SYMTAB_DATA) {
+        if let (
+            LoadCommand::SymTab {
+                symoff,
+                nsyms,
+                stroff,
+                strsize,
+            },
+            cmdsize,
+        ) = parse_command!(LC_SYMTAB_DATA)
+        {
             assert_eq!(cmdsize, 24);
             assert_eq!(symoff, 0x200d88);
             assert_eq!(nsyms, 36797);
@@ -1351,25 +1384,30 @@ pub mod tests {
 
     #[test]
     fn test_parse_dysymtab_command() {
-        if let (LoadCommand::DySymTab { ilocalsym,
-                                        nlocalsym,
-                                        iextdefsym,
-                                        nextdefsym,
-                                        iundefsym,
-                                        nundefsym,
-                                        tocoff,
-                                        ntoc,
-                                        modtaboff,
-                                        nmodtab,
-                                        extrefsymoff,
-                                        nextrefsyms,
-                                        indirectsymoff,
-                                        nindirectsyms,
-                                        extreloff,
-                                        nextrel,
-                                        locreloff,
-                                        nlocrel },
-                cmdsize) = parse_command!(LC_DYSYMTAB_DATA) {
+        if let (
+            LoadCommand::DySymTab {
+                ilocalsym,
+                nlocalsym,
+                iextdefsym,
+                nextdefsym,
+                iundefsym,
+                nundefsym,
+                tocoff,
+                ntoc,
+                modtaboff,
+                nmodtab,
+                extrefsymoff,
+                nextrefsyms,
+                indirectsymoff,
+                nindirectsyms,
+                extreloff,
+                nextrel,
+                locreloff,
+                nlocrel,
+            },
+            cmdsize,
+        ) = parse_command!(LC_DYSYMTAB_DATA)
+        {
             assert_eq!(cmdsize, 80);
             assert_eq!(ilocalsym, 0);
             assert_eq!(nlocalsym, 35968);
@@ -1409,8 +1447,10 @@ pub mod tests {
     fn test_parse_uuid_command() {
         if let (LoadCommand::Uuid(ref uuid), cmdsize) = parse_command!(LC_UUID_DATA) {
             assert_eq!(cmdsize, 24);
-            assert_eq!(uuid.hyphenated().to_string(),
-                       "92e3cf1f-20da-3373-a98c-851366d353bf");
+            assert_eq!(
+                uuid.hyphenated().to_string(),
+                "92e3cf1f-20da-3373-a98c-851366d353bf"
+            );
         } else {
             panic!();
         }
@@ -1418,8 +1458,15 @@ pub mod tests {
 
     #[test]
     fn test_parse_min_version_command() {
-        if let (LoadCommand::VersionMin { target, version, sdk }, cmdsize) =
-            parse_command!(LC_VERSION_MIN_MACOSX_DATA) {
+        if let (
+            LoadCommand::VersionMin {
+                target,
+                version,
+                sdk,
+            },
+            cmdsize,
+        ) = parse_command!(LC_VERSION_MIN_MACOSX_DATA)
+        {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
             assert_eq!(version.to_string(), "10.11");
@@ -1441,7 +1488,14 @@ pub mod tests {
 
     #[test]
     fn test_parse_main_command() {
-        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) = parse_command!(LC_MAIN_DATA) {
+        if let (
+            LoadCommand::EntryPoint {
+                entryoff,
+                stacksize,
+            },
+            cmdsize,
+        ) = parse_command!(LC_MAIN_DATA)
+        {
             assert_eq!(cmdsize, 24);
             assert_eq!(entryoff, 0x11400);
             assert_eq!(stacksize, 0);
@@ -1454,8 +1508,10 @@ pub mod tests {
     fn test_load_dylib_command() {
         if let (LoadCommand::LoadDyLib(ref dylib), cmdsize) = parse_command!(LC_LOAD_DYLIB_DATA) {
             assert_eq!(cmdsize, 56);
-            assert_eq!(dylib.name,
-                       LcString(24, String::from("/usr/lib/libSystem.B.dylib")));
+            assert_eq!(
+                dylib.name,
+                LcString(24, String::from("/usr/lib/libSystem.B.dylib"))
+            );
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
             assert_eq!(dylib.compatibility_version.to_string(), "1.0");
@@ -1467,7 +1523,8 @@ pub mod tests {
     #[test]
     fn test_parse_link_edit_data_command() {
         if let (LoadCommand::FunctionStarts(LinkEditData { off, size }), cmdsize) =
-            parse_command!(LC_FUNCTION_STARTS_DATA) {
+            parse_command!(LC_FUNCTION_STARTS_DATA)
+        {
             assert_eq!(cmdsize, 16);
             assert_eq!(off, 0x1fec50);
             assert_eq!(size, 8504);

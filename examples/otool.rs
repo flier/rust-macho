@@ -161,16 +161,16 @@ impl<'a> FileProcessContext<'a> {
         for off in 0..size {
             if (off % 16) == 0 {
                 if off > 0 {
-                    try!(write!(&mut w, "\n"));
+                    write!(&mut w, "\n")?;
                 }
 
-                try!(write!(&mut w, "{:016x}\t", addr + off));
+                write!(&mut w, "{:016x}\t", addr + off)?;
             }
 
-            try!(write!(&mut w, "{:02x} ", try!(self.cur.read_u8())));
+            write!(&mut w, "{:02x} ", self.cur.read_u8()?)?;
         }
 
-        try!(write!(&mut w, "\n"));
+        write!(&mut w, "\n")?;
 
         Ok(w)
     }
@@ -179,9 +179,9 @@ impl<'a> FileProcessContext<'a> {
 impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file = File::open(filename)?;
-        let mmap = try!(unsafe { Mmap::map(&file) });
+        let mmap = unsafe { Mmap::map(&file) }?;
         let mut cur = Cursor::new(mmap.as_ref());
-        let file = try!(OFile::parse(&mut cur));
+        let file = OFile::parse(&mut cur)?;
         let mut ctxt = FileProcessContext {
             filename: String::from(filename),
             cur: &mut cur,
@@ -189,14 +189,14 @@ impl<T: Write> FileProcessor<T> {
 
         debug!("process file {} with {} bytes", filename, mmap.len());
 
-        try!(self.process_ofile(&file, &mut ctxt));
+        self.process_ofile(&file, &mut ctxt)?;
 
         if self.print_symbol_table {
             debug!("dumping symbol table");
 
             if let Some(symbols) = file.symbols(ctxt.cur) {
                 for symbol in symbols {
-                    try!(write!(self.w, "{}\n", symbol));
+                    write!(self.w, "{}\n", symbol)?;
                 }
             }
         }
@@ -233,31 +233,30 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
-                try!(write!(
+                write!(
                     self.w,
                     "{} (architecture {}):\n",
                     ctxt.filename,
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
-                ));
+                )?;
             } else {
-                try!(write!(self.w, "{}:\n", ctxt.filename));
+                write!(self.w, "{}:\n", ctxt.filename)?;
             }
         }
 
         if self.print_mach_header {
-            try!(write!(self.w, "{}", header));
+            write!(self.w, "{}", header)?;
         }
 
         if self.print_load_commands {
             for (i, ref cmd) in commands.iter().enumerate() {
-                try!(write!(self.w, "Load command {}\n", i));
-                try!(write!(self.w, "{}", cmd));
+                write!(self.w, "Load command {}\n", i)?;
+                write!(self.w, "{}", cmd)?;
             }
         }
 
@@ -276,19 +275,18 @@ impl<T: Write> FileProcessor<T> {
                                 && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
                         {
                             if self.print_headers {
-                                try!(write!(
+                                write!(
                                     self.w,
                                     "Contents of ({},{}) section\n",
-                                    sect.segname,
-                                    sect.sectname
-                                ));
+                                    sect.segname, sect.sectname
+                                )?;
                             }
 
-                            try!(ctxt.cur.seek(SeekFrom::Start(sect.offset as u64)));
+                            ctxt.cur.seek(SeekFrom::Start(sect.offset as u64))?;
 
-                            let dump = try!(ctxt.hexdump(sect.addr, sect.size));
+                            let dump = ctxt.hexdump(sect.addr, sect.size)?;
 
-                            try!(self.w.write(&dump[..]));
+                            self.w.write(&dump[..])?;
                         }
                     }
                 }
@@ -296,12 +294,11 @@ impl<T: Write> FileProcessor<T> {
                 &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
-                    try!(write!(
+                    write!(
                         self.w,
                         "\t{} (minor version {})\n",
-                        fvmlib.name,
-                        fvmlib.minor_version
-                    ));
+                        fvmlib.name, fvmlib.minor_version
+                    )?;
                 }
 
                 &LoadCommand::IdDyLib(ref dylib)
@@ -313,9 +310,9 @@ impl<T: Write> FileProcessor<T> {
                     if self.print_shared_lib && (cmd.cmd() == LC_ID_DYLIB || !self.print_shared_lib_just_id) =>
                 {
                     if self.print_shared_lib_just_id {
-                        try!(write!(self.w, "{}", dylib.name));
+                        write!(self.w, "{}", dylib.name)?;
                     } else {
-                        try!(write!(
+                        write!(
                             self.w,
                             "\t{} (compatibility version {}.{}.{}, current version \
                              {}.{}.{})\n",
@@ -326,7 +323,7 @@ impl<T: Write> FileProcessor<T> {
                             dylib.current_version.major(),
                             dylib.current_version.minor(),
                             dylib.current_version.release()
-                        ));
+                        )?;
                     }
                 }
                 _ => {}
@@ -348,11 +345,11 @@ impl<T: Write> FileProcessor<T> {
                 archs: files.iter().map(|&(ref arch, _)| arch.clone()).collect(),
             };
 
-            try!(write!(self.w, "{}", header));
+            write!(self.w, "{}", header)?;
         }
 
         for &(_, ref file) in files {
-            try!(self.process_ofile(file, ctxt));
+            self.process_ofile(file, ctxt)?;
         }
 
         Ok(())
@@ -360,17 +357,17 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
-            try!(write!(self.w, "Archive :{}\n", ctxt.filename));
+            write!(self.w, "Archive :{}\n", ctxt.filename)?;
         }
 
         if self.print_archive_header {
             for &(ref header, _) in files {
-                try!(write!(self.w, "{}", header));
+                write!(self.w, "{}", header)?;
             }
         }
 
         for &(ref header, ref file) in files {
-            try!(self.process_ofile(
+            self.process_ofile(
                 file,
                 &mut FileProcessContext {
                     filename: if let Some(ref name) = header.ar_member_name {
@@ -379,8 +376,8 @@ impl<T: Write> FileProcessor<T> {
                         ctxt.filename.clone()
                     },
                     cur: &mut ctxt.cur.clone(),
-                }
-            ));
+                },
+            )?;
         }
 
         Ok(())
@@ -388,26 +385,17 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            try!(write!(
-                self.w,
-                "Table of contents from: {}\n",
-                ctxt.filename
-            ));
-            try!(write!(
+            write!(self.w, "Table of contents from: {}\n", ctxt.filename)?;
+            write!(
                 self.w,
                 "size of ranlib structures: {} (number {})\n",
                 ranlibs.len() * size_of::<RanLib>(),
                 ranlibs.len()
-            ));
-            try!(write!(self.w, "object offset  string index\n"));
+            )?;
+            write!(self.w, "object offset  string index\n")?;
 
             for ref ranlib in ranlibs {
-                try!(write!(
-                    self.w,
-                    "{:<14} {}\n",
-                    ranlib.ran_off,
-                    ranlib.ran_strx
-                ));
+                write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx)?;
             }
         }
 

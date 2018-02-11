@@ -1,4 +1,5 @@
 extern crate byteorder;
+#[macro_use]
 extern crate failure;
 extern crate getopts;
 #[macro_use]
@@ -7,8 +8,10 @@ extern crate mach_object;
 extern crate memmap;
 extern crate pretty_env_logger;
 
+use std::mem;
 use std::env;
 use std::borrow::Cow;
+use std::rc::Rc;
 use std::mem::size_of;
 use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -59,6 +62,7 @@ fn main() {
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
     opts.optflag("b", "bind", "print the mach-o binding info");
+    opts.optflag("r", "rebase", "print the mach-o rebasing info");
     opts.optflag(
         "",
         "version",
@@ -111,7 +115,8 @@ fn main() {
             }
         }),
         print_lib_toc: matches.opt_present("S"),
-        print_bind_info: matches.opt_present("b"),
+        print_bind_info: matches.opt_present("bind"),
+        print_rebase_info: matches.opt_present("rebase"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -153,6 +158,7 @@ struct FileProcessor<T: Write> {
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
     print_bind_info: bool,
+    print_rebase_info: bool,
 }
 
 struct FileProcessContext<'a> {
@@ -233,7 +239,7 @@ impl<T: Write> FileProcessor<T> {
     fn process_mach_file(
         &mut self,
         header: &MachHeader,
-        commands: &Vec<MachCommand>,
+        commands: &[MachCommand],
         ctxt: &mut FileProcessContext,
     ) -> Result<(), Error> {
         if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
@@ -249,8 +255,7 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -288,8 +293,7 @@ impl<T: Write> FileProcessor<T> {
                                 write!(
                                     self.w,
                                     "Contents of ({},{}) section\n",
-                                    sect.segname,
-                                    sect.sectname
+                                    sect.segname, sect.sectname
                                 )?;
                             }
 
@@ -308,8 +312,7 @@ impl<T: Write> FileProcessor<T> {
                     write!(
                         self.w,
                         "\t{} (minor version {})\n",
-                        fvmlib.name,
-                        fvmlib.minor_version
+                        fvmlib.name, fvmlib.minor_version
                     )?;
                 }
 
@@ -342,18 +345,16 @@ impl<T: Write> FileProcessor<T> {
                 &LoadCommand::DyldInfo {
                     bind_off,
                     bind_size,
+                    rebase_off,
+                    rebase_size,
                     ..
-                } if self.print_bind_info =>
-                {
-                    let start = bind_off as usize;
-                    let end = (bind_off + bind_size) as usize;
+                } => {
+                    if self.print_bind_info {
+                        self.process_bind_info(bind_off, bind_size, ctxt.content, commands)?;
+                    }
 
-                    if start > ctxt.content.len() {
-                        eprintln!("bind_off in LC_DYLD_INFO load command pass end of file");
-                    } else if end > ctxt.content.len() {
-                        eprintln!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
-                    } else {
-                        let bind = &ctxt.content[start..end];
+                    if self.print_rebase_info {
+                        self.process_rebase_info(rebase_off, rebase_size, ctxt.content, commands)?;
                     }
                 }
 
@@ -428,6 +429,144 @@ impl<T: Write> FileProcessor<T> {
 
             for ref ranlib in ranlibs {
                 write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn process_bind_info(&self, offset: u32, size: u32, payload: &[u8], segments: &[MachCommand]) -> Result<(), Error> {
+        let start = offset as usize;
+        let end = (offset + size) as usize;
+
+        if start > payload.len() {
+            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+        }
+        if end > payload.len() {
+            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+        }
+
+        Ok(())
+    }
+
+    fn process_rebase_info(
+        &mut self,
+        offset: u32,
+        size: u32,
+        payload: &[u8],
+        commands: &[MachCommand],
+    ) -> Result<(), Error> {
+        let start = offset as usize;
+        let end = (offset + size) as usize;
+
+        if start > payload.len() {
+            bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
+        }
+        if end > payload.len() {
+            bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
+        }
+
+        write!(self.w, "Rebase table:\n");
+        write!(self.w, "segment  section            address     type\n");
+
+        let mut segment: Option<(&str, usize, &[Rc<Section>])> = None;
+        let mut off = 0;
+        let mut symtype = SymbolType::Pointer;
+
+        let sectname = |sections: &[Rc<Section>], addr| {
+            sections
+                .iter()
+                .find(|section| section.addr <= addr && section.addr + section.size > addr)
+                .map(|section| section.sectname.clone())
+                .unwrap_or_default()
+        };
+
+        for opcode in RebaseOpCode::parse(&payload[start..end]) {
+            trace!("Rebase OpCode: {:?}", opcode);
+
+            match opcode {
+                RebaseOpCode::SetSymbolType(symbol_type) => {
+                    symtype = symbol_type;
+                }
+                RebaseOpCode::SetSegmentOffset {
+                    segment_index,
+                    segment_offset,
+                } => {
+                    segment = commands
+                        .get(segment_index as usize)
+                        .and_then(|cmd| match cmd.command() {
+                            &LoadCommand::Segment {
+                                ref segname,
+                                vmaddr,
+                                ref sections,
+                                ..
+                            }
+                            | &LoadCommand::Segment64 {
+                                ref segname,
+                                vmaddr,
+                                ref sections,
+                                ..
+                            } => Some((segname.as_str(), vmaddr, sections.as_slice())),
+                            _ => None,
+                        });
+
+                    off = segment_offset;
+                }
+                RebaseOpCode::AddAddress { offset } => {
+                    off += offset;
+                }
+                RebaseOpCode::Rebase { times } => if let Some((segname, vmaddr, sections)) = segment {
+                    for _ in 0..times {
+                        let addr = vmaddr + off as usize;
+
+                        write!(
+                            self.w,
+                            "{:8} {:18} 0x{:08X}\t{:?}\n",
+                            segname,
+                            sectname(sections, addr),
+                            addr,
+                            symtype
+                        )?;
+
+                        off += mem::size_of::<*const u8>();
+                    }
+                } else {
+                    bail!("segment missed")
+                },
+                RebaseOpCode::RebaseAndAddAddress { offset } => if let Some((segname, vmaddr, sections)) = segment {
+                    let mut addr = vmaddr + off as usize;
+
+                    write!(
+                        self.w,
+                        "{:8} {:18} 0x{:08X}\t{:?}\n",
+                        segname,
+                        sectname(sections, addr),
+                        addr,
+                        symtype
+                    )?;
+
+                    off += offset + mem::size_of::<*const u8>();
+                } else {
+                    bail!("segment missed")
+                },
+                RebaseOpCode::RebaseAndSkipping { times, skip } => if let Some((segname, vmaddr, sections)) = segment {
+                    for _ in 0..times {
+                        let addr = vmaddr + off as usize;
+
+                        write!(
+                            self.w,
+                            "{:8} {:18} 0x{:08X}\t{:?}\n",
+                            segname,
+                            sectname(sections, addr),
+                            addr,
+                            symtype
+                        )?;
+
+                        off += skip + mem::size_of::<*const u8>();
+                    }
+                } else {
+                    bail!("segment missed")
+                },
             }
         }
 

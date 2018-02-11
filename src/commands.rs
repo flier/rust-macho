@@ -693,11 +693,7 @@ pub trait ReadStringExt: Read {
 
         self.read_exact(buf.as_mut())?;
 
-        unsafe {
-            Ok(String::from(
-                CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?,
-            ))
-        }
+        unsafe { Ok(String::from(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?)) }
     }
 }
 
@@ -881,11 +877,7 @@ impl LoadCommand {
 
         buf.read_until(0, &mut s)?;
 
-        unsafe {
-            Ok(String::from(
-                CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?,
-            ))
-        }
+        unsafe { Ok(String::from(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?)) }
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {

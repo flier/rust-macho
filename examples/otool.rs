@@ -1,18 +1,21 @@
 extern crate byteorder;
-extern crate env_logger;
+extern crate failure;
 extern crate getopts;
 #[macro_use]
 extern crate log;
 extern crate mach_object;
 extern crate memmap;
+extern crate pretty_env_logger;
 
 use std::env;
+use std::borrow::Cow;
 use std::mem::size_of;
 use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
 use std::process::exit;
 
+use failure::Error;
 use getopts::Options;
 use byteorder::ReadBytesExt;
 use memmap::Mmap;
@@ -31,7 +34,7 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
-    env_logger::init();
+    pretty_env_logger::init();
 
     let args: Vec<String> = env::args().collect();
     let program = Path::new(args[0].as_str())
@@ -55,6 +58,7 @@ fn main() {
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
+    opts.optflag("b", "bind", "print the mach-o binding info");
     opts.optflag(
         "",
         "version",
@@ -107,6 +111,7 @@ fn main() {
             }
         }),
         print_lib_toc: matches.opt_present("S"),
+        print_bind_info: matches.opt_present("b"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -147,11 +152,13 @@ struct FileProcessor<T: Write> {
     print_symbol_table: bool,
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
+    print_bind_info: bool,
 }
 
 struct FileProcessContext<'a> {
-    filename: String,
-    cur: &'a mut Cursor<&'a [u8]>,
+    filename: Cow<'a, str>,
+    content: &'a [u8],
+    cur: Cursor<&'a [u8]>,
 }
 
 impl<'a> FileProcessContext<'a> {
@@ -180,11 +187,13 @@ impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file = File::open(filename)?;
         let mmap = unsafe { Mmap::map(&file) }?;
-        let mut cur = Cursor::new(mmap.as_ref());
+        let content = mmap.as_ref();
+        let mut cur = Cursor::new(content);
         let file = OFile::parse(&mut cur)?;
         let mut ctxt = FileProcessContext {
-            filename: String::from(filename),
-            cur: &mut cur,
+            filename: filename.into(),
+            content,
+            cur,
         };
 
         debug!("process file {} with {} bytes", filename, mmap.len());
@@ -194,7 +203,7 @@ impl<T: Write> FileProcessor<T> {
         if self.print_symbol_table {
             debug!("dumping symbol table");
 
-            if let Some(symbols) = file.symbols(ctxt.cur) {
+            if let Some(symbols) = file.symbols(&mut ctxt.cur) {
                 for symbol in symbols {
                     write!(self.w, "{}\n", symbol)?;
                 }
@@ -240,7 +249,8 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype, header.cpusubtype
+                            header.cputype,
+                            header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -278,7 +288,8 @@ impl<T: Write> FileProcessor<T> {
                                 write!(
                                     self.w,
                                     "Contents of ({},{}) section\n",
-                                    sect.segname, sect.sectname
+                                    sect.segname,
+                                    sect.sectname
                                 )?;
                             }
 
@@ -297,7 +308,8 @@ impl<T: Write> FileProcessor<T> {
                     write!(
                         self.w,
                         "\t{} (minor version {})\n",
-                        fvmlib.name, fvmlib.minor_version
+                        fvmlib.name,
+                        fvmlib.minor_version
                     )?;
                 }
 
@@ -326,6 +338,25 @@ impl<T: Write> FileProcessor<T> {
                         )?;
                     }
                 }
+
+                &LoadCommand::DyldInfo {
+                    bind_off,
+                    bind_size,
+                    ..
+                } if self.print_bind_info =>
+                {
+                    let start = bind_off as usize;
+                    let end = (bind_off + bind_size) as usize;
+
+                    if start > ctxt.content.len() {
+                        eprintln!("bind_off in LC_DYLD_INFO load command pass end of file");
+                    } else if end > ctxt.content.len() {
+                        eprintln!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                    } else {
+                        let bind = &ctxt.content[start..end];
+                    }
+                }
+
                 _ => {}
             }
         }
@@ -371,11 +402,12 @@ impl<T: Write> FileProcessor<T> {
                 file,
                 &mut FileProcessContext {
                     filename: if let Some(ref name) = header.ar_member_name {
-                        format!("{}({})", ctxt.filename, name)
+                        format!("{}({})", ctxt.filename, name).into()
                     } else {
                         ctxt.filename.clone()
                     },
-                    cur: &mut ctxt.cur.clone(),
+                    content: ctxt.content,
+                    cur: ctxt.cur.clone(),
                 },
             )?;
         }

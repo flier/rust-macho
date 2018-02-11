@@ -292,15 +292,15 @@ impl MachCommand {
         {
             write!(f, "            cmd {}\n", cmd.name())?;
             write!(f, "        cmdsize {}\n", cmdsize)?;
-            write!(f, "     rebase_off {}\n", rebase_off)?;
+            write!(f, "     rebase_off 0x{:08x}\n", rebase_off)?;
             write!(f, "    rebase_size {}\n", rebase_size)?;
-            write!(f, "       bind_off {}\n", bind_off)?;
+            write!(f, "       bind_off 0x{:08x}\n", bind_off)?;
             write!(f, "      bind_size {}\n", bind_size)?;
-            write!(f, "  weak_bind_off {}\n", weak_bind_off)?;
+            write!(f, "  weak_bind_off 0x{:08x}\n", weak_bind_off)?;
             write!(f, " weak_bind_size {}\n", weak_bind_size)?;
-            write!(f, "  lazy_bind_off {}\n", lazy_bind_off)?;
+            write!(f, "  lazy_bind_off 0x{:08x}\n", lazy_bind_off)?;
             write!(f, " lazy_bind_size {}\n", lazy_bind_size)?;
-            write!(f, "     export_off {}\n", export_off)?;
+            write!(f, "     export_off 0x{:08x}\n", export_off)?;
             write!(f, "    export_size {}\n", export_size)?;
 
             Ok(())
@@ -435,7 +435,8 @@ impl MachCommand {
                 write!(
                     f,
                     "         name {} (offset {})\n",
-                    dylib.name, dylib.name.0
+                    dylib.name,
+                    dylib.name.0
                 )?;
                 let ts = time::at_utc(time::Timespec::new(dylib.timestamp as i64, 0));
                 write!(
@@ -672,7 +673,7 @@ impl ArHeader {
 
         for c in s.as_bytes() {
             if *c < b'0' || b'7' < *c {
-                return Err(Error::ParseOctalError(String::from(s)));
+                bail!(MachError::ParseOctalError(String::from(s)));
             }
 
             v = v * 8 + (c - b'0') as usize;
@@ -687,7 +688,12 @@ impl fmt::Display for ArHeader {
         write!(
             f,
             "0{:o} {:3}/{:<3} {:5} {} {}\n",
-            self.ar_mode, self.ar_uid, self.ar_gid, self.ar_size, self.ar_date, self.ar_name
+            self.ar_mode,
+            self.ar_uid,
+            self.ar_gid,
+            self.ar_size,
+            self.ar_date,
+            self.ar_name
         )
     }
 }
@@ -755,10 +761,9 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    Err(Error::LoadError(format!(
-                        "unknown file format 0x{:x}",
-                        magic
-                    )))
+                    bail!(MachError::LoadError(
+                        format!("unknown file format 0x{:x}", magic),
+                    ))
                 }
             }
         }
@@ -821,7 +826,8 @@ impl OFile {
         for arch in archs {
             debug!(
                 "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset, arch
+                arch.offset,
+                arch
             );
 
             let mut cur =
@@ -892,14 +898,18 @@ impl OFile {
                         files.push((header.clone(), file));
                     }
                 },
-                Err(Error::IoError(err)) => {
-                    if err.kind() == ErrorKind::UnexpectedEof {
-                        break;
+                Err(err) => {
+                    match err.downcast_ref::<::std::io::Error>() {
+                        Some(err) if err.kind() == ErrorKind::UnexpectedEof =>{
+                            break;
+                        },
+                        _ => {
+                            warn!("parse ar file failed, {:?}", err);
+                        }
                     }
 
-                    return Err(Error::from(err));
+                    bail!(err)
                 }
-                Err(err) => return Err(err),
             }
         }
 
@@ -911,9 +921,6 @@ impl OFile {
 
 #[cfg(test)]
 pub mod tests {
-    extern crate diff;
-    extern crate env_logger;
-
     use std::str;
     use std::io::{Cursor, Write};
 
@@ -928,8 +935,38 @@ pub mod tests {
      0xfeedfacf 16777223          3  0x80           2    15       2080 0x00a18085
     **/
     const MACH_HEADER_64_DATA: [u8; 32] = [
-        0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0, 0x80, 0x2, 0x0, 0x0, 0x0, 0xf, 0x0, 0x0, 0x0, 0x20,
-        0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0xcf,
+        0xfa,
+        0xed,
+        0xfe,
+        0x7,
+        0x0,
+        0x0,
+        0x1,
+        0x3,
+        0x0,
+        0x0,
+        0x80,
+        0x2,
+        0x0,
+        0x0,
+        0x0,
+        0xf,
+        0x0,
+        0x0,
+        0x0,
+        0x20,
+        0x8,
+        0x0,
+        0x0,
+        0x85,
+        0x80,
+        0xa1,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
     ];
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
@@ -950,7 +987,7 @@ pub mod tests {
 
     macro_rules! parse_test_file {
         ($buf: expr) => ({
-            let _ = env_logger::try_init();
+            let _ = pretty_env_logger::try_init();
 
             let mut cursor = Cursor::new($buf);
 

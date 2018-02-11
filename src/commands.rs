@@ -693,7 +693,11 @@ pub trait ReadStringExt: Read {
 
         self.read_exact(buf.as_mut())?;
 
-        unsafe { Ok(String::from(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?)) }
+        unsafe {
+            Ok(String::from(
+                CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?,
+            ))
+        }
     }
 }
 
@@ -807,7 +811,7 @@ impl LoadCommand {
 
                 buf.read_exact(&mut uuid[..])?;
 
-                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..])?)
+                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..]).map_err(MachError::from)?)
             }
             LC_CODE_SIGNATURE => LoadCommand::CodeSignature(Self::read_linkedit_data::<O, T>(buf)?),
             LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(Self::read_linkedit_data::<O, T>(buf)?),
@@ -877,7 +881,11 @@ impl LoadCommand {
 
         buf.read_until(0, &mut s)?;
 
-        unsafe { Ok(String::from(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?)) }
+        unsafe {
+            Ok(String::from(
+                CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?,
+            ))
+        }
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
@@ -1149,8 +1157,6 @@ pub struct DataInCodeEntry {
 
 #[cfg(test)]
 pub mod tests {
-    extern crate env_logger;
-
     use std::io::Cursor;
 
     use byteorder::LittleEndian;

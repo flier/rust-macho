@@ -8,6 +8,17 @@ pub type cpu_subtype_t = i32;
 pub type vm_prot_t = i32;
 pub type off_t = u32;
 
+#[cfg(target_pointer_width = "16")]
+pub const POINTER_WIDTH: usize = 16;
+#[cfg(target_pointer_width = "32")]
+pub const POINTER_WIDTH: usize = 32;
+#[cfg(target_pointer_width = "64")]
+pub const POINTER_WIDTH: usize = 64;
+#[cfg(target_pointer_width = "128")]
+pub const POINTER_WIDTH: usize = 128;
+
+pub const POINTER_BYTES: usize = POINTER_WIDTH / 8;
+
 // Capability bits used in the definition of cpu_type.
 //
 

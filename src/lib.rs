@@ -50,7 +50,7 @@ extern crate pretty_env_logger;
 mod consts;
 mod errors;
 mod commands;
-mod bind;
+mod opcode;
 mod loader;
 mod symbol;
 
@@ -58,4 +58,4 @@ pub use consts::*;
 pub use commands::*;
 pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
-pub use bind::{BindOpCode, BindOpCodes, RebaseOpCode, RebaseOpCodes, SymbolType};
+pub use opcode::{BindOpCode, BindOpCodes, RebaseOpCode, RebaseOpCodes, SymbolType};

@@ -13,7 +13,6 @@ use std::ops::Range;
 use std::env;
 use std::borrow::Cow;
 use std::rc::Rc;
-use std::mem::size_of;
 use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
@@ -252,8 +251,7 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -291,8 +289,7 @@ impl<T: Write> FileProcessor<T> {
                                 writeln!(
                                     self.w,
                                     "Contents of ({},{}) section",
-                                    sect.segname,
-                                    sect.sectname
+                                    sect.segname, sect.sectname
                                 )?;
                             }
 
@@ -311,8 +308,7 @@ impl<T: Write> FileProcessor<T> {
                     writeln!(
                         self.w,
                         "\t{} (minor version {})",
-                        fvmlib.name,
-                        fvmlib.minor_version
+                        fvmlib.name, fvmlib.minor_version
                     )?;
                 }
 
@@ -421,7 +417,7 @@ impl<T: Write> FileProcessor<T> {
             writeln!(
                 self.w,
                 "size of ranlib structures: {} (number {})",
-                ranlibs.len() * size_of::<RanLib>(),
+                ranlibs.len() * mem::size_of::<RanLib>(),
                 ranlibs.len()
             )?;
             writeln!(self.w, "object offset  string index")?;
@@ -443,6 +439,10 @@ impl<T: Write> FileProcessor<T> {
         }
         if end > payload.len() {
             bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+        }
+
+        for opcode in BindOpCode::parse(&payload[start..end]) {
+            trace!("Bind OpCode: {:?}", opcode);
         }
 
         Ok(())
@@ -471,15 +471,13 @@ impl<T: Write> FileProcessor<T> {
         writeln!(self.w, "segment  section            address     type")?;
 
         let mut segment: Option<(&str, Range<usize>, &[Rc<Section>])> = None;
-        let mut off = 0;
+        let mut off: isize = 0;
         let mut symtype = SymbolType::Pointer;
 
         let sectname = |sections: &[Rc<Section>], addr| {
             sections
                 .iter()
-                .find(|section| {
-                    section.addr <= addr && section.addr + section.size > addr
-                })
+                .find(|section| section.addr <= addr && section.addr + section.size > addr)
                 .map(|section| section.sectname.clone())
                 .unwrap_or_default()
         };
@@ -519,7 +517,7 @@ impl<T: Write> FileProcessor<T> {
                             _ => None,
                         });
 
-                    off = segment_offset;
+                    off = segment_offset as isize;
                 }
                 RebaseOpCode::AddAddress { offset } => {
                     off += offset;
@@ -541,7 +539,7 @@ impl<T: Write> FileProcessor<T> {
                             symtype
                         )?;
 
-                        off += mem::size_of::<usize>();
+                        off += POINTER_BYTES as isize;
                     }
                 } else {
                     bail!("segment missed")
@@ -563,7 +561,7 @@ impl<T: Write> FileProcessor<T> {
                         symtype
                     )?;
 
-                    off += offset + mem::size_of::<usize>();
+                    off += offset + POINTER_BYTES as isize;
                 } else {
                     bail!("segment missed")
                 },
@@ -585,7 +583,7 @@ impl<T: Write> FileProcessor<T> {
                                 symtype
                             )?;
 
-                            off += skip + mem::size_of::<usize>();
+                            off += (skip  + POINTER_BYTES) as isize;
                         }
                     } else {
                         bail!("segment missed")

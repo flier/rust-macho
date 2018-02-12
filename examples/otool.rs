@@ -9,11 +9,12 @@ extern crate memmap;
 extern crate pretty_env_logger;
 
 use std::mem;
+use std::ops::Range;
 use std::env;
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::mem::size_of;
-use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
+use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
 use std::process::exit;
@@ -85,7 +86,7 @@ fn main() {
     }
 
     if matches.free.is_empty() {
-        write!(stderr(), "at least one file must be specified\n\n").unwrap();
+        println!("at least one file must be specified");
 
         print_usage(&program, opts);
 
@@ -123,11 +124,7 @@ fn main() {
         if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
             processor.cpu_type = cpu_type;
         } else {
-            write!(
-                stderr(),
-                "unknown architecture specification flag: arch {}\n",
-                flags
-            ).unwrap();
+            eprintln!("unknown architecture specification flag: arch {}", flags);
 
             exit(-1);
         }
@@ -135,7 +132,7 @@ fn main() {
 
     for filename in matches.free {
         if let Err(err) = processor.process(filename.as_str()) {
-            write!(stderr(), "fail to process file {}, {}", filename, err).unwrap();
+            eprintln!("fail to process file {}, {}", filename, err);
 
             exit(-1);
         }
@@ -174,7 +171,7 @@ impl<'a> FileProcessContext<'a> {
         for off in 0..size {
             if (off % 16) == 0 {
                 if off > 0 {
-                    write!(&mut w, "\n")?;
+                    writeln!(&mut w, "")?;
                 }
 
                 write!(&mut w, "{:016x}\t", addr + off)?;
@@ -183,7 +180,7 @@ impl<'a> FileProcessContext<'a> {
             write!(&mut w, "{:02x} ", self.cur.read_u8()?)?;
         }
 
-        write!(&mut w, "\n")?;
+        writeln!(&mut w, "")?;
 
         Ok(w)
     }
@@ -211,7 +208,7 @@ impl<T: Write> FileProcessor<T> {
 
             if let Some(symbols) = file.symbols(&mut ctxt.cur) {
                 for symbol in symbols {
-                    write!(self.w, "{}\n", symbol)?;
+                    writeln!(self.w, "{}", symbol)?;
                 }
             }
         }
@@ -248,19 +245,20 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
-                write!(
+                writeln!(
                     self.w,
-                    "{} (architecture {}):\n",
+                    "{} (architecture {}):",
                     ctxt.filename,
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype, header.cpusubtype
+                            header.cputype,
+                            header.cpusubtype
                         ).as_str()
                     )
                 )?;
             } else {
-                write!(self.w, "{}:\n", ctxt.filename)?;
+                writeln!(self.w, "{}:", ctxt.filename)?;
             }
         }
 
@@ -270,7 +268,7 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_load_commands {
             for (i, ref cmd) in commands.iter().enumerate() {
-                write!(self.w, "Load command {}\n", i)?;
+                writeln!(self.w, "Load command {}", i)?;
                 write!(self.w, "{}", cmd)?;
             }
         }
@@ -290,10 +288,11 @@ impl<T: Write> FileProcessor<T> {
                                 && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
                         {
                             if self.print_headers {
-                                write!(
+                                writeln!(
                                     self.w,
-                                    "Contents of ({},{}) section\n",
-                                    sect.segname, sect.sectname
+                                    "Contents of ({},{}) section",
+                                    sect.segname,
+                                    sect.sectname
                                 )?;
                             }
 
@@ -309,10 +308,11 @@ impl<T: Write> FileProcessor<T> {
                 &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
-                    write!(
+                    writeln!(
                         self.w,
-                        "\t{} (minor version {})\n",
-                        fvmlib.name, fvmlib.minor_version
+                        "\t{} (minor version {})",
+                        fvmlib.name,
+                        fvmlib.minor_version
                     )?;
                 }
 
@@ -327,10 +327,9 @@ impl<T: Write> FileProcessor<T> {
                     if self.print_shared_lib_just_id {
                         write!(self.w, "{}", dylib.name)?;
                     } else {
-                        write!(
+                        writeln!(
                             self.w,
-                            "\t{} (compatibility version {}.{}.{}, current version \
-                             {}.{}.{})\n",
+                            "\t{} (compatibility version {}.{}.{}, current version {}.{}.{})",
                             dylib.name,
                             dylib.compatibility_version.major(),
                             dylib.compatibility_version.minor(),
@@ -389,7 +388,7 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
-            write!(self.w, "Archive :{}\n", ctxt.filename)?;
+            writeln!(self.w, "Archive :{}", ctxt.filename)?;
         }
 
         if self.print_archive_header {
@@ -418,17 +417,17 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            write!(self.w, "Table of contents from: {}\n", ctxt.filename)?;
-            write!(
+            writeln!(self.w, "Table of contents from: {}", ctxt.filename)?;
+            writeln!(
                 self.w,
-                "size of ranlib structures: {} (number {})\n",
+                "size of ranlib structures: {} (number {})",
                 ranlibs.len() * size_of::<RanLib>(),
                 ranlibs.len()
             )?;
-            write!(self.w, "object offset  string index\n")?;
+            writeln!(self.w, "object offset  string index")?;
 
             for ref ranlib in ranlibs {
-                write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx)?;
+                writeln!(self.w, "{:<14} {}", ranlib.ran_off, ranlib.ran_strx)?;
             }
         }
 
@@ -456,6 +455,8 @@ impl<T: Write> FileProcessor<T> {
         payload: &[u8],
         commands: &[MachCommand],
     ) -> Result<(), Error> {
+        debug!("process rebase info @ 0x{:08x} with {} bytes", offset, size);
+
         let start = offset as usize;
         let end = (offset + size) as usize;
 
@@ -466,17 +467,19 @@ impl<T: Write> FileProcessor<T> {
             bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
         }
 
-        write!(self.w, "Rebase table:\n");
-        write!(self.w, "segment  section            address     type\n");
+        writeln!(self.w, "Rebase table:")?;
+        writeln!(self.w, "segment  section            address     type")?;
 
-        let mut segment: Option<(&str, usize, &[Rc<Section>])> = None;
+        let mut segment: Option<(&str, Range<usize>, &[Rc<Section>])> = None;
         let mut off = 0;
         let mut symtype = SymbolType::Pointer;
 
         let sectname = |sections: &[Rc<Section>], addr| {
             sections
                 .iter()
-                .find(|section| section.addr <= addr && section.addr + section.size > addr)
+                .find(|section| {
+                    section.addr <= addr && section.addr + section.size > addr
+                })
                 .map(|section| section.sectname.clone())
                 .unwrap_or_default()
         };
@@ -498,15 +501,21 @@ impl<T: Write> FileProcessor<T> {
                             &LoadCommand::Segment {
                                 ref segname,
                                 vmaddr,
+                                vmsize,
                                 ref sections,
                                 ..
                             }
                             | &LoadCommand::Segment64 {
                                 ref segname,
                                 vmaddr,
+                                vmsize,
                                 ref sections,
                                 ..
-                            } => Some((segname.as_str(), vmaddr, sections.as_slice())),
+                            } => Some((
+                                segname.as_str(),
+                                (vmaddr..vmaddr + vmsize),
+                                sections.as_slice(),
+                            )),
                             _ => None,
                         });
 
@@ -515,58 +524,73 @@ impl<T: Write> FileProcessor<T> {
                 RebaseOpCode::AddAddress { offset } => {
                     off += offset;
                 }
-                RebaseOpCode::Rebase { times } => if let Some((segname, vmaddr, sections)) = segment {
+                RebaseOpCode::Rebase { times } => if let Some((segname, ref vmrange, sections)) = segment {
                     for _ in 0..times {
-                        let addr = vmaddr + off as usize;
+                        let addr = vmrange.start + off as usize;
 
-                        write!(
+                        if addr >= vmrange.end {
+                            bail!("address 0x{:016x} out of range", addr);
+                        }
+
+                        writeln!(
                             self.w,
-                            "{:8} {:18} 0x{:08X}\t{:?}\n",
+                            "{:8} {:18} 0x{:08X}  {}",
                             segname,
                             sectname(sections, addr),
                             addr,
                             symtype
                         )?;
 
-                        off += mem::size_of::<*const u8>();
+                        off += mem::size_of::<usize>();
                     }
                 } else {
                     bail!("segment missed")
                 },
-                RebaseOpCode::RebaseAndAddAddress { offset } => if let Some((segname, vmaddr, sections)) = segment {
-                    let mut addr = vmaddr + off as usize;
+                RebaseOpCode::RebaseAndAddAddress { offset } => if let Some((segname, ref vmrange, sections)) = segment
+                {
+                    let mut addr = vmrange.start + off as usize;
 
-                    write!(
+                    if addr >= vmrange.end {
+                        bail!("address 0x{:016x} out of range", addr);
+                    }
+
+                    writeln!(
                         self.w,
-                        "{:8} {:18} 0x{:08X}\t{:?}\n",
+                        "{:8} {:18} 0x{:08X}  {}",
                         segname,
                         sectname(sections, addr),
                         addr,
                         symtype
                     )?;
 
-                    off += offset + mem::size_of::<*const u8>();
+                    off += offset + mem::size_of::<usize>();
                 } else {
                     bail!("segment missed")
                 },
-                RebaseOpCode::RebaseAndSkipping { times, skip } => if let Some((segname, vmaddr, sections)) = segment {
-                    for _ in 0..times {
-                        let addr = vmaddr + off as usize;
+                RebaseOpCode::RebaseAndSkipping { times, skip } => {
+                    if let Some((segname, ref vmrange, sections)) = segment {
+                        for _ in 0..times {
+                            let addr = vmrange.start + off as usize;
 
-                        write!(
-                            self.w,
-                            "{:8} {:18} 0x{:08X}\t{:?}\n",
-                            segname,
-                            sectname(sections, addr),
-                            addr,
-                            symtype
-                        )?;
+                            if addr >= vmrange.end {
+                                bail!("address 0x{:016x} out of range", addr);
+                            }
 
-                        off += skip + mem::size_of::<*const u8>();
+                            writeln!(
+                                self.w,
+                                "{:8} {:18} 0x{:08X}  {}",
+                                segname,
+                                sectname(sections, addr),
+                                addr,
+                                symtype
+                            )?;
+
+                            off += skip + mem::size_of::<usize>();
+                        }
+                    } else {
+                        bail!("segment missed")
                     }
-                } else {
-                    bail!("segment missed")
-                },
+                }
             }
         }
 

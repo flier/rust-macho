@@ -32,7 +32,6 @@
 #[macro_use]
 extern crate bitflags;
 extern crate byteorder;
-extern crate bytes;
 #[macro_use]
 extern crate failure;
 #[macro_use]

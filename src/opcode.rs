@@ -5,7 +5,7 @@ use consts::*;
 use errors::{MachError, Result};
 
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SymbolType {
     Pointer,
     TextAbsolute32,
@@ -28,6 +28,7 @@ impl fmt::Display for SymbolType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RebaseOpCode {
+    Done,
     SetSymbolType(SymbolType),
     SetSegmentOffset {
         segment_index: u8,
@@ -62,7 +63,7 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().and_then(
             |b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
-                (REBASE_OPCODE_DONE, _) => None,
+                (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
                     REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(SymbolType::Pointer)),
                     REBASE_TYPE_TEXT_ABSOLUTE32 => Some(RebaseOpCode::SetSymbolType(SymbolType::TextAbsolute32)),
@@ -122,20 +123,20 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum DyLibrary {
-    Ordinal(usize),
-    Itself,
-    Executable,
-    FlatLookup,
+bitflags! {
+    pub struct BindSymbolFlags: u8 {
+        const WEAK_IMPORT = BIND_SYMBOL_FLAGS_WEAK_IMPORT;
+        const NON_WEAK_DEFINITION = BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION;
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BindOpCode {
-    SetDyLibrary(DyLibrary),
+    Done,
+    SetDyLibrary(isize),
     SetSymbol {
         name: String,
-        flags: u8,
+        flags: BindSymbolFlags,
     },
     SetSymbolType(SymbolType),
     SetAddend(usize),
@@ -171,22 +172,18 @@ impl<'a> Iterator for BindOpCodes<'a> {
         self.0
             .next()
             .and_then(|b| match (b & BIND_OPCODE_MASK, b & BIND_IMMEDIATE_MASK) {
-                (BIND_OPCODE_DONE, _) => {
-                    trace!("BIND_OPCODE_DONE");
-
-                    None
+                (BIND_OPCODE_DONE, _) => Some(BindOpCode::Done),
+                (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => {
+                    Some(BindOpCode::SetDyLibrary(library_ordinal as isize))
                 }
-                (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => Some(BindOpCode::SetDyLibrary(
-                    DyLibrary::Ordinal(library_ordinal as usize),
-                )),
                 (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.0
                     .read_uleb128()
                     .ok()
-                    .map(|library_ordinal| BindOpCode::SetDyLibrary(DyLibrary::Ordinal(library_ordinal))),
+                    .map(|library_ordinal| BindOpCode::SetDyLibrary(library_ordinal as isize)),
                 (BIND_OPCODE_SET_DYLIB_SPECIAL_IMM, library_type) => match library_type {
-                    0 => Some(BindOpCode::SetDyLibrary(DyLibrary::Itself)),
-                    0x0f => Some(BindOpCode::SetDyLibrary(DyLibrary::Executable)),
-                    0x0e => Some(BindOpCode::SetDyLibrary(DyLibrary::FlatLookup)),
+                    0 => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_SELF)),
+                    0x0f => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE)),
+                    0x0e => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_FLAT_LOOKUP)),
                     _ => {
                         warn!("unknown library type: 0x{:x}", library_type);
 
@@ -204,9 +201,10 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         }
                     }
 
-                    String::from_utf8(v)
-                        .ok()
-                        .map(|name| BindOpCode::SetSymbol { name, flags })
+                    String::from_utf8(v).ok().map(|name| BindOpCode::SetSymbol {
+                        name,
+                        flags: BindSymbolFlags::from_bits_truncate(flags),
+                    })
                 }
                 (BIND_OPCODE_SET_TYPE_IMM, bind_type) => match bind_type {
                     BIND_TYPE_POINTER => Some(BindOpCode::SetSymbolType(SymbolType::Pointer)),

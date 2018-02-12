@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::ffi::CStr;
 use std::io::{BufRead, Cursor, Read};
 use std::os::raw::c_char;
+use std::ops::Deref;
 
 use uuid::Uuid;
 use byteorder::{ByteOrder, ReadBytesExt};
@@ -132,9 +133,27 @@ impl Into<u32> for BuildTarget {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LcString(pub usize, pub String);
 
+impl LcString {
+    pub fn size(&self) -> usize {
+        self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.1.as_str()
+    }
+}
+
 impl fmt::Display for LcString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.1)
+    }
+}
+
+impl Deref for LcString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.1.as_str()
     }
 }
 

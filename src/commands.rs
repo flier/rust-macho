@@ -1,8 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use std::ffi::CStr;
 use std::io::{BufRead, Cursor, Read};
-use std::os::raw::c_char;
 use std::ops::Deref;
 
 use uuid::Uuid;
@@ -705,14 +703,13 @@ pub enum LoadCommand {
 pub trait ReadStringExt: Read {
     /// Read the fixed size string
     fn read_fixed_size_string(&mut self, len: usize) -> Result<String> {
-        let mut buf = Vec::new();
+        let mut buf = vec![0u8; len];
 
-        buf.resize(len + 1, 0);
-        buf.truncate(len);
+        self.read_exact(&mut buf)?;
 
-        self.read_exact(buf.as_mut())?;
-
-        unsafe { Ok(String::from(CStr::from_ptr(buf.as_ptr() as *const c_char).to_str()?)) }
+        Ok(String::from_utf8(
+            buf.split(|&b| b == 0).next().unwrap().to_vec(),
+        )?)
     }
 }
 
@@ -892,11 +889,13 @@ impl LoadCommand {
     }
 
     fn read_lc_string<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<String> {
-        let mut s = Vec::new();
+        let mut v = Vec::new();
 
-        buf.read_until(0, &mut s)?;
+        buf.read_until(0, &mut v)?;
 
-        unsafe { Ok(String::from(CStr::from_ptr(s.as_ptr() as *const c_char).to_str()?)) }
+        Ok(String::from_utf8(
+            v.split(|&b| b == 0).next().unwrap().to_vec(),
+        )?)
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {

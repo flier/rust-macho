@@ -232,9 +232,10 @@ impl<'a> SymbolIter<'a> {
                     desc: desc,
                     symbol: self.load_str(value)?,
                 }),
-                _ => bail!(MachError::LoadError(
-                    format!("unknown symbol type 0x{:x}", typ),
-                )),
+                _ => bail!(MachError::LoadError(format!(
+                    "unknown symbol type 0x{:x}",
+                    typ
+                ),)),
             }
         }
     }
@@ -243,9 +244,10 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            bail!(MachError::LoadError(
-                format!("string offset out of range [..{})", self.strsize),
-            ))
+            bail!(MachError::LoadError(format!(
+                "string offset out of range [..{})",
+                self.strsize
+            ),))
         } else {
             let buf = *self.cur.get_ref();
             let s = *&buf[self.stroff as usize + off as usize..]

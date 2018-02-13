@@ -384,22 +384,7 @@ impl<T: Write> FileProcessor<T> {
                         )?;
 
                         for symbol in Bind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
-                            writeln!(
-                                self.w,
-                                "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
-                                symbol.segment_name,
-                                symbol.section_name,
-                                symbol.address,
-                                symbol.symbol_type,
-                                symbol.addend,
-                                symbol.dylib_name,
-                                symbol.name,
-                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                                    " (weak import)"
-                                } else {
-                                    ""
-                                }
-                            )?;
+                            writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
@@ -421,21 +406,7 @@ impl<T: Write> FileProcessor<T> {
                         )?;
 
                         for symbol in WeakBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
-                            writeln!(
-                                self.w,
-                                "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
-                                symbol.segment_name,
-                                symbol.section_name,
-                                symbol.address,
-                                symbol.symbol_type,
-                                symbol.addend,
-                                symbol.name,
-                                if symbol.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
-                                    " (strong)"
-                                } else {
-                                    ""
-                                }
-                            )?;
+                            writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
@@ -453,20 +424,7 @@ impl<T: Write> FileProcessor<T> {
                         writeln!(self.w, "Lazy bind table:")?;
 
                         for symbol in LazyBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
-                            writeln!(
-                                self.w,
-                                "{:8} {:16} 0x{:08X} {:<16} {}{}",
-                                symbol.segment_name,
-                                symbol.section_name,
-                                symbol.address,
-                                symbol.dylib_name,
-                                symbol.name,
-                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                                    " (weak import)"
-                                } else {
-                                    ""
-                                }
-                            )?;
+                            writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
@@ -485,11 +443,7 @@ impl<T: Write> FileProcessor<T> {
                         writeln!(self.w, "segment  section            address     type")?;
 
                         for symbol in Rebase::parse(&ctxt.payload[start..end], &commands, ptr_size) {
-                            writeln!(
-                                self.w,
-                                "{:8} {:18} 0x{:08X}  {}",
-                                symbol.segment_name, symbol.section_name, symbol.address, symbol.symbol_type
-                            )?;
+                            writeln!(self.w, "{}", symbol)?;
                         }
                     }
                 }
@@ -517,10 +471,18 @@ impl<T: Write> FileProcessor<T> {
         }
 
         for &(ref arch, ref file) in files {
-            let mut ctxt = FileProcessContext::new(
-                &ctxt.filename,
-                &ctxt.payload[arch.offset as usize..(arch.offset + arch.size) as usize],
-            );
+            let start = arch.offset as usize;
+            let end = (arch.offset + arch.size) as usize;
+
+            if start >= ctxt.payload.len() || start >= end {
+                bail!("file offset overflow, {}", start)
+            }
+
+            if end > ctxt.payload.len() {
+                bail!("file offset overflow, {}", end)
+            }
+
+            let mut ctxt = FileProcessContext::new(&ctxt.filename, &ctxt.payload[start..end]);
 
             self.process_ofile(file, &mut ctxt)?;
         }

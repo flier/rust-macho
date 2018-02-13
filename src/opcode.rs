@@ -9,6 +9,7 @@ use consts::*;
 use commands::{DyLib, LoadCommand, Section};
 use errors::{MachError, Result};
 
+/// Bind or rebase symbol type
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SymbolType {
@@ -32,12 +33,14 @@ impl fmt::Display for SymbolType {
 }
 
 bitflags! {
+    /// Flags for bind symbol
     pub struct BindSymbolFlags: u8 {
         const WEAK_IMPORT = BIND_SYMBOL_FLAGS_WEAK_IMPORT;
         const NON_WEAK_DEFINITION = BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION;
     }
 }
 
+/// OpCode for the binding symbol
 #[derive(Clone, Debug, PartialEq)]
 pub enum BindOpCode {
     Done,
@@ -65,6 +68,7 @@ pub enum BindOpCode {
     },
 }
 
+/// An iterator over the `BindOpCode`
 pub struct BindOpCodes<'a> {
     iter: slice::Iter<'a, u8>,
     ptr_size: usize,
@@ -81,10 +85,9 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => {
                     Some(BindOpCode::SetDyLibrary(library_ordinal as isize))
                 }
-                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter
-                    .read_uleb128()
-                    .ok()
-                    .map(|library_ordinal| BindOpCode::SetDyLibrary(library_ordinal as isize)),
+                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter.read_uleb128().ok().map(|library_ordinal| {
+                    BindOpCode::SetDyLibrary(library_ordinal as isize)
+                }),
                 (BIND_OPCODE_SET_DYLIB_SPECIAL_IMM, library_type) => match library_type {
                     0 => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_SELF)),
                     0x0f => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE)),
@@ -106,9 +109,11 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         }
                     }
 
-                    String::from_utf8(v).ok().map(|name| BindOpCode::SetSymbol {
-                        name,
-                        flags: BindSymbolFlags::from_bits_truncate(flags),
+                    String::from_utf8(v).ok().map(|name| {
+                        BindOpCode::SetSymbol {
+                            name,
+                            flags: BindSymbolFlags::from_bits_truncate(flags),
+                        }
                     })
                 }
                 (BIND_OPCODE_SET_TYPE_IMM, bind_type) => match bind_type {
@@ -125,18 +130,19 @@ impl<'a> Iterator for BindOpCodes<'a> {
                     .read_uleb128()
                     .ok()
                     .map(|addend| BindOpCode::SetAddend(addend)),
-                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
-                    |segment_offset| BindOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    },
-                ),
-                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter
-                    .read_uleb128()
-                    .ok()
-                    .map(|offset| BindOpCode::AddAddress {
+                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
+                    self.iter.read_uleb128().ok().map(|segment_offset| {
+                        BindOpCode::SetSegmentOffset {
+                            segment_index,
+                            segment_offset,
+                        }
+                    })
+                }
+                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
+                    BindOpCode::AddAddress {
                         offset: offset as isize,
-                    }),
+                    }
+                }),
                 (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     BindOpCode::AddAddress {
@@ -158,7 +164,8 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (opcode, immediate) => {
                     warn!(
                         "unknown bind opcode: {:x}, immediate = {}",
-                        opcode, immediate
+                        opcode,
+                        immediate
                     );
 
                     None
@@ -167,6 +174,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
     }
 }
 
+/// A stream of BIND opcodes to bind all binding symbols.
 pub struct Bind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol_builder: BindSymbolBuilder<'a>,
@@ -213,13 +221,11 @@ impl<'a> Iterator for Bind<'a> {
                     BindOpCode::Done => {
                         break;
                     }
-                    BindOpCode::SetDyLibrary(ordinal) => {
-                        if let Err(err) = self.symbol_builder.set_dylib(ordinal) {
-                            warn!("fail to set dylib to {}, {}", ordinal, err);
+                    BindOpCode::SetDyLibrary(ordinal) => if let Err(err) = self.symbol_builder.set_dylib(ordinal) {
+                        warn!("fail to set dylib to {}, {}", ordinal, err);
 
-                            break;
-                        }
-                    }
+                        break;
+                    },
                     BindOpCode::SetSymbol { name, flags } => {
                         self.symbol_builder.symbol_name = Some(name);
                         self.symbol_builder.symbol_flags = Some(flags);
@@ -264,6 +270,7 @@ impl<'a> Iterator for Bind<'a> {
     }
 }
 
+/// The mach binding symbol information
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindSymbol<'a> {
     pub dylib_name: &'a str,
@@ -276,6 +283,7 @@ pub struct BindSymbol<'a> {
     pub addend: usize,
 }
 
+/// A stream of BIND opcodes to bind all weak binding symbols.
 pub struct WeakBind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol_builder: BindSymbolBuilder<'a>,
@@ -371,6 +379,7 @@ impl<'a> Iterator for WeakBind<'a> {
     }
 }
 
+/// The mach weak binding symbol information
 #[derive(Clone, Debug, PartialEq)]
 pub struct WeakBindSymbol<'a> {
     pub segment_name: &'a str,
@@ -382,6 +391,7 @@ pub struct WeakBindSymbol<'a> {
     pub addend: usize,
 }
 
+/// A stream of BIND opcodes to bind all lazy symbols.
 pub struct LazyBind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol_builder: BindSymbolBuilder<'a>,
@@ -426,13 +436,11 @@ impl<'a> Iterator for LazyBind<'a> {
 
                 match opcode {
                     BindOpCode::Done => {}
-                    BindOpCode::SetDyLibrary(ordinal) => {
-                        if let Err(err) = self.symbol_builder.set_dylib(ordinal) {
-                            warn!("fail to set dylib to {}, {}", ordinal, err);
+                    BindOpCode::SetDyLibrary(ordinal) => if let Err(err) = self.symbol_builder.set_dylib(ordinal) {
+                        warn!("fail to set dylib to {}, {}", ordinal, err);
 
-                            break;
-                        }
-                    }
+                        break;
+                    },
                     BindOpCode::SetSymbol { name, flags } => {
                         self.symbol_builder.symbol_name = Some(name);
                         self.symbol_builder.symbol_flags = Some(flags);
@@ -474,6 +482,7 @@ impl<'a> Iterator for LazyBind<'a> {
     }
 }
 
+/// The mach lazy binding symbol information
 #[derive(Clone, Debug, PartialEq)]
 pub struct LazyBindSymbol<'a> {
     pub dylib_name: &'a str,
@@ -682,10 +691,13 @@ fn section_name(sections: &[Rc<Section>], addr: usize) -> Option<&str> {
     sections
         .iter()
         .map(|section| section.as_ref())
-        .find(|section| section.addr <= addr && section.addr + section.size > addr)
+        .find(|section| {
+            section.addr <= addr && section.addr + section.size > addr
+        })
         .map(|section| section.sectname.as_str())
 }
 
+/// OpCode for the rebasing symbol
 #[derive(Clone, Debug, PartialEq)]
 pub enum RebaseOpCode {
     Done,
@@ -709,6 +721,7 @@ pub enum RebaseOpCode {
     },
 }
 
+/// An iterator over the `RebaseOpCode` of a rebase infomation block.
 pub struct RebaseOpCodes<'a> {
     iter: slice::Iter<'a, u8>,
     ptr_size: usize,
@@ -718,8 +731,8 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
     type Item = RebaseOpCode;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().and_then(
-            |b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
+        self.iter.next().and_then(|b| {
+            match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
                 (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
                     REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(SymbolType::Pointer)),
@@ -731,12 +744,14 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                         None
                     }
                 },
-                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
-                    |segment_offset| RebaseOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    },
-                ),
+                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
+                    self.iter.read_uleb128().ok().map(|segment_offset| {
+                        RebaseOpCode::SetSegmentOffset {
+                            segment_index,
+                            segment_offset,
+                        }
+                    })
+                }
                 (REBASE_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     RebaseOpCode::AddAddress {
                         offset: offset as isize,
@@ -769,16 +784,18 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                 (opcode, immediate) => {
                     warn!(
                         "unknown rebase opcode: 0x{:02x}, immediate: {}",
-                        opcode, immediate
+                        opcode,
+                        immediate
                     );
 
                     None
                 }
-            },
-        )
+            }
+        })
     }
 }
 
+/// A stream of REBASE opcodes
 pub struct Rebase<'a> {
     opcodes: RebaseOpCodes<'a>,
     symbol_builder: RebaseSymbolBuilder<'a>,
@@ -865,6 +882,7 @@ impl<'a> Iterator for Rebase<'a> {
     }
 }
 
+/// The rebase symbol information
 #[derive(Clone, Debug, PartialEq)]
 pub struct RebaseSymbol<'a> {
     pub segment_name: &'a str,

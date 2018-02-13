@@ -168,6 +168,14 @@ struct FileProcessContext<'a> {
 }
 
 impl<'a> FileProcessContext<'a> {
+    pub fn new(filename: &'a str, content: &'a [u8]) -> FileProcessContext<'a> {
+        FileProcessContext {
+            filename: filename.into(),
+            content: content,
+            cur: Cursor::new(content),
+        }
+    }
+
     fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, Error> {
         let mut w = Vec::new();
 
@@ -196,11 +204,7 @@ impl<T: Write> FileProcessor<T> {
         let content = mmap.as_ref();
         let mut cur = Cursor::new(content);
         let file = OFile::parse(&mut cur)?;
-        let mut ctxt = FileProcessContext {
-            filename: filename.into(),
-            content,
-            cur,
-        };
+        let mut ctxt = FileProcessContext::new(filename, content);
 
         debug!("process file {} with {} bytes", filename, mmap.len());
 
@@ -275,11 +279,21 @@ impl<T: Write> FileProcessor<T> {
             }
         }
 
-        for cmd in commands {
-            let &MachCommand(ref cmd, _) = cmd;
+        let ptr_size = if header.is_64bit() {
+            mem::size_of::<u64>()
+        } else {
+            mem::size_of::<u32>()
+        };
 
-            match cmd {
-                &LoadCommand::Segment { ref sections, .. } | &LoadCommand::Segment64 { ref sections, .. } => {
+        let commands = commands
+            .iter()
+            .map(|load| load.command())
+            .cloned()
+            .collect::<Vec<LoadCommand>>();
+
+        for cmd in &commands {
+            match *cmd {
+                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
@@ -306,7 +320,7 @@ impl<T: Write> FileProcessor<T> {
                     }
                 }
 
-                &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
+                LoadCommand::IdFvmLib(ref fvmlib) | LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
                     writeln!(
@@ -316,12 +330,12 @@ impl<T: Write> FileProcessor<T> {
                     )?;
                 }
 
-                &LoadCommand::IdDyLib(ref dylib)
-                | &LoadCommand::LoadDyLib(ref dylib)
-                | &LoadCommand::LoadWeakDyLib(ref dylib)
-                | &LoadCommand::ReexportDyLib(ref dylib)
-                | &LoadCommand::LoadUpwardDylib(ref dylib)
-                | &LoadCommand::LazyLoadDylib(ref dylib)
+                LoadCommand::IdDyLib(ref dylib)
+                | LoadCommand::LoadDyLib(ref dylib)
+                | LoadCommand::LoadWeakDyLib(ref dylib)
+                | LoadCommand::ReexportDyLib(ref dylib)
+                | LoadCommand::LoadUpwardDylib(ref dylib)
+                | LoadCommand::LazyLoadDylib(ref dylib)
                     if self.print_shared_lib && (cmd.cmd() == LC_ID_DYLIB || !self.print_shared_lib_just_id) =>
                 {
                     if self.print_shared_lib_just_id {
@@ -341,7 +355,7 @@ impl<T: Write> FileProcessor<T> {
                     }
                 }
 
-                &LoadCommand::DyldInfo {
+                LoadCommand::DyldInfo {
                     bind_off,
                     bind_size,
                     weak_bind_off,
@@ -352,12 +366,6 @@ impl<T: Write> FileProcessor<T> {
                     rebase_size,
                     ..
                 } => {
-                    let commands = commands
-                        .iter()
-                        .map(|load| load.command())
-                        .cloned()
-                        .collect::<Vec<LoadCommand>>();
-
                     if self.print_bind_info {
                         let start = bind_off as usize;
                         let end = (bind_off + bind_size) as usize;
@@ -375,7 +383,7 @@ impl<T: Write> FileProcessor<T> {
                             "segment  section            address    type       addend dylib            symbol"
                         )?;
 
-                        for symbol in Bind::parse(&ctxt.content[start..end], &commands) {
+                        for symbol in Bind::parse(&ctxt.content[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
@@ -412,7 +420,7 @@ impl<T: Write> FileProcessor<T> {
                             "segment section          address       type     addend symbol"
                         )?;
 
-                        for symbol in WeakBind::parse(&ctxt.content[start..end], &commands) {
+                        for symbol in WeakBind::parse(&ctxt.content[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
@@ -444,7 +452,7 @@ impl<T: Write> FileProcessor<T> {
 
                         writeln!(self.w, "Lazy bind table:")?;
 
-                        for symbol in LazyBind::parse(&ctxt.content[start..end], &commands) {
+                        for symbol in LazyBind::parse(&ctxt.content[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:<16} {}{}",
@@ -476,7 +484,7 @@ impl<T: Write> FileProcessor<T> {
                         writeln!(self.w, "Rebase table:")?;
                         writeln!(self.w, "segment  section            address     type")?;
 
-                        for symbol in Rebase::parse(&ctxt.content[start..end], &commands) {
+                        for symbol in Rebase::parse(&ctxt.content[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:18} 0x{:08X}  {}",
@@ -508,8 +516,13 @@ impl<T: Write> FileProcessor<T> {
             write!(self.w, "{}", header)?;
         }
 
-        for &(_, ref file) in files {
-            self.process_ofile(file, ctxt)?;
+        for &(ref arch, ref file) in files {
+            let mut ctxt = FileProcessContext::new(
+                &ctxt.filename,
+                &ctxt.content[arch.offset as usize..(arch.offset + arch.size) as usize],
+            );
+
+            self.process_ofile(file, &mut ctxt)?;
         }
 
         Ok(())

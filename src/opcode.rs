@@ -65,20 +65,23 @@ pub enum BindOpCode {
     },
 }
 
-pub struct BindOpCodes<'a>(slice::Iter<'a, u8>);
+pub struct BindOpCodes<'a> {
+    iter: slice::Iter<'a, u8>,
+    ptr_size: usize,
+}
 
 impl<'a> Iterator for BindOpCodes<'a> {
     type Item = BindOpCode;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0
+        self.iter
             .next()
             .and_then(|b| match (b & BIND_OPCODE_MASK, b & BIND_IMMEDIATE_MASK) {
                 (BIND_OPCODE_DONE, _) => Some(BindOpCode::Done),
                 (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => {
                     Some(BindOpCode::SetDyLibrary(library_ordinal as isize))
                 }
-                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.0
+                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter
                     .read_uleb128()
                     .ok()
                     .map(|library_ordinal| BindOpCode::SetDyLibrary(library_ordinal as isize)),
@@ -95,7 +98,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM, flags) => {
                     let mut v = vec![];
 
-                    while let Some(&b) = self.0.next() {
+                    while let Some(&b) = self.iter.next() {
                         if b == 0 {
                             break;
                         } else {
@@ -118,33 +121,33 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         None
                     }
                 },
-                (BIND_OPCODE_SET_ADDEND_SLEB, _) => self.0
+                (BIND_OPCODE_SET_ADDEND_SLEB, _) => self.iter
                     .read_uleb128()
                     .ok()
                     .map(|addend| BindOpCode::SetAddend(addend)),
-                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.0.read_uleb128().ok().map(
+                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
                     |segment_offset| BindOpCode::SetSegmentOffset {
                         segment_index,
                         segment_offset,
                     },
                 ),
-                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.0
+                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter
                     .read_uleb128()
                     .ok()
                     .map(|offset| BindOpCode::AddAddress {
                         offset: offset as isize,
                     }),
                 (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
-                (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => self.0.read_uleb128().ok().map(|offset| {
+                (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     BindOpCode::AddAddress {
                         offset: offset as isize,
                     }
                 }),
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED, count) => Some(BindOpCode::AddAddress {
-                    offset: POINTER_BYTES as isize * count as isize,
+                    offset: self.ptr_size as isize * count as isize,
                 }),
                 (BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB, _) => {
-                    if let (Ok(times), Ok(skip)) = (self.0.read_uleb128(), self.0.read_uleb128()) {
+                    if let (Ok(times), Ok(skip)) = (self.iter.read_uleb128(), self.iter.read_uleb128()) {
                         Some(BindOpCode::BindAndSkipping { times, skip })
                     } else {
                         warn!("fail to read times and skip");
@@ -171,9 +174,12 @@ pub struct Bind<'a> {
 }
 
 impl<'a> Bind<'a> {
-    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand]) -> Self {
+    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand], ptr_size: usize) -> Self {
         Bind {
-            opcodes: BindOpCodes(payload.iter()),
+            opcodes: BindOpCodes {
+                iter: payload.iter(),
+                ptr_size,
+            },
             symbol_builder: BindSymbolBuilder::new(commands),
             symbols: Default::default(),
         }
@@ -236,15 +242,15 @@ impl<'a> Iterator for Bind<'a> {
                     }
                     BindOpCode::Bind => {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += self.opcodes.ptr_size as isize;
                     }
                     BindOpCode::BindAndAddAddress { offset } => {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += offset + POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
                     BindOpCode::BindAndSkipping { times, skip } => for _ in 0..times {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += (skip + POINTER_BYTES) as isize;
+                        self.symbol_builder.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
                     },
                 }
 
@@ -277,9 +283,12 @@ pub struct WeakBind<'a> {
 }
 
 impl<'a> WeakBind<'a> {
-    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand]) -> Self {
+    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand], ptr_size: usize) -> Self {
         WeakBind {
-            opcodes: BindOpCodes(payload.iter()),
+            opcodes: BindOpCodes {
+                iter: payload.iter(),
+                ptr_size,
+            },
             symbol_builder: BindSymbolBuilder::new(commands),
             symbols: Default::default(),
         }
@@ -335,15 +344,15 @@ impl<'a> Iterator for WeakBind<'a> {
                     }
                     BindOpCode::Bind => {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += self.opcodes.ptr_size as isize;
                     }
                     BindOpCode::BindAndAddAddress { offset } => {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += offset + POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
                     BindOpCode::BindAndSkipping { times, skip } => for _ in 0..times {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += (skip + POINTER_BYTES) as isize;
+                        self.symbol_builder.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
                     },
                     _ => {
                         warn!("unexpected weak bind opcode: {:?}", opcode);
@@ -380,9 +389,12 @@ pub struct LazyBind<'a> {
 }
 
 impl<'a> LazyBind<'a> {
-    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand]) -> Self {
+    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand], ptr_size: usize) -> Self {
         LazyBind {
-            opcodes: BindOpCodes(payload.iter()),
+            opcodes: BindOpCodes {
+                iter: payload.iter(),
+                ptr_size,
+            },
             symbol_builder: BindSymbolBuilder::new(commands),
             symbols: Default::default(),
         }
@@ -443,7 +455,7 @@ impl<'a> Iterator for LazyBind<'a> {
                     }
                     BindOpCode::Bind => {
                         self.push_current_symbol();
-                        self.symbol_builder.symbol_offset += POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += self.opcodes.ptr_size as isize;
                     }
                     _ => {
                         warn!("unexpected lazy bind opcode: {:?}", opcode);
@@ -697,13 +709,16 @@ pub enum RebaseOpCode {
     },
 }
 
-pub struct RebaseOpCodes<'a>(slice::Iter<'a, u8>);
+pub struct RebaseOpCodes<'a> {
+    iter: slice::Iter<'a, u8>,
+    ptr_size: usize,
+}
 
 impl<'a> Iterator for RebaseOpCodes<'a> {
     type Item = RebaseOpCode;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().and_then(
+        self.iter.next().and_then(
             |b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
                 (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
@@ -716,35 +731,34 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                         None
                     }
                 },
-                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.0.read_uleb128().ok().map(
+                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
                     |segment_offset| RebaseOpCode::SetSegmentOffset {
                         segment_index,
                         segment_offset,
                     },
                 ),
-                (REBASE_OPCODE_ADD_ADDR_ULEB, _) => self.0
-                    .read_uleb128()
-                    .ok()
-                    .map(|offset| RebaseOpCode::AddAddress {
+                (REBASE_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
+                    RebaseOpCode::AddAddress {
                         offset: offset as isize,
-                    }),
+                    }
+                }),
                 (REBASE_OPCODE_ADD_ADDR_IMM_SCALED, count) => Some(RebaseOpCode::AddAddress {
-                    offset: POINTER_BYTES as isize * count as isize,
+                    offset: self.ptr_size as isize * count as isize,
                 }),
                 (REBASE_OPCODE_DO_REBASE_IMM_TIMES, times) => Some(RebaseOpCode::Rebase {
                     times: times as usize,
                 }),
-                (REBASE_OPCODE_DO_REBASE_ULEB_TIMES, _) => self.0
+                (REBASE_OPCODE_DO_REBASE_ULEB_TIMES, _) => self.iter
                     .read_uleb128()
                     .ok()
                     .map(|times| RebaseOpCode::Rebase { times }),
-                (REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB, _) => self.0.read_uleb128().ok().map(|offset| {
+                (REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     RebaseOpCode::RebaseAndAddAddress {
                         offset: offset as isize,
                     }
                 }),
                 (REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB, _) => {
-                    if let (Ok(times), Ok(skip)) = (self.0.read_uleb128(), self.0.read_uleb128()) {
+                    if let (Ok(times), Ok(skip)) = (self.iter.read_uleb128(), self.iter.read_uleb128()) {
                         Some(RebaseOpCode::RebaseAndSkipping { times, skip })
                     } else {
                         warn!("fail to read times and skip");
@@ -772,9 +786,12 @@ pub struct Rebase<'a> {
 }
 
 impl<'a> Rebase<'a> {
-    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand]) -> Self {
+    pub fn parse(payload: &'a [u8], commands: &'a [LoadCommand], ptr_size: usize) -> Self {
         Rebase {
-            opcodes: RebaseOpCodes(payload.iter()),
+            opcodes: RebaseOpCodes {
+                iter: payload.iter(),
+                ptr_size,
+            },
             symbol_builder: RebaseSymbolBuilder::new(commands),
             symbols: Default::default(),
         }
@@ -824,17 +841,17 @@ impl<'a> Iterator for Rebase<'a> {
                     RebaseOpCode::Rebase { times } => for _ in 0..times {
                         self.push_current_symbol();
 
-                        self.symbol_builder.symbol_offset += POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += self.opcodes.ptr_size as isize;
                     },
                     RebaseOpCode::RebaseAndAddAddress { offset } => {
                         self.push_current_symbol();
 
-                        self.symbol_builder.symbol_offset += offset + POINTER_BYTES as isize;
+                        self.symbol_builder.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
                     RebaseOpCode::RebaseAndSkipping { times, skip } => for _ in 0..times {
                         self.push_current_symbol();
 
-                        self.symbol_builder.symbol_offset += (skip + POINTER_BYTES) as isize;
+                        self.symbol_builder.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
                     },
                 }
 

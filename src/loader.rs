@@ -443,7 +443,8 @@ impl MachCommand {
                 write!(
                     f,
                     "         name {} (offset {})\n",
-                    dylib.name, dylib.name.0
+                    dylib.name,
+                    dylib.name.0
                 )?;
                 let ts = time::at_utc(time::Timespec::new(dylib.timestamp as i64, 0));
                 write!(
@@ -695,7 +696,12 @@ impl fmt::Display for ArHeader {
         write!(
             f,
             "0{:o} {:3}/{:<3} {:5} {} {}\n",
-            self.ar_mode, self.ar_uid, self.ar_gid, self.ar_size, self.ar_date, self.ar_name
+            self.ar_mode,
+            self.ar_uid,
+            self.ar_gid,
+            self.ar_size,
+            self.ar_date,
+            self.ar_name
         )
     }
 }
@@ -762,10 +768,9 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!(
-                        "unknown file format 0x{:x}",
-                        magic
-                    ),))
+                    bail!(MachError::LoadError(
+                        format!("unknown file format 0x{:x}", magic),
+                    ))
                 }
             }
         }
@@ -822,16 +827,28 @@ impl OFile {
             archs.push(arch);
         }
 
+        let payload = buf.get_ref().as_ref();
         let mut files = Vec::new();
 
         for arch in archs {
             debug!(
                 "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset, arch
+                arch.offset,
+                arch
             );
 
-            let mut cur =
-                Cursor::new(&buf.get_ref().as_ref()[arch.offset as usize..(arch.offset + arch.size) as usize]);
+            let start = arch.offset as usize;
+            let end = (arch.offset + arch.size) as usize;
+
+            if start >= payload.len() || start >= end {
+                bail!(MachError::BufferOverflow(start))
+            }
+
+            if end > payload.len() {
+                bail!(MachError::BufferOverflow(start))
+            }
+
+            let mut cur = Cursor::new(&payload[start..end]);
 
             let file = OFile::parse(&mut cur)?;
 
@@ -924,7 +941,7 @@ pub mod tests {
     use std::str;
     use std::io::{Cursor, Write};
 
-    use byteorder::{LittleEndian, BigEndian};
+    use byteorder::{BigEndian, LittleEndian};
 
     use super::super::*;
     use super::{Arch64, MachArch};
@@ -936,19 +953,40 @@ pub mod tests {
     **/
     const MACH_HEADER_32_DATA: &[u8] = &[
         // magic
-        0xFE, 0xED, 0xFA, 0xCE,
+        0xFE,
+        0xED,
+        0xFA,
+        0xCE,
         // cputype
-        0x00, 0x00, 0x00, 0x12,
+        0x00,
+        0x00,
+        0x00,
+        0x12,
         // cpusubtype
-        0x00, 0x00, 0x00, 0x0A,
+        0x00,
+        0x00,
+        0x00,
+        0x0A,
         // filetype
-        0x00, 0x00, 0x00, 0x02,
+        0x00,
+        0x00,
+        0x00,
+        0x02,
         // ncmds
-        0x00, 0x00, 0x00, 0x0E,
+        0x00,
+        0x00,
+        0x00,
+        0x0E,
         // sizeofcmds
-        0x00, 0x00, 0x06, 0x40,
+        0x00,
+        0x00,
+        0x06,
+        0x40,
         // flags
-        0x00, 0x00, 0x00, 0x85
+        0x00,
+        0x00,
+        0x00,
+        0x85,
     ];
 
     /**
@@ -958,21 +996,45 @@ pub mod tests {
     **/
     const MACH_HEADER_64_DATA: &[u8] = &[
         // magic
-        0xcf, 0xfa, 0xed, 0xfe,
+        0xcf,
+        0xfa,
+        0xed,
+        0xfe,
         // cputype
-        0x7, 0x0, 0x0, 0x1,
+        0x7,
+        0x0,
+        0x0,
+        0x1,
         // cpusubtype
-        0x3, 0x0, 0x0, 0x80,
+        0x3,
+        0x0,
+        0x0,
+        0x80,
         // filetype
-        0x2, 0x0, 0x0, 0x0,
+        0x2,
+        0x0,
+        0x0,
+        0x0,
         // ncmds
-        0xf, 0x0, 0x0, 0x0,
+        0xf,
+        0x0,
+        0x0,
+        0x0,
         // sizeofcmds
-        0x20, 0x8, 0x0, 0x0,
+        0x20,
+        0x8,
+        0x0,
+        0x0,
         // flags
-        0x85, 0x80, 0xa1, 0x0,
+        0x85,
+        0x80,
+        0xa1,
+        0x0,
         // reserved
-        0x0, 0x0, 0x0, 0x0,
+        0x0,
+        0x0,
+        0x0,
+        0x0,
     ];
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");

@@ -19,6 +19,7 @@ pub enum MachError {
     #[fail(display = "fail to parse octal, {}.", _0)] ParseOctalError(String),
     #[fail(display = "fail to load, {}.", _0)] LoadError(String),
     #[fail(display = "number overflowing.")] NumberOverflow,
+    #[fail(display = "buffer overflowing, {}.", _0)] BufferOverflow(usize),
 }
 
 impl From<str::Utf8Error> for MachError {

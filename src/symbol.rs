@@ -154,13 +154,11 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "I" } else { "i" },
                 name.unwrap_or("")
             ),
-            &Symbol::Debug { ref name, addr, .. } => {
-                if addr == 0 {
-                    write!(f, "                 d {}", name.unwrap_or(""))
-                } else {
-                    write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
-                }
-            }
+            &Symbol::Debug { ref name, addr, .. } => if addr == 0 {
+                write!(f, "                 d {}", name.unwrap_or(""))
+            } else {
+                write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
+            },
         }
     }
 }
@@ -324,7 +322,10 @@ impl<'a> SymbolIter<'a> {
                     desc: desc,
                     symbol: self.load_str(value)?,
                 }),
-                _ => Err(Error::LoadError(format!("unknown symbol type 0x{:x}", typ))),
+                _ => bail!(MachError::LoadError(format!(
+                    "unknown symbol type 0x{:x}",
+                    typ
+                ),)),
             }
         }
     }
@@ -333,10 +334,10 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            Err(Error::LoadError(format!(
+            bail!(MachError::LoadError(format!(
                 "string offset out of range [..{})",
                 self.strsize
-            )))
+            ),))
         } else {
             let buf = *self.cur.get_ref();
             let s = *&buf[self.stroff as usize + off as usize..]

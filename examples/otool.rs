@@ -1,18 +1,22 @@
 extern crate byteorder;
-extern crate env_logger;
+#[macro_use]
+extern crate failure;
 extern crate getopts;
 #[macro_use]
 extern crate log;
 extern crate mach_object;
 extern crate memmap;
+extern crate pretty_env_logger;
 
+use std::mem;
 use std::env;
-use std::mem::size_of;
-use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
+use std::borrow::Cow;
+use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
 use std::process::exit;
 
+use failure::Error;
 use getopts::Options;
 use byteorder::ReadBytesExt;
 use memmap::Mmap;
@@ -31,7 +35,7 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
-    env_logger::init();
+    pretty_env_logger::init();
 
     let args: Vec<String> = env::args().collect();
     let program = Path::new(args[0].as_str())
@@ -55,6 +59,10 @@ fn main() {
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
+    opts.optflag("", "bind", "print the mach-o binding info");
+    opts.optflag("", "weak-bind", "print the mach-o weak binding info");
+    opts.optflag("", "lazy-bind", "print the mach-o lazy binding info");
+    opts.optflag("", "rebase", "print the mach-o rebasing info");
     opts.optflag(
         "",
         "version",
@@ -77,7 +85,7 @@ fn main() {
     }
 
     if matches.free.is_empty() {
-        write!(stderr(), "at least one file must be specified\n\n").unwrap();
+        println!("at least one file must be specified");
 
         print_usage(&program, opts);
 
@@ -107,17 +115,17 @@ fn main() {
             }
         }),
         print_lib_toc: matches.opt_present("S"),
+        print_bind_info: matches.opt_present("bind"),
+        print_weak_bind_info: matches.opt_present("weak-bind"),
+        print_lazy_bind_info: matches.opt_present("lazy-bind"),
+        print_rebase_info: matches.opt_present("rebase"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
         if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
             processor.cpu_type = cpu_type;
         } else {
-            write!(
-                stderr(),
-                "unknown architecture specification flag: arch {}\n",
-                flags
-            ).unwrap();
+            eprintln!("unknown architecture specification flag: arch {}", flags);
 
             exit(-1);
         }
@@ -125,7 +133,7 @@ fn main() {
 
     for filename in matches.free {
         if let Err(err) = processor.process(filename.as_str()) {
-            write!(stderr(), "fail to process file {}, {}", filename, err).unwrap();
+            eprintln!("fail to process file {}, {}", filename, err);
 
             exit(-1);
         }
@@ -147,21 +155,34 @@ struct FileProcessor<T: Write> {
     print_symbol_table: bool,
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
+    print_bind_info: bool,
+    print_weak_bind_info: bool,
+    print_lazy_bind_info: bool,
+    print_rebase_info: bool,
 }
 
 struct FileProcessContext<'a> {
-    filename: String,
-    cur: &'a mut Cursor<&'a [u8]>,
+    filename: Cow<'a, str>,
+    payload: &'a [u8],
+    cur: Cursor<&'a [u8]>,
 }
 
 impl<'a> FileProcessContext<'a> {
+    pub fn new(filename: &'a str, payload: &'a [u8]) -> FileProcessContext<'a> {
+        FileProcessContext {
+            filename: filename.into(),
+            payload,
+            cur: Cursor::new(payload),
+        }
+    }
+
     fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, Error> {
         let mut w = Vec::new();
 
         for off in 0..size {
             if (off % 16) == 0 {
                 if off > 0 {
-                    write!(&mut w, "\n")?;
+                    writeln!(&mut w, "")?;
                 }
 
                 write!(&mut w, "{:016x}\t", addr + off)?;
@@ -170,7 +191,7 @@ impl<'a> FileProcessContext<'a> {
             write!(&mut w, "{:02x} ", self.cur.read_u8()?)?;
         }
 
-        write!(&mut w, "\n")?;
+        writeln!(&mut w, "")?;
 
         Ok(w)
     }
@@ -180,12 +201,10 @@ impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file = File::open(filename)?;
         let mmap = unsafe { Mmap::map(&file) }?;
-        let mut cur = Cursor::new(mmap.as_ref());
+        let payload = mmap.as_ref();
+        let mut cur = Cursor::new(payload);
         let file = OFile::parse(&mut cur)?;
-        let mut ctxt = FileProcessContext {
-            filename: String::from(filename),
-            cur: &mut cur,
-        };
+        let mut ctxt = FileProcessContext::new(filename, payload);
 
         debug!("process file {} with {} bytes", filename, mmap.len());
 
@@ -194,9 +213,9 @@ impl<T: Write> FileProcessor<T> {
         if self.print_symbol_table {
             debug!("dumping symbol table");
 
-            if let Some(symbols) = file.symbols(ctxt.cur) {
+            if let Some(symbols) = file.symbols(&mut ctxt.cur) {
                 for symbol in symbols {
-                    write!(self.w, "{}\n", symbol)?;
+                    writeln!(self.w, "{}", symbol)?;
                 }
             }
         }
@@ -224,7 +243,7 @@ impl<T: Write> FileProcessor<T> {
     fn process_mach_file(
         &mut self,
         header: &MachHeader,
-        commands: &Vec<MachCommand>,
+        commands: &[MachCommand],
         ctxt: &mut FileProcessContext,
     ) -> Result<(), Error> {
         if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
@@ -233,9 +252,9 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
-                write!(
+                writeln!(
                     self.w,
-                    "{} (architecture {}):\n",
+                    "{} (architecture {}):",
                     ctxt.filename,
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
@@ -245,7 +264,7 @@ impl<T: Write> FileProcessor<T> {
                     )
                 )?;
             } else {
-                write!(self.w, "{}:\n", ctxt.filename)?;
+                writeln!(self.w, "{}:", ctxt.filename)?;
             }
         }
 
@@ -255,16 +274,26 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_load_commands {
             for (i, ref cmd) in commands.iter().enumerate() {
-                write!(self.w, "Load command {}\n", i)?;
+                writeln!(self.w, "Load command {}", i)?;
                 write!(self.w, "{}", cmd)?;
             }
         }
 
-        for cmd in commands {
-            let &MachCommand(ref cmd, _) = cmd;
+        let ptr_size = if header.is_64bit() {
+            mem::size_of::<u64>()
+        } else {
+            mem::size_of::<u32>()
+        };
 
-            match cmd {
-                &LoadCommand::Segment { ref sections, .. } | &LoadCommand::Segment64 { ref sections, .. } => {
+        let commands = commands
+            .iter()
+            .map(|load| load.command())
+            .cloned()
+            .collect::<Vec<LoadCommand>>();
+
+        for cmd in &commands {
+            match *cmd {
+                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
@@ -275,9 +304,9 @@ impl<T: Write> FileProcessor<T> {
                                 && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
                         {
                             if self.print_headers {
-                                write!(
+                                writeln!(
                                     self.w,
-                                    "Contents of ({},{}) section\n",
+                                    "payloads of ({},{}) section",
                                     sect.segname, sect.sectname
                                 )?;
                             }
@@ -291,31 +320,30 @@ impl<T: Write> FileProcessor<T> {
                     }
                 }
 
-                &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
+                LoadCommand::IdFvmLib(ref fvmlib) | LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
-                    write!(
+                    writeln!(
                         self.w,
-                        "\t{} (minor version {})\n",
+                        "\t{} (minor version {})",
                         fvmlib.name, fvmlib.minor_version
                     )?;
                 }
 
-                &LoadCommand::IdDyLib(ref dylib)
-                | &LoadCommand::LoadDyLib(ref dylib)
-                | &LoadCommand::LoadWeakDyLib(ref dylib)
-                | &LoadCommand::ReexportDyLib(ref dylib)
-                | &LoadCommand::LoadUpwardDylib(ref dylib)
-                | &LoadCommand::LazyLoadDylib(ref dylib)
+                LoadCommand::IdDyLib(ref dylib)
+                | LoadCommand::LoadDyLib(ref dylib)
+                | LoadCommand::LoadWeakDyLib(ref dylib)
+                | LoadCommand::ReexportDyLib(ref dylib)
+                | LoadCommand::LoadUpwardDylib(ref dylib)
+                | LoadCommand::LazyLoadDylib(ref dylib)
                     if self.print_shared_lib && (cmd.cmd() == LC_ID_DYLIB || !self.print_shared_lib_just_id) =>
                 {
                     if self.print_shared_lib_just_id {
                         write!(self.w, "{}", dylib.name)?;
                     } else {
-                        write!(
+                        writeln!(
                             self.w,
-                            "\t{} (compatibility version {}.{}.{}, current version \
-                             {}.{}.{})\n",
+                            "\t{} (compatibility version {}.{}.{}, current version {}.{}.{})",
                             dylib.name,
                             dylib.compatibility_version.major(),
                             dylib.compatibility_version.minor(),
@@ -326,6 +354,146 @@ impl<T: Write> FileProcessor<T> {
                         )?;
                     }
                 }
+
+                LoadCommand::DyldInfo {
+                    bind_off,
+                    bind_size,
+                    weak_bind_off,
+                    weak_bind_size,
+                    lazy_bind_off,
+                    lazy_bind_size,
+                    rebase_off,
+                    rebase_size,
+                    ..
+                } => {
+                    if self.print_bind_info {
+                        let start = bind_off as usize;
+                        let end = (bind_off + bind_size) as usize;
+
+                        if start > ctxt.payload.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.payload.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment  section            address    type       addend dylib            symbol"
+                        )?;
+
+                        for symbol in Bind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.symbol_type,
+                                symbol.addend,
+                                symbol.dylib_name,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                                    " (weak import)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
+                    }
+
+                    if self.print_weak_bind_info {
+                        let start = weak_bind_off as usize;
+                        let end = (weak_bind_off + weak_bind_size) as usize;
+
+                        if start > ctxt.payload.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.payload.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Weak bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment section          address       type     addend symbol"
+                        )?;
+
+                        for symbol in WeakBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.symbol_type,
+                                symbol.addend,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
+                                    " (strong)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
+                    }
+
+                    if self.print_lazy_bind_info {
+                        let start = lazy_bind_off as usize;
+                        let end = (lazy_bind_off + lazy_bind_size) as usize;
+
+                        if start > ctxt.payload.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.payload.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Lazy bind table:")?;
+
+                        for symbol in LazyBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:<16} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.dylib_name,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                                    " (weak import)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
+                    }
+
+                    if self.print_rebase_info {
+                        let start = rebase_off as usize;
+                        let end = (rebase_off + rebase_size) as usize;
+
+                        if start > ctxt.payload.len() {
+                            bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.payload.len() {
+                            bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Rebase table:")?;
+                        writeln!(self.w, "segment  section            address     type")?;
+
+                        for symbol in Rebase::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:18} 0x{:08X}  {}",
+                                symbol.segment_name, symbol.section_name, symbol.address, symbol.symbol_type
+                            )?;
+                        }
+                    }
+                }
+
                 _ => {}
             }
         }
@@ -348,8 +516,13 @@ impl<T: Write> FileProcessor<T> {
             write!(self.w, "{}", header)?;
         }
 
-        for &(_, ref file) in files {
-            self.process_ofile(file, ctxt)?;
+        for &(ref arch, ref file) in files {
+            let mut ctxt = FileProcessContext::new(
+                &ctxt.filename,
+                &ctxt.payload[arch.offset as usize..(arch.offset + arch.size) as usize],
+            );
+
+            self.process_ofile(file, &mut ctxt)?;
         }
 
         Ok(())
@@ -357,7 +530,7 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
-            write!(self.w, "Archive :{}\n", ctxt.filename)?;
+            writeln!(self.w, "Archive :{}", ctxt.filename)?;
         }
 
         if self.print_archive_header {
@@ -371,11 +544,12 @@ impl<T: Write> FileProcessor<T> {
                 file,
                 &mut FileProcessContext {
                     filename: if let Some(ref name) = header.ar_member_name {
-                        format!("{}({})", ctxt.filename, name)
+                        format!("{}({})", ctxt.filename, name).into()
                     } else {
                         ctxt.filename.clone()
                     },
-                    cur: &mut ctxt.cur.clone(),
+                    payload: ctxt.payload,
+                    cur: ctxt.cur.clone(),
                 },
             )?;
         }
@@ -385,17 +559,17 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            write!(self.w, "Table of contents from: {}\n", ctxt.filename)?;
-            write!(
+            writeln!(self.w, "Table of contents from: {}", ctxt.filename)?;
+            writeln!(
                 self.w,
-                "size of ranlib structures: {} (number {})\n",
-                ranlibs.len() * size_of::<RanLib>(),
+                "size of ranlib structures: {} (number {})",
+                ranlibs.len() * mem::size_of::<RanLib>(),
                 ranlibs.len()
             )?;
-            write!(self.w, "object offset  string index\n")?;
+            writeln!(self.w, "object offset  string index")?;
 
             for ref ranlib in ranlibs {
-                write!(self.w, "{:<14} {}\n", ranlib.ran_off, ranlib.ran_strx)?;
+                writeln!(self.w, "{:<14} {}", ranlib.ran_off, ranlib.ran_strx)?;
             }
         }
 

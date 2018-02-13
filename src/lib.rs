@@ -33,6 +33,8 @@
 extern crate bitflags;
 extern crate byteorder;
 #[macro_use]
+extern crate failure;
+#[macro_use]
 extern crate lazy_static;
 extern crate libc;
 #[macro_use]
@@ -40,14 +42,21 @@ extern crate log;
 extern crate time;
 extern crate uuid;
 
+#[cfg(test)]
+extern crate diff;
+#[cfg(test)]
+extern crate pretty_env_logger;
+
 mod consts;
 mod errors;
 mod commands;
+mod opcode;
 mod loader;
 mod symbol;
 
 pub use consts::*;
-pub use errors::Error;
 pub use commands::*;
 pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
+pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, LazyBind, LazyBindSymbol, Rebase,
+                 RebaseOpCode, RebaseOpCodes, RebaseSymbol, SymbolType, WeakBind, WeakBindSymbol};

@@ -134,15 +134,15 @@ Load command 3
 Load command 4
             cmd LC_DYLD_INFO_ONLY
         cmdsize 48
-     rebase_off 8192
+     rebase_off 0x00002000
     rebase_size 8
-       bind_off 8200
+       bind_off 0x00002008
       bind_size 24
-  weak_bind_off 0
+  weak_bind_off 0x00000000
  weak_bind_size 0
-  lazy_bind_off 8224
+  lazy_bind_off 0x00002020
  lazy_bind_size 16
-     export_off 8240
+     export_off 0x00002030
     export_size 48
 Load command 5
      cmd LC_SYMTAB

@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::ffi::CStr;
 use std::io::{BufRead, Cursor, Read};
 use std::os::raw::c_char;
+use std::ops::Deref;
 
 use uuid::Uuid;
 use byteorder::{ByteOrder, ReadBytesExt};
@@ -132,9 +133,27 @@ impl Into<u32> for BuildTarget {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LcString(pub usize, pub String);
 
+impl LcString {
+    pub fn size(&self) -> usize {
+        self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.1.as_str()
+    }
+}
+
 impl fmt::Display for LcString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.1)
+    }
+}
+
+impl Deref for LcString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.1.as_str()
     }
 }
 
@@ -807,7 +826,7 @@ impl LoadCommand {
 
                 buf.read_exact(&mut uuid[..])?;
 
-                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..])?)
+                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..]).map_err(MachError::from)?)
             }
             LC_CODE_SIGNATURE => LoadCommand::CodeSignature(Self::read_linkedit_data::<O, T>(buf)?),
             LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(Self::read_linkedit_data::<O, T>(buf)?),
@@ -1149,8 +1168,6 @@ pub struct DataInCodeEntry {
 
 #[cfg(test)]
 pub mod tests {
-    extern crate env_logger;
-
     use std::io::Cursor;
 
     use byteorder::LittleEndian;

@@ -9,11 +9,8 @@ extern crate memmap;
 extern crate pretty_env_logger;
 
 use std::mem;
-use std::ops::Range;
 use std::env;
-use std::io;
 use std::borrow::Cow;
-use std::rc::Rc;
 use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
@@ -355,40 +352,137 @@ impl<T: Write> FileProcessor<T> {
                     rebase_size,
                     ..
                 } => {
-                    if self.print_bind_info {
-                        writeln!(self.w, "Bind table:")?;
+                    let commands = commands
+                        .iter()
+                        .map(|load| load.command())
+                        .cloned()
+                        .collect::<Vec<LoadCommand>>();
 
-                        self.process_bind_info(BindType::Bind, bind_off, bind_size, ctxt.content, commands)?;
+                    if self.print_bind_info {
+                        let start = bind_off as usize;
+                        let end = (bind_off + bind_size) as usize;
+
+                        if start > ctxt.content.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.content.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment  section            address    type       addend dylib            symbol"
+                        )?;
+
+                        for symbol in Bind::parse(&ctxt.content[start..end], &commands) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.symbol_type,
+                                symbol.addend,
+                                symbol.dylib_name,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                                    " (weak import)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
                     }
 
                     if self.print_weak_bind_info {
-                        writeln!(self.w, "Weak bind table:")?;
+                        let start = weak_bind_off as usize;
+                        let end = (weak_bind_off + weak_bind_size) as usize;
 
-                        self.process_bind_info(
-                            BindType::Weak,
-                            weak_bind_off,
-                            weak_bind_size,
-                            ctxt.content,
-                            commands,
+                        if start > ctxt.content.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.content.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Weak bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment section          address       type     addend symbol"
                         )?;
+
+                        for symbol in WeakBind::parse(&ctxt.content[start..end], &commands) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.symbol_type,
+                                symbol.addend,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
+                                    " (strong)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
                     }
 
                     if self.print_lazy_bind_info {
+                        let start = lazy_bind_off as usize;
+                        let end = (lazy_bind_off + lazy_bind_size) as usize;
+
+                        if start > ctxt.content.len() {
+                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.content.len() {
+                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
                         writeln!(self.w, "Lazy bind table:")?;
 
-                        self.process_bind_info(
-                            BindType::Lazy,
-                            lazy_bind_off,
-                            lazy_bind_size,
-                            ctxt.content,
-                            commands,
-                        )?;
+                        for symbol in LazyBind::parse(&ctxt.content[start..end], &commands) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:16} 0x{:08X} {:<16} {}{}",
+                                symbol.segment_name,
+                                symbol.section_name,
+                                symbol.address,
+                                symbol.dylib_name,
+                                symbol.name,
+                                if symbol.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                                    " (weak import)"
+                                } else {
+                                    ""
+                                }
+                            )?;
+                        }
                     }
 
                     if self.print_rebase_info {
-                        writeln!(self.w, "Rebase table:")?;
+                        let start = rebase_off as usize;
+                        let end = (rebase_off + rebase_size) as usize;
 
-                        self.process_rebase_info(rebase_off, rebase_size, ctxt.content, commands)?;
+                        if start > ctxt.content.len() {
+                            bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
+                        }
+                        if end > ctxt.content.len() {
+                            bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
+                        }
+
+                        writeln!(self.w, "Rebase table:")?;
+                        writeln!(self.w, "segment  section            address     type")?;
+
+                        for symbol in Rebase::parse(&ctxt.content[start..end], &commands) {
+                            writeln!(
+                                self.w,
+                                "{:8} {:18} 0x{:08X}  {}",
+                                symbol.segment_name, symbol.section_name, symbol.address, symbol.symbol_type
+                            )?;
+                        }
                     }
                 }
 
@@ -468,375 +562,4 @@ impl<T: Write> FileProcessor<T> {
 
         Ok(())
     }
-
-    fn process_bind_info(
-        &mut self,
-        bind_type: BindType,
-        offset: u32,
-        size: u32,
-        payload: &[u8],
-        commands: &[MachCommand],
-    ) -> Result<(), Error> {
-        let start = offset as usize;
-        let end = (offset + size) as usize;
-
-        if start > payload.len() {
-            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
-        }
-        if end > payload.len() {
-            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
-        }
-
-        let dylibs = commands
-            .iter()
-            .flat_map(|cmd| match cmd.command() {
-                &LoadCommand::IdDyLib(ref dylib)
-                | &LoadCommand::LoadDyLib(ref dylib)
-                | &LoadCommand::LoadWeakDyLib(ref dylib)
-                | &LoadCommand::ReexportDyLib(ref dylib)
-                | &LoadCommand::LoadUpwardDylib(ref dylib)
-                | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
-                _ => None,
-            })
-            .collect::<Vec<&DyLib>>();
-
-        self.print_bind_header(bind_type)?;
-
-        let mut dylib_name = None;
-        let mut symbol = None;
-        let mut symtype = SymbolType::Pointer;
-        let mut symoff = 0;
-        let mut sym_addend = 0;
-        let mut segment = None;
-        let mut lazyoff = 0;
-
-        for opcode in BindOpCode::parse(&payload[start..end]) {
-            trace!("Bind OpCode: {:?}", opcode);
-
-            match opcode {
-                BindOpCode::Done => match bind_type {
-                    BindType::Bind | BindType::Weak => break,
-                    _ => lazyoff = 0,
-                },
-                BindOpCode::SetDyLibrary(ordinal) => {
-                    dylib_name = match ordinal {
-                        BIND_SPECIAL_DYLIB_SELF => Some("this-image"),
-                        BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE => Some("main-executable"),
-                        BIND_SPECIAL_DYLIB_FLAT_LOOKUP => Some("flat-namespace"),
-                        index if index > dylibs.len() as isize => {
-                            bail!("libraryOrdinal out of range");
-                        }
-                        index if index > 0 => dylibs
-                            .get((index - 1) as usize)
-                            .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
-                            .and_then(|filename| filename.to_str())
-                            .and_then(|filename| filename.split('.').next()),
-                        _ => {
-                            bail!("unknown special ordinal");
-                        }
-                    };
-                }
-                BindOpCode::SetSymbol { name, flags } => {
-                    symbol = Some((name, flags));
-                }
-                BindOpCode::SetSymbolType(symbol_type) => {
-                    symtype = symbol_type;
-                }
-                BindOpCode::SetAddend(addend) => {
-                    sym_addend = addend;
-                }
-                BindOpCode::SetSegmentOffset {
-                    segment_index,
-                    segment_offset,
-                } => {
-                    segment = self.get_section(commands, segment_index);
-
-                    symoff = segment_offset as isize;
-                }
-                BindOpCode::AddAddress { offset } => {
-                    symoff += offset;
-                }
-                BindOpCode::Bind => {
-                    self.print_bind_symbol(
-                        bind_type,
-                        &segment,
-                        symoff,
-                        dylib_name,
-                        &symbol,
-                        symtype,
-                        sym_addend,
-                    )?;
-
-                    symoff += POINTER_BYTES as isize;
-                }
-                BindOpCode::BindAndAddAddress { offset } => {
-                    self.print_bind_symbol(
-                        bind_type,
-                        &segment,
-                        symoff,
-                        dylib_name,
-                        &symbol,
-                        symtype,
-                        sym_addend,
-                    )?;
-
-                    symoff += offset + POINTER_BYTES as isize;
-                }
-                BindOpCode::BindAndSkipping { times, skip } => for _ in 0..times {
-                    self.print_bind_symbol(
-                        bind_type,
-                        &segment,
-                        symoff,
-                        dylib_name,
-                        &symbol,
-                        symtype,
-                        sym_addend,
-                    )?;
-
-                    symoff += (skip + POINTER_BYTES) as isize;
-                },
-            }
-        }
-
-        Ok(())
-    }
-
-    fn print_bind_header(&mut self, bind_type: BindType) -> io::Result<()> {
-        match bind_type {
-            BindType::Bind => writeln!(
-                self.w,
-                "segment  section            address    type       addend dylib            symbol"
-            ),
-            BindType::Weak => writeln!(
-                self.w,
-                "segment section          address       type     addend symbol"
-            ),
-            BindType::Lazy => writeln!(
-                self.w,
-                "segment section          address    index  dylib            symbol"
-            ),
-        }
-    }
-
-    fn print_bind_symbol(
-        &mut self,
-        bind_type: BindType,
-        segment: &Option<(&str, Range<usize>, &[Rc<Section>])>,
-        symoff: isize,
-        dylib_name: Option<&str>,
-        symbol: &Option<(String, BindSymbolFlags)>,
-        symtype: SymbolType,
-        sym_addend: usize,
-    ) -> Result<(), Error> {
-        let &(segname, ref vmrange, ref sections) = segment
-            .as_ref()
-            .ok_or_else(|| format_err!("segment missed"))?;
-        let &(ref symname, symflags) = symbol.as_ref().ok_or_else(|| format_err!("symbol missed"))?;
-
-        let addr = (vmrange.start as isize + symoff) as usize;
-
-        if addr >= vmrange.end {
-            bail!("address 0x{:016x} out of range", addr);
-        }
-
-        let secname = self.section_name(sections, addr);
-
-        match bind_type {
-            BindType::Bind => {
-                let dylib_name = dylib_name.ok_or_else(|| format_err!("dylib name missed"))?;
-
-                writeln!(
-                    self.w,
-                    "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
-                    segname,
-                    secname,
-                    addr,
-                    symtype,
-                    sym_addend,
-                    dylib_name,
-                    symname,
-                    if symflags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                        " (weak import)"
-                    } else {
-                        ""
-                    }
-                )?;
-            }
-            BindType::Weak => {
-                writeln!(
-                    self.w,
-                    "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
-                    segname,
-                    secname,
-                    addr,
-                    symtype,
-                    sym_addend,
-                    symname,
-                    if symflags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
-                        " (strong)"
-                    } else {
-                        ""
-                    }
-                )?;
-            }
-            BindType::Lazy => {
-                let dylib_name = dylib_name.ok_or_else(|| format_err!("dylib name missed"))?;
-
-                writeln!(
-                    self.w,
-                    "{:8} {:16} 0x{:08X} {:<16} {}{}",
-                    segname,
-                    secname,
-                    addr,
-                    dylib_name,
-                    symname,
-                    if symflags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                        " (weak import)"
-                    } else {
-                        ""
-                    }
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn process_rebase_info(
-        &mut self,
-        offset: u32,
-        size: u32,
-        payload: &[u8],
-        commands: &[MachCommand],
-    ) -> Result<(), Error> {
-        debug!("process rebase info @ 0x{:08x} with {} bytes", offset, size);
-
-        let start = offset as usize;
-        let end = (offset + size) as usize;
-
-        if start > payload.len() {
-            bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
-        }
-        if end > payload.len() {
-            bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
-        }
-
-        writeln!(self.w, "segment  section            address     type")?;
-
-        let mut segment = None;
-        let mut symoff: isize = 0;
-        let mut symtype = SymbolType::Pointer;
-
-        for opcode in RebaseOpCode::parse(&payload[start..end]) {
-            trace!("Rebase OpCode: {:?}", opcode);
-
-            match opcode {
-                RebaseOpCode::Done => {
-                    break;
-                }
-                RebaseOpCode::SetSymbolType(symbol_type) => {
-                    symtype = symbol_type;
-                }
-                RebaseOpCode::SetSegmentOffset {
-                    segment_index,
-                    segment_offset,
-                } => {
-                    segment = self.get_section(commands, segment_index);
-
-                    symoff = segment_offset as isize;
-                }
-                RebaseOpCode::AddAddress { offset } => {
-                    symoff += offset;
-                }
-                RebaseOpCode::Rebase { times } => for _ in 0..times {
-                    self.print_rebase_symbol(&segment, symoff, symtype)?;
-
-                    symoff += POINTER_BYTES as isize;
-                },
-                RebaseOpCode::RebaseAndAddAddress { offset } => {
-                    self.print_rebase_symbol(&segment, symoff, symtype)?;
-
-                    symoff += offset + POINTER_BYTES as isize;
-                }
-                RebaseOpCode::RebaseAndSkipping { times, skip } => for _ in 0..times {
-                    self.print_rebase_symbol(&segment, symoff, symtype)?;
-
-                    symoff += (skip + POINTER_BYTES) as isize;
-                },
-            }
-        }
-
-        Ok(())
-    }
-
-    fn print_rebase_symbol(
-        &mut self,
-        segment: &Option<(&str, Range<usize>, &[Rc<Section>])>,
-        symoff: isize,
-        symtype: SymbolType,
-    ) -> Result<(), Error> {
-        let &(segname, ref vmrange, sections) = segment
-            .as_ref()
-            .ok_or_else(|| format_err!("segment missed"))?;
-        let addr = (vmrange.start as isize + symoff) as usize;
-
-        if addr >= vmrange.end {
-            bail!("address 0x{:016x} out of range", addr);
-        }
-
-        let secname = self.section_name(sections, addr);
-
-        writeln!(
-            self.w,
-            "{:8} {:18} 0x{:08X}  {}",
-            segname, secname, addr, symtype
-        )?;
-
-        Ok(())
-    }
-
-    fn get_section<'a>(
-        &self,
-        commands: &'a [MachCommand],
-        segment_index: u8,
-    ) -> Option<(&'a str, Range<usize>, &'a [Rc<Section>])> {
-        commands
-            .get(segment_index as usize)
-            .and_then(|cmd| match cmd.command() {
-                &LoadCommand::Segment {
-                    ref segname,
-                    vmaddr,
-                    vmsize,
-                    ref sections,
-                    ..
-                }
-                | &LoadCommand::Segment64 {
-                    ref segname,
-                    vmaddr,
-                    vmsize,
-                    ref sections,
-                    ..
-                } => Some((
-                    segname.as_str(),
-                    (vmaddr..vmaddr + vmsize),
-                    sections.as_slice(),
-                )),
-                _ => None,
-            })
-    }
-
-    fn section_name(&self, sections: &[Rc<Section>], addr: usize) -> String {
-        sections
-            .iter()
-            .find(|section| section.addr <= addr && section.addr + section.size > addr)
-            .map(|section| section.sectname.clone())
-            .unwrap_or_default()
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-enum BindType {
-    Bind,
-    Weak,
-    Lazy,
 }

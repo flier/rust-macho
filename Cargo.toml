@@ -8,6 +8,10 @@ homepage = "http://flier.github.io/rust-macho/"
 repository = "https://github.com/flier/rust-macho"
 license = "Apache-2.0"
 
+[features]
+default = ["display"]
+display = []
+
 [dependencies]
 log = "0.4"
 libc = "0.2"
@@ -26,3 +30,7 @@ memmap = "0.6"
 
 [lib]
 name = "mach_object"
+
+[[example]]
+name = "otool"
+required-features = ["display"]

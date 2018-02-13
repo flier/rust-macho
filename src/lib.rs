@@ -53,6 +53,8 @@ mod commands;
 mod opcode;
 mod loader;
 mod symbol;
+#[cfg(feature = "display")]
+mod display;
 
 pub use consts::*;
 pub use commands::*;

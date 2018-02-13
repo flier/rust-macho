@@ -1,5 +1,4 @@
 use std::str;
-use std::fmt;
 use std::rc::Rc;
 use std::io::{Cursor, Seek, SeekFrom};
 
@@ -70,95 +69,6 @@ impl<'a> Symbol<'a> {
             | &Symbol::Prebound { external, .. }
             | &Symbol::Indirect { external, .. } => external,
             _ => false,
-        }
-    }
-}
-
-impl<'a> fmt::Display for Symbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Symbol::Undefined {
-                ref name, external, ..
-            } => write!(
-                f,
-                "                 {} {}",
-                if external { "U" } else { "u" },
-                name.unwrap_or("")
-            ),
-            &Symbol::Absolute {
-                ref name,
-                external,
-                entry,
-                ..
-            } => write!(
-                f,
-                "{:016x} {} {}",
-                entry,
-                if external { "A" } else { "a" },
-                name.unwrap_or("")
-            ),
-            &Symbol::Defined {
-                ref name,
-                external,
-                ref section,
-                entry,
-                ..
-            } => {
-                let mut symtype = "s";
-
-                if let &Some(ref section) = section {
-                    let Section {
-                        ref sectname,
-                        ref segname,
-                        ..
-                    } = **section;
-
-                    if segname == SEG_TEXT && sectname == SECT_TEXT {
-                        symtype = "t"
-                    } else if segname == SEG_DATA {
-                        if sectname == SECT_DATA {
-                            symtype = "d"
-                        } else if sectname == SECT_BSS {
-                            symtype = "b"
-                        } else if sectname == SECT_COMMON {
-                            symtype = "c"
-                        }
-                    }
-                }
-
-                write!(
-                    f,
-                    "{:016x} {} {}",
-                    entry,
-                    if external {
-                        symtype.to_uppercase()
-                    } else {
-                        symtype.to_lowercase()
-                    },
-                    name.unwrap_or("")
-                )
-            }
-            &Symbol::Prebound {
-                ref name, external, ..
-            } => write!(
-                f,
-                "                 {} {}",
-                if external { "P" } else { "p" },
-                name.unwrap_or("")
-            ),
-            &Symbol::Indirect {
-                ref name, external, ..
-            } => write!(
-                f,
-                "                 {} {}",
-                if external { "I" } else { "i" },
-                name.unwrap_or("")
-            ),
-            &Symbol::Debug { ref name, addr, .. } => if addr == 0 {
-                write!(f, "                 d {}", name.unwrap_or(""))
-            } else {
-                write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
-            },
         }
     }
 }
@@ -322,10 +232,9 @@ impl<'a> SymbolIter<'a> {
                     desc: desc,
                     symbol: self.load_str(value)?,
                 }),
-                _ => bail!(MachError::LoadError(format!(
-                    "unknown symbol type 0x{:x}",
-                    typ
-                ),)),
+                _ => bail!(MachError::LoadError(
+                    format!("unknown symbol type 0x{:x}", typ),
+                )),
             }
         }
     }
@@ -334,10 +243,9 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            bail!(MachError::LoadError(format!(
-                "string offset out of range [..{})",
-                self.strsize
-            ),))
+            bail!(MachError::LoadError(
+                format!("string offset out of range [..{})", self.strsize),
+            ))
         } else {
             let buf = *self.cur.get_ref();
             let s = *&buf[self.stroff as usize + off as usize..]

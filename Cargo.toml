@@ -26,9 +26,3 @@ memmap = "0.6"
 
 [lib]
 name = "mach_object"
-
-[[example]]
-name = "otool"
-path = "examples/otool.rs"
-test = false
-bench = false

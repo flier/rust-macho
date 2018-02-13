@@ -16,7 +16,7 @@ use commands::{LcString, LoadCommand, ReadStringExt};
 ///
 pub trait MachArch {
     /// parse mach header
-    fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader>;
+    fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader>;
 }
 
 /// The 32-bit mach header
@@ -38,9 +38,9 @@ type gid_t = libc::gid_t;
 type mode_t = libc::mode_t;
 
 impl MachArch for Arch32 {
-    fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader> {
+    fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader> {
         let header = MachHeader {
-            magic: buf.read_u32::<O>()?,
+            magic,
             cputype: buf.read_i32::<O>()?,
             cpusubtype: buf.read_i32::<O>()?,
             filetype: buf.read_u32::<O>()?,
@@ -54,9 +54,9 @@ impl MachArch for Arch32 {
 }
 
 impl MachArch for Arch64 {
-    fn parse_mach_header<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<MachHeader> {
+    fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader> {
         let header = MachHeader {
-            magic: buf.read_u32::<O>()?,
+            magic,
             cputype: buf.read_i32::<O>()?,
             cpusubtype: buf.read_i32::<O>()?,
             filetype: buf.read_u32::<O>()?,
@@ -740,8 +740,6 @@ impl OFile {
     pub fn parse<T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
         let magic = buf.read_u32::<NativeEndian>()?;
 
-        buf.seek(SeekFrom::Current(-4))?;
-
         debug!(
             "0x{:08x}\tparsing ofile header with magic: 0x{:x}",
             buf.position(),
@@ -749,12 +747,12 @@ impl OFile {
         );
 
         match magic {
-            MH_MAGIC => Self::parse_mach_file::<Arch32, LittleEndian, T>(buf),
-            MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian, T>(buf),
-            MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian, T>(buf),
-            MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian, T>(buf),
-            FAT_MAGIC => Self::parse_fat_file::<LittleEndian, T>(buf),
-            FAT_CIGAM => Self::parse_fat_file::<BigEndian, T>(buf),
+            MH_MAGIC => Self::parse_mach_file::<Arch32, LittleEndian, T>(magic, buf),
+            MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian, T>(magic, buf),
+            MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian, T>(magic, buf),
+            MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian, T>(magic, buf),
+            FAT_MAGIC => Self::parse_fat_file::<LittleEndian, T>(magic, buf),
+            FAT_CIGAM => Self::parse_fat_file::<BigEndian, T>(magic, buf),
             _ => {
                 let mut ar_magic = [0; 8];
 
@@ -772,10 +770,10 @@ impl OFile {
         }
     }
 
-    fn parse_mach_file<A: MachArch, O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
+    fn parse_mach_file<A: MachArch, O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
         debug!("0x{:08x}\tparsing macho-o file header", buf.position());
 
-        let header = A::parse_mach_header::<Cursor<T>, O>(buf)?;
+        let header = A::parse_mach_header::<Cursor<T>, O>(magic, buf)?;
 
         debug!("parsed mach-o file header: {:?}", header);
 
@@ -795,10 +793,9 @@ impl OFile {
         })
     }
 
-    fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
+    fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
         debug!("0x{:08x}\tparsing fat file header", buf.position());
 
-        let magic = buf.read_u32::<O>()?;
         let nfat_arch = buf.read_u32::<O>()?;
 
         debug!(
@@ -926,7 +923,7 @@ pub mod tests {
     use std::str;
     use std::io::{Cursor, Write};
 
-    use byteorder::LittleEndian;
+    use byteorder::{LittleEndian, BigEndian};
 
     use super::super::*;
     use super::{Arch64, MachArch};
@@ -934,11 +931,47 @@ pub mod tests {
     /**
     Mach header
           magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
+     0xcefaedfe      18         10  0x00           2    14       1600 0x00000085
+    **/
+    const MACH_HEADER_32_DATA: &[u8] = &[
+        // magic
+        0xFE, 0xED, 0xFA, 0xCE,
+        // cputype
+        0x00, 0x00, 0x00, 0x12,
+        // cpusubtype
+        0x00, 0x00, 0x00, 0x0A,
+        // filetype
+        0x00, 0x00, 0x00, 0x02,
+        // ncmds
+        0x00, 0x00, 0x00, 0x0E,
+        // sizeofcmds
+        0x00, 0x00, 0x06, 0x40,
+        // flags
+        0x00, 0x00, 0x00, 0x85
+    ];
+
+    /**
+    Mach header
+          magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
      0xfeedfacf 16777223          3  0x80           2    15       2080 0x00a18085
     **/
-    const MACH_HEADER_64_DATA: [u8; 32] = [
-        0xcf, 0xfa, 0xed, 0xfe, 0x7, 0x0, 0x0, 0x1, 0x3, 0x0, 0x0, 0x80, 0x2, 0x0, 0x0, 0x0, 0xf, 0x0, 0x0, 0x0, 0x20,
-        0x8, 0x0, 0x0, 0x85, 0x80, 0xa1, 0x0, 0x0, 0x0, 0x0, 0x0,
+    const MACH_HEADER_64_DATA: &[u8] = &[
+        // magic
+        0xcf, 0xfa, 0xed, 0xfe,
+        // cputype
+        0x7, 0x0, 0x0, 0x1,
+        // cpusubtype
+        0x3, 0x0, 0x0, 0x80,
+        // filetype
+        0x2, 0x0, 0x0, 0x0,
+        // ncmds
+        0xf, 0x0, 0x0, 0x0,
+        // sizeofcmds
+        0x20, 0x8, 0x0, 0x0,
+        // flags
+        0x85, 0x80, 0xa1, 0x0,
+        // reserved
+        0x0, 0x0, 0x0, 0x0,
     ];
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
@@ -997,14 +1030,28 @@ pub mod tests {
     }
 
     #[test]
-    fn test_parse_mach_header() {
-        let mut buf = Vec::new();
+    fn test_parse_mach_32_header() {
+        let mut cur = Cursor::new(&MACH_HEADER_32_DATA[4..]);
 
-        buf.extend_from_slice(&MACH_HEADER_64_DATA[..]);
+        let header = Arch64::parse_mach_header::<Cursor<&[u8]>, BigEndian>(MH_CIGAM, &mut cur).unwrap();
 
-        let mut cur = Cursor::new(buf.as_slice());
+        assert_eq!(header.magic, MH_CIGAM);
+        assert_eq!(header.cputype, CPU_TYPE_POWERPC);
+        assert_eq!(header.cpusubtype, CPU_SUBTYPE_POWERPC_7400);
+        assert_eq!(header.filetype, MH_EXECUTE);
+        assert_eq!(header.ncmds, 14);
+        assert_eq!(header.sizeofcmds, 1600);
+        assert_eq!(header.flags, 0x00000085);
 
-        let header = Arch64::parse_mach_header::<Cursor<&[u8]>, LittleEndian>(&mut cur).unwrap();
+        assert!(!header.is_64bit());
+        assert!(header.is_bigend());
+    }
+
+    #[test]
+    fn test_parse_mach_64_header() {
+        let mut cur = Cursor::new(&MACH_HEADER_64_DATA[4..]);
+
+        let header = Arch64::parse_mach_header::<Cursor<&[u8]>, LittleEndian>(MH_MAGIC_64, &mut cur).unwrap();
 
         assert_eq!(header.magic, MH_MAGIC_64);
         assert_eq!(header.cputype, CPU_TYPE_X86_64);
@@ -1013,6 +1060,9 @@ pub mod tests {
         assert_eq!(header.ncmds, 15);
         assert_eq!(header.sizeofcmds, 2080);
         assert_eq!(header.flags, 0x00a18085);
+
+        assert!(header.is_64bit());
+        assert!(!header.is_bigend());
     }
 
     #[test]

@@ -22,11 +22,15 @@ pub const CPU_ARCH_ABI64: cpu_type_t = 0x01000000u64 as cpu_type_t;
 pub const CPU_TYPE_ANY: cpu_type_t = -1;
 
 pub const CPU_TYPE_VAX: cpu_type_t = 1;
+pub const CPU_TYPE_ROMP: cpu_type_t = 2;
+pub const CPU_TYPE_NS32032: cpu_type_t = 4;
+pub const CPU_TYPE_NS32332: cpu_type_t = 5;
 pub const CPU_TYPE_MC680X0: cpu_type_t = 6;
 pub const CPU_TYPE_X86: cpu_type_t = 7;
 pub const CPU_TYPE_I386: cpu_type_t = CPU_TYPE_X86;
 pub const CPU_TYPE_X86_64: cpu_type_t = (CPU_TYPE_X86 | CPU_ARCH_ABI64);
 pub const CPU_TYPE_MIPS: cpu_type_t = 8;
+pub const CPU_TYPE_NS32532: cpu_type_t = 9;
 pub const CPU_TYPE_MC98000: cpu_type_t = 10;
 pub const CPU_TYPE_HPPA: cpu_type_t = 11;
 pub const CPU_TYPE_ARM: cpu_type_t = 12;
@@ -35,6 +39,7 @@ pub const CPU_TYPE_MC88000: cpu_type_t = 13;
 pub const CPU_TYPE_SPARC: cpu_type_t = 14;
 pub const CPU_TYPE_I860: cpu_type_t = 15;
 pub const CPU_TYPE_ALPHA: cpu_type_t = 16;
+pub const CPU_TYPE_RS6000: cpu_type_t = 17;
 pub const CPU_TYPE_POWERPC: cpu_type_t = 18;
 pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
 

@@ -12,21 +12,21 @@ use errors::{MachError, Result};
 /// Bind or rebase symbol type
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SymbolType {
+pub enum BindSymbolType {
     Pointer,
     TextAbsolute32,
     TextRelative32,
 }
 
-impl fmt::Display for SymbolType {
+impl fmt::Display for BindSymbolType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match *self {
-                SymbolType::Pointer => "pointer",
-                SymbolType::TextAbsolute32 => "text abs32",
-                SymbolType::TextRelative32 => "text rel32",
+                BindSymbolType::Pointer => "pointer",
+                BindSymbolType::TextAbsolute32 => "text abs32",
+                BindSymbolType::TextRelative32 => "text rel32",
             }
         )
     }
@@ -49,7 +49,7 @@ pub enum BindOpCode {
         name: String,
         flags: BindSymbolFlags,
     },
-    SetSymbolType(SymbolType),
+    SetSymbolType(BindSymbolType),
     SetAddend(usize),
     SetSegmentOffset {
         segment_index: u8,
@@ -117,9 +117,9 @@ impl<'a> Iterator for BindOpCodes<'a> {
                     })
                 }
                 (BIND_OPCODE_SET_TYPE_IMM, bind_type) => match bind_type {
-                    BIND_TYPE_POINTER => Some(BindOpCode::SetSymbolType(SymbolType::Pointer)),
-                    BIND_TYPE_TEXT_ABSOLUTE32 => Some(BindOpCode::SetSymbolType(SymbolType::TextAbsolute32)),
-                    BIND_TYPE_TEXT_PCREL32 => Some(BindOpCode::SetSymbolType(SymbolType::TextRelative32)),
+                    BIND_TYPE_POINTER => Some(BindOpCode::SetSymbolType(BindSymbolType::Pointer)),
+                    BIND_TYPE_TEXT_ABSOLUTE32 => Some(BindOpCode::SetSymbolType(BindSymbolType::TextAbsolute32)),
+                    BIND_TYPE_TEXT_PCREL32 => Some(BindOpCode::SetSymbolType(BindSymbolType::TextRelative32)),
                     _ => {
                         warn!("unknown bind type, {}", bind_type);
 
@@ -278,7 +278,7 @@ pub struct BindSymbol<'a> {
     pub section_name: &'a str,
     pub name: String,
     pub flags: BindSymbolFlags,
-    pub symbol_type: SymbolType,
+    pub symbol_type: BindSymbolType,
     pub address: usize,
     pub addend: usize,
 }
@@ -386,7 +386,7 @@ pub struct WeakBindSymbol<'a> {
     pub section_name: &'a str,
     pub name: String,
     pub flags: BindSymbolFlags,
-    pub symbol_type: SymbolType,
+    pub symbol_type: BindSymbolType,
     pub address: usize,
     pub addend: usize,
 }
@@ -502,7 +502,7 @@ struct BindSymbolBuilder<'a> {
     pub segment: Option<(&'a str, Range<usize>, &'a [Rc<Section>])>,
     pub symbol_name: Option<String>,
     pub symbol_flags: Option<BindSymbolFlags>,
-    pub symbol_type: Option<SymbolType>,
+    pub symbol_type: Option<BindSymbolType>,
     pub symbol_addend: usize,
     pub symbol_offset: isize,
 }
@@ -701,7 +701,7 @@ fn section_name(sections: &[Rc<Section>], addr: usize) -> Option<&str> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum RebaseOpCode {
     Done,
-    SetSymbolType(SymbolType),
+    SetSymbolType(BindSymbolType),
     SetSegmentOffset {
         segment_index: u8,
         segment_offset: usize,
@@ -735,9 +735,9 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
             match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
                 (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
-                    REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(SymbolType::Pointer)),
-                    REBASE_TYPE_TEXT_ABSOLUTE32 => Some(RebaseOpCode::SetSymbolType(SymbolType::TextAbsolute32)),
-                    REBASE_TYPE_TEXT_PCREL32 => Some(RebaseOpCode::SetSymbolType(SymbolType::TextRelative32)),
+                    REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(BindSymbolType::Pointer)),
+                    REBASE_TYPE_TEXT_ABSOLUTE32 => Some(RebaseOpCode::SetSymbolType(BindSymbolType::TextAbsolute32)),
+                    REBASE_TYPE_TEXT_PCREL32 => Some(RebaseOpCode::SetSymbolType(BindSymbolType::TextRelative32)),
                     _ => {
                         warn!("unknown rebase type, {}", rebase_type);
 
@@ -888,7 +888,7 @@ pub struct RebaseSymbol<'a> {
     pub segment_name: &'a str,
     pub section_name: &'a str,
     pub address: usize,
-    pub symbol_type: SymbolType,
+    pub symbol_type: BindSymbolType,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -896,7 +896,7 @@ struct RebaseSymbolBuilder<'a> {
     commands: &'a [LoadCommand],
 
     pub segment: Option<(&'a str, Range<usize>, &'a [Rc<Section>])>,
-    pub symbol_type: Option<SymbolType>,
+    pub symbol_type: Option<BindSymbolType>,
     pub symbol_offset: isize,
 }
 
@@ -960,7 +960,7 @@ impl<'a> RebaseSymbolBuilder<'a> {
     }
 }
 
-trait BufExt<'a>: Iterator<Item = &'a u8> {
+pub trait Uleb128Reader<'a>: Iterator<Item = &'a u8> {
     fn read_uleb128(&mut self) -> Result<usize> {
         let mut v = 0;
         let mut bits = 0;
@@ -984,7 +984,7 @@ trait BufExt<'a>: Iterator<Item = &'a u8> {
     }
 }
 
-impl<'a, T> BufExt<'a> for T
+impl<'a, T> Uleb128Reader<'a> for T
 where
     T: Iterator<Item = &'a u8>,
 {

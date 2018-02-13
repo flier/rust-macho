@@ -85,9 +85,10 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => {
                     Some(BindOpCode::SetDyLibrary(library_ordinal as isize))
                 }
-                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter.read_uleb128().ok().map(|library_ordinal| {
-                    BindOpCode::SetDyLibrary(library_ordinal as isize)
-                }),
+                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter
+                    .read_uleb128()
+                    .ok()
+                    .map(|library_ordinal| BindOpCode::SetDyLibrary(library_ordinal as isize)),
                 (BIND_OPCODE_SET_DYLIB_SPECIAL_IMM, library_type) => match library_type {
                     0 => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_SELF)),
                     0x0f => Some(BindOpCode::SetDyLibrary(BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE)),
@@ -98,24 +99,12 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         None
                     }
                 },
-                (BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM, flags) => {
-                    let mut v = vec![];
-
-                    while let Some(&b) = self.iter.next() {
-                        if b == 0 {
-                            break;
-                        } else {
-                            v.push(b);
-                        }
+                (BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM, flags) => self.iter.read_cstr().ok().map(|name| {
+                    BindOpCode::SetSymbol {
+                        name,
+                        flags: BindSymbolFlags::from_bits_truncate(flags),
                     }
-
-                    String::from_utf8(v).ok().map(|name| {
-                        BindOpCode::SetSymbol {
-                            name,
-                            flags: BindSymbolFlags::from_bits_truncate(flags),
-                        }
-                    })
-                }
+                }),
                 (BIND_OPCODE_SET_TYPE_IMM, bind_type) => match bind_type {
                     BIND_TYPE_POINTER => Some(BindOpCode::SetSymbolType(BindSymbolType::Pointer)),
                     BIND_TYPE_TEXT_ABSOLUTE32 => Some(BindOpCode::SetSymbolType(BindSymbolType::TextAbsolute32)),
@@ -130,19 +119,18 @@ impl<'a> Iterator for BindOpCodes<'a> {
                     .read_uleb128()
                     .ok()
                     .map(|addend| BindOpCode::SetAddend(addend)),
-                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
-                    self.iter.read_uleb128().ok().map(|segment_offset| {
-                        BindOpCode::SetSegmentOffset {
-                            segment_index,
-                            segment_offset,
-                        }
-                    })
-                }
-                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
-                    BindOpCode::AddAddress {
+                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
+                    |segment_offset| BindOpCode::SetSegmentOffset {
+                        segment_index,
+                        segment_offset,
+                    },
+                ),
+                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter
+                    .read_uleb128()
+                    .ok()
+                    .map(|offset| BindOpCode::AddAddress {
                         offset: offset as isize,
-                    }
-                }),
+                    }),
                 (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     BindOpCode::AddAddress {
@@ -164,8 +152,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (opcode, immediate) => {
                     warn!(
                         "unknown bind opcode: {:x}, immediate = {}",
-                        opcode,
-                        immediate
+                        opcode, immediate
                     );
 
                     None
@@ -691,9 +678,7 @@ fn section_name(sections: &[Rc<Section>], addr: usize) -> Option<&str> {
     sections
         .iter()
         .map(|section| section.as_ref())
-        .find(|section| {
-            section.addr <= addr && section.addr + section.size > addr
-        })
+        .find(|section| section.addr <= addr && section.addr + section.size > addr)
         .map(|section| section.sectname.as_str())
 }
 
@@ -731,8 +716,8 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
     type Item = RebaseOpCode;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().and_then(|b| {
-            match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
+        self.iter.next().and_then(
+            |b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
                 (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
                     REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(BindSymbolType::Pointer)),
@@ -744,14 +729,12 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                         None
                     }
                 },
-                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
-                    self.iter.read_uleb128().ok().map(|segment_offset| {
-                        RebaseOpCode::SetSegmentOffset {
-                            segment_index,
-                            segment_offset,
-                        }
-                    })
-                }
+                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
+                    |segment_offset| RebaseOpCode::SetSegmentOffset {
+                        segment_index,
+                        segment_offset,
+                    },
+                ),
                 (REBASE_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
                     RebaseOpCode::AddAddress {
                         offset: offset as isize,
@@ -784,14 +767,13 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                 (opcode, immediate) => {
                     warn!(
                         "unknown rebase opcode: 0x{:02x}, immediate: {}",
-                        opcode,
-                        immediate
+                        opcode, immediate
                     );
 
                     None
                 }
-            }
-        })
+            },
+        )
     }
 }
 
@@ -960,7 +942,7 @@ impl<'a> RebaseSymbolBuilder<'a> {
     }
 }
 
-pub trait Uleb128Reader<'a>: Iterator<Item = &'a u8> {
+pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
     fn read_uleb128(&mut self) -> Result<usize> {
         let mut v = 0;
         let mut bits = 0;
@@ -982,9 +964,23 @@ pub trait Uleb128Reader<'a>: Iterator<Item = &'a u8> {
 
         Ok(v)
     }
+
+    fn read_cstr(&mut self) -> Result<String> {
+        let mut v = vec![];
+
+        while let Some(&b) = self.next() {
+            if b == 0 {
+                break;
+            } else {
+                v.push(b);
+            }
+        }
+
+        Ok(String::from_utf8(v)?)
+    }
 }
 
-impl<'a, T> Uleb128Reader<'a> for T
+impl<'a, T> IteratorExt<'a> for T
 where
     T: Iterator<Item = &'a u8>,
 {

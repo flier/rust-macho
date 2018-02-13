@@ -51,6 +51,7 @@ mod consts;
 mod errors;
 mod commands;
 mod opcode;
+mod export;
 mod loader;
 mod symbol;
 #[cfg(feature = "display")]
@@ -60,5 +61,6 @@ pub use consts::*;
 pub use commands::*;
 pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
-pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, LazyBind, LazyBindSymbol, Rebase,
-                 RebaseOpCode, RebaseOpCodes, RebaseSymbol, SymbolType, WeakBind, WeakBindSymbol};
+pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol,
+                 Rebase, RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol};
+pub use export::{ExportGraph, ExportNode, ExportSymbol, ExportSymbolType};

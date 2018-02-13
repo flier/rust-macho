@@ -756,6 +756,7 @@ impl OFile {
             _ => {
                 let mut ar_magic = [0; 8];
 
+                buf.seek(SeekFrom::Current(-4))?;
                 buf.read_exact(&mut ar_magic)?;
 
                 if ar_magic == ARMAG {
@@ -1055,7 +1056,7 @@ pub mod tests {
 
         assert_eq!(header.magic, MH_MAGIC_64);
         assert_eq!(header.cputype, CPU_TYPE_X86_64);
-        assert_eq!(header.cpusubtype, 0x80000003u64 as i32);
+        assert_eq!(header.cpusubtype, CPU_SUBTYPE_LIB64 | CPU_SUBTYPE_386);
         assert_eq!(header.filetype, MH_EXECUTE);
         assert_eq!(header.ncmds, 15);
         assert_eq!(header.sizeofcmds, 2080);

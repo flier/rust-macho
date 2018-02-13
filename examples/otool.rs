@@ -62,7 +62,7 @@ fn main() {
     opts.optflag("", "bind", "print the mach-o binding info");
     opts.optflag("", "weak-bind", "print the mach-o weak binding info");
     opts.optflag("", "lazy-bind", "print the mach-o lazy binding info");
-    opts.optflag("r", "rebase", "print the mach-o rebasing info");
+    opts.optflag("", "rebase", "print the mach-o rebasing info");
     opts.optflag(
         "",
         "version",
@@ -118,7 +118,7 @@ fn main() {
         print_bind_info: matches.opt_present("bind"),
         print_weak_bind_info: matches.opt_present("weak-bind"),
         print_lazy_bind_info: matches.opt_present("lazy-bind"),
-        print_rebase_info: matches.opt_present("r"),
+        print_rebase_info: matches.opt_present("rebase"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -163,16 +163,16 @@ struct FileProcessor<T: Write> {
 
 struct FileProcessContext<'a> {
     filename: Cow<'a, str>,
-    content: &'a [u8],
+    payload: &'a [u8],
     cur: Cursor<&'a [u8]>,
 }
 
 impl<'a> FileProcessContext<'a> {
-    pub fn new(filename: &'a str, content: &'a [u8]) -> FileProcessContext<'a> {
+    pub fn new(filename: &'a str, payload: &'a [u8]) -> FileProcessContext<'a> {
         FileProcessContext {
             filename: filename.into(),
-            content: content,
-            cur: Cursor::new(content),
+            payload,
+            cur: Cursor::new(payload),
         }
     }
 
@@ -201,10 +201,10 @@ impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file = File::open(filename)?;
         let mmap = unsafe { Mmap::map(&file) }?;
-        let content = mmap.as_ref();
-        let mut cur = Cursor::new(content);
+        let payload = mmap.as_ref();
+        let mut cur = Cursor::new(payload);
         let file = OFile::parse(&mut cur)?;
-        let mut ctxt = FileProcessContext::new(filename, content);
+        let mut ctxt = FileProcessContext::new(filename, payload);
 
         debug!("process file {} with {} bytes", filename, mmap.len());
 
@@ -306,7 +306,7 @@ impl<T: Write> FileProcessor<T> {
                             if self.print_headers {
                                 writeln!(
                                     self.w,
-                                    "Contents of ({},{}) section",
+                                    "payloads of ({},{}) section",
                                     sect.segname, sect.sectname
                                 )?;
                             }
@@ -370,10 +370,10 @@ impl<T: Write> FileProcessor<T> {
                         let start = bind_off as usize;
                         let end = (bind_off + bind_size) as usize;
 
-                        if start > ctxt.content.len() {
+                        if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
                         }
-                        if end > ctxt.content.len() {
+                        if end > ctxt.payload.len() {
                             bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
                         }
 
@@ -383,7 +383,7 @@ impl<T: Write> FileProcessor<T> {
                             "segment  section            address    type       addend dylib            symbol"
                         )?;
 
-                        for symbol in Bind::parse(&ctxt.content[start..end], &commands, ptr_size) {
+                        for symbol in Bind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
@@ -407,10 +407,10 @@ impl<T: Write> FileProcessor<T> {
                         let start = weak_bind_off as usize;
                         let end = (weak_bind_off + weak_bind_size) as usize;
 
-                        if start > ctxt.content.len() {
+                        if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
                         }
-                        if end > ctxt.content.len() {
+                        if end > ctxt.payload.len() {
                             bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
                         }
 
@@ -420,7 +420,7 @@ impl<T: Write> FileProcessor<T> {
                             "segment section          address       type     addend symbol"
                         )?;
 
-                        for symbol in WeakBind::parse(&ctxt.content[start..end], &commands, ptr_size) {
+                        for symbol in WeakBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
@@ -443,16 +443,16 @@ impl<T: Write> FileProcessor<T> {
                         let start = lazy_bind_off as usize;
                         let end = (lazy_bind_off + lazy_bind_size) as usize;
 
-                        if start > ctxt.content.len() {
+                        if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
                         }
-                        if end > ctxt.content.len() {
+                        if end > ctxt.payload.len() {
                             bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
                         }
 
                         writeln!(self.w, "Lazy bind table:")?;
 
-                        for symbol in LazyBind::parse(&ctxt.content[start..end], &commands, ptr_size) {
+                        for symbol in LazyBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:16} 0x{:08X} {:<16} {}{}",
@@ -474,17 +474,17 @@ impl<T: Write> FileProcessor<T> {
                         let start = rebase_off as usize;
                         let end = (rebase_off + rebase_size) as usize;
 
-                        if start > ctxt.content.len() {
+                        if start > ctxt.payload.len() {
                             bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
                         }
-                        if end > ctxt.content.len() {
+                        if end > ctxt.payload.len() {
                             bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
                         }
 
                         writeln!(self.w, "Rebase table:")?;
                         writeln!(self.w, "segment  section            address     type")?;
 
-                        for symbol in Rebase::parse(&ctxt.content[start..end], &commands, ptr_size) {
+                        for symbol in Rebase::parse(&ctxt.payload[start..end], &commands, ptr_size) {
                             writeln!(
                                 self.w,
                                 "{:8} {:18} 0x{:08X}  {}",
@@ -519,7 +519,7 @@ impl<T: Write> FileProcessor<T> {
         for &(ref arch, ref file) in files {
             let mut ctxt = FileProcessContext::new(
                 &ctxt.filename,
-                &ctxt.content[arch.offset as usize..(arch.offset + arch.size) as usize],
+                &ctxt.payload[arch.offset as usize..(arch.offset + arch.size) as usize],
             );
 
             self.process_ofile(file, &mut ctxt)?;
@@ -548,7 +548,7 @@ impl<T: Write> FileProcessor<T> {
                     } else {
                         ctxt.filename.clone()
                     },
-                    content: ctxt.content,
+                    payload: ctxt.payload,
                     cur: ctxt.cur.clone(),
                 },
             )?;

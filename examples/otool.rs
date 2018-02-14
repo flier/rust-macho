@@ -371,7 +371,10 @@ impl<T: Write> FileProcessor<T> {
                 } => {
                     if self.print_bind_info {
                         let start = bind_off as usize;
-                        let end = bind_off as usize + bind_size as usize;
+                        let end = bind_off
+                            .checked_add(bind_size)
+                            .ok_or(MachError::BufferOverflow(bind_size as usize))?
+                            as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -393,7 +396,10 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_weak_bind_info {
                         let start = weak_bind_off as usize;
-                        let end = weak_bind_off as usize + weak_bind_size as usize;
+                        let end = weak_bind_off
+                            .checked_add(weak_bind_size)
+                            .ok_or(MachError::BufferOverflow(weak_bind_size as usize))?
+                            as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -415,7 +421,10 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_lazy_bind_info {
                         let start = lazy_bind_off as usize;
-                        let end = lazy_bind_off as usize + lazy_bind_size as usize;
+                        let end = lazy_bind_off
+                            .checked_add(lazy_bind_size)
+                            .ok_or(MachError::BufferOverflow(lazy_bind_size as usize))?
+                            as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -433,7 +442,10 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_rebase_info {
                         let start = rebase_off as usize;
-                        let end = rebase_off as usize + rebase_size as usize;
+                        let end = rebase_off
+                            .checked_add(rebase_size)
+                            .ok_or(MachError::BufferOverflow(rebase_size as usize))?
+                            as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
@@ -475,9 +487,11 @@ impl<T: Write> FileProcessor<T> {
 
         for &(ref arch, ref file) in files {
             let start = arch.offset as usize;
-            let end = arch.offset as usize + arch.size as usize;
+            let end = arch.offset
+                .checked_add(arch.size)
+                .ok_or(MachError::NumberOverflow)? as usize;
 
-            if start >= ctxt.payload.len() || start >= end {
+            if start >= ctxt.payload.len() {
                 bail!("file offset overflow, {}", start)
             }
 

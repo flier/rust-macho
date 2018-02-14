@@ -342,7 +342,9 @@ impl OFile {
             );
 
             let start = arch.offset as usize;
-            let end = arch.offset as usize + arch.size as usize;
+            let end = arch.offset
+                .checked_add(arch.size)
+                .ok_or(MachError::BufferOverflow(arch.size as usize))? as usize;
 
             if start >= payload.len() || start >= end {
                 bail!(MachError::BufferOverflow(start))
@@ -386,7 +388,9 @@ impl OFile {
 
                         let toc_strsize = buf.read_u32::<O>()?;
 
-                        let end = buf.position() + toc_strsize as u64;
+                        let end = buf.position()
+                            .checked_add(toc_strsize as u64)
+                            .ok_or(MachError::BufferOverflow(toc_strsize as usize))?;
 
                         buf.seek(SeekFrom::Start(end))?;
 
@@ -399,10 +403,13 @@ impl OFile {
 
                         files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
                     } else {
-                        let mut end = buf.position() + header.ar_size as u64;
+                        let mut end = buf.position()
+                            .checked_add(header.ar_size as u64)
+                            .ok_or(MachError::BufferOverflow(header.ar_size as usize))?;
 
                         if let Some(size) = header.extended_format_size() {
-                            end -= size as u64;
+                            end = end.checked_sub(size as u64)
+                                .ok_or(MachError::BufferOverflow(size))?;
                         }
 
                         let file = Self::parse(buf)?;

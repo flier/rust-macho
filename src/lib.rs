@@ -61,4 +61,4 @@ pub use commands::*;
 pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
 pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, LazyBind, LazyBindSymbol, Rebase,
-                 RebaseOpCode, RebaseOpCodes, RebaseSymbol, SymbolType, WeakBind, WeakBindSymbol};
+                 RebaseOpCode, RebaseOpCodes, RebaseSymbol, BindSymbolType, WeakBind, WeakBindSymbol};

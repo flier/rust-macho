@@ -341,20 +341,8 @@ impl OFile {
                 arch
             );
 
-            let start = arch.offset as usize;
-            let end = arch.offset
-                .checked_add(arch.size)
-                .ok_or(MachError::BufferOverflow(arch.size as usize))? as usize;
-
-            if start >= payload.len() || start >= end {
-                bail!(MachError::BufferOverflow(start))
-            }
-
-            if end > payload.len() {
-                bail!(MachError::BufferOverflow(end))
-            }
-
-            let mut cur = Cursor::new(&payload[start..end]);
+            let mut cur = Cursor::new(payload
+                .checked_slice(arch.offset as usize, arch.size as usize)?);
 
             let file = OFile::parse(&mut cur)?;
 
@@ -445,6 +433,31 @@ impl OFile {
 
         Ok(OFile::ArFile { files: files })
     }
+}
+
+pub trait CheckedSlice<T>: AsRef<[T]> {
+    fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
+        let s = self.as_ref();
+        let start = off as usize;
+        let end = off.checked_add(len)
+            .ok_or(MachError::BufferOverflow(off + len))? as usize;
+
+        if start >= s.len() || start >= end {
+            bail!(MachError::BufferOverflow(start))
+        }
+
+        if end > s.len() {
+            bail!(MachError::BufferOverflow(end))
+        }
+
+        Ok(&s[start..end])
+    }
+}
+
+impl<T, S> CheckedSlice<T> for S
+where
+    S: AsRef<[T]>,
+{
 }
 
 #[cfg(test)]

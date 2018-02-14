@@ -59,7 +59,7 @@ mod display;
 pub use consts::*;
 pub use commands::*;
 pub use errors::MachError;
-pub use loader::{ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
+pub use loader::{CheckedSlice, ArHeader, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
 pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol,
                  Rebase, RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol};

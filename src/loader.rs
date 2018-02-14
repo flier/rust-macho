@@ -440,7 +440,7 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
         let s = self.as_ref();
         let start = off as usize;
         let end = off.checked_add(len)
-            .ok_or(MachError::BufferOverflow(off + len))? as usize;
+            .ok_or(MachError::BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
             bail!(MachError::BufferOverflow(start))

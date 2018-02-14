@@ -272,10 +272,9 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!(
-                        "unknown file format 0x{:x}",
-                        magic
-                    ),))
+                    bail!(MachError::LoadError(
+                        format!("unknown file format 0x{:x}", magic),
+                    ))
                 }
             }
         }
@@ -338,21 +337,12 @@ impl OFile {
         for arch in archs {
             debug!(
                 "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset, arch
+                arch.offset,
+                arch
             );
 
-            let start = arch.offset as usize;
-            let end = (arch.offset + arch.size) as usize;
-
-            if start >= payload.len() || start >= end {
-                bail!(MachError::BufferOverflow(start))
-            }
-
-            if end > payload.len() {
-                bail!(MachError::BufferOverflow(end))
-            }
-
-            let mut cur = Cursor::new(&payload[start..end]);
+            let mut cur = Cursor::new(payload
+                .checked_slice(arch.offset as usize, arch.size as usize)?);
 
             let file = OFile::parse(&mut cur)?;
 
@@ -386,7 +376,9 @@ impl OFile {
 
                         let toc_strsize = buf.read_u32::<O>()?;
 
-                        let end = buf.position() + toc_strsize as u64;
+                        let end = buf.position()
+                            .checked_add(toc_strsize as u64)
+                            .ok_or(MachError::BufferOverflow(toc_strsize as usize))?;
 
                         buf.seek(SeekFrom::Start(end))?;
 
@@ -399,10 +391,13 @@ impl OFile {
 
                         files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
                     } else {
-                        let mut end = buf.position() + header.ar_size as u64;
+                        let mut end = buf.position()
+                            .checked_add(header.ar_size as u64)
+                            .ok_or(MachError::BufferOverflow(header.ar_size as usize))?;
 
                         if let Some(size) = header.extended_format_size() {
-                            end -= size as u64;
+                            end = end.checked_sub(size as u64)
+                                .ok_or(MachError::BufferOverflow(size))?;
                         }
 
                         let file = Self::parse(buf)?;
@@ -438,6 +433,31 @@ impl OFile {
 
         Ok(OFile::ArFile { files: files })
     }
+}
+
+pub trait CheckedSlice<T>: AsRef<[T]> {
+    fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
+        let s = self.as_ref();
+        let start = off as usize;
+        let end = off.checked_add(len)
+            .ok_or(MachError::BufferOverflow(len))? as usize;
+
+        if start >= s.len() || start >= end {
+            bail!(MachError::BufferOverflow(start))
+        }
+
+        if end > s.len() {
+            bail!(MachError::BufferOverflow(end))
+        }
+
+        Ok(&s[start..end])
+    }
+}
+
+impl<T, S> CheckedSlice<T> for S
+where
+    S: AsRef<[T]>,
+{
 }
 
 #[cfg(test)]

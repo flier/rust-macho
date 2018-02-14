@@ -715,11 +715,17 @@ pub trait ReadStringExt: Read {
 
 impl<R: Read + ?Sized> ReadStringExt for R {}
 
+const LOAD_COMMAND_HEADER_SIZE: usize = 8; // cmd + cmdsize
+
 impl LoadCommand {
     pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
         let cmd = buf.read_u32::<O>()?;
-        let cmdsize = buf.read_u32::<O>()?;
+        let cmdsize = buf.read_u32::<O>()? as usize;
+
+        if cmdsize < LOAD_COMMAND_HEADER_SIZE || begin as usize + cmdsize > buf.get_ref().as_ref().len() {
+            bail!(MachError::BufferOverflow(cmdsize))
+        }
 
         let cmd = match cmd {
             LC_SEGMENT => {
@@ -857,35 +863,38 @@ impl LoadCommand {
             },
             LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(buf.read_u64::<O>()?)),
             _ => {
-                let mut payload = Vec::new();
-
-                payload.resize(cmdsize as usize - 8, 0);
+                let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
                 debug!(
-                    "load {} command with {} bytes payload",
+                    "load unsupported {} command with {} bytes payload",
                     LoadCommand::cmd_name(cmd),
                     payload.len()
                 );
 
-                buf.read_exact(payload.as_mut())?;
+                buf.read_exact(&mut payload)?;
 
-                let cmd = LoadCommand::Command {
-                    cmd: cmd,
-                    payload: payload,
-                };
-
-                cmd
+                LoadCommand::Command { cmd, payload }
             }
         };
 
-        debug!("parsed {} command: {:?}", cmd.name(), cmd);
-
         let read = (buf.position() - begin) as usize;
 
-        // skip the reserved or padding bytes
-        buf.consume(cmdsize as usize - read);
+        debug!(
+            "parsed {} command with {}/{} bytes: {:?}",
+            cmd.name(),
+            read,
+            cmdsize,
+            cmd
+        );
 
-        Ok((cmd, cmdsize as usize))
+        if cmdsize < read {
+            bail!(MachError::BufferOverflow(cmdsize))
+        } else if cmdsize > read {
+            // skip the reserved or padding bytes
+            buf.consume(cmdsize - read);
+        }
+
+        Ok((cmd, cmdsize))
     }
 
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {

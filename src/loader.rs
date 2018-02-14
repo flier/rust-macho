@@ -272,10 +272,9 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!(
-                        "unknown file format 0x{:x}",
-                        magic
-                    ),))
+                    bail!(MachError::LoadError(
+                        format!("unknown file format 0x{:x}", magic),
+                    ))
                 }
             }
         }
@@ -338,11 +337,12 @@ impl OFile {
         for arch in archs {
             debug!(
                 "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset, arch
+                arch.offset,
+                arch
             );
 
             let start = arch.offset as usize;
-            let end = (arch.offset + arch.size) as usize;
+            let end = arch.offset as usize + arch.size as usize;
 
             if start >= payload.len() || start >= end {
                 bail!(MachError::BufferOverflow(start))

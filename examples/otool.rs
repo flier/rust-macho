@@ -259,7 +259,8 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype, header.cpusubtype
+                            header.cputype,
+                            header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -307,7 +308,8 @@ impl<T: Write> FileProcessor<T> {
                                 writeln!(
                                     self.w,
                                     "payloads of ({},{}) section",
-                                    sect.segname, sect.sectname
+                                    sect.segname,
+                                    sect.sectname
                                 )?;
                             }
 
@@ -326,7 +328,8 @@ impl<T: Write> FileProcessor<T> {
                     writeln!(
                         self.w,
                         "\t{} (minor version {})",
-                        fvmlib.name, fvmlib.minor_version
+                        fvmlib.name,
+                        fvmlib.minor_version
                     )?;
                 }
 
@@ -368,7 +371,7 @@ impl<T: Write> FileProcessor<T> {
                 } => {
                     if self.print_bind_info {
                         let start = bind_off as usize;
-                        let end = (bind_off + bind_size) as usize;
+                        let end = bind_off as usize + bind_size as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -390,7 +393,7 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_weak_bind_info {
                         let start = weak_bind_off as usize;
-                        let end = (weak_bind_off + weak_bind_size) as usize;
+                        let end = weak_bind_off as usize + weak_bind_size as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -412,7 +415,7 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_lazy_bind_info {
                         let start = lazy_bind_off as usize;
-                        let end = (lazy_bind_off + lazy_bind_size) as usize;
+                        let end = lazy_bind_off as usize + lazy_bind_size as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("bind_off in LC_DYLD_INFO load command pass end of file");
@@ -430,7 +433,7 @@ impl<T: Write> FileProcessor<T> {
 
                     if self.print_rebase_info {
                         let start = rebase_off as usize;
-                        let end = (rebase_off + rebase_size) as usize;
+                        let end = rebase_off as usize + rebase_size as usize;
 
                         if start > ctxt.payload.len() {
                             bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
@@ -472,7 +475,7 @@ impl<T: Write> FileProcessor<T> {
 
         for &(ref arch, ref file) in files {
             let start = arch.offset as usize;
-            let end = (arch.offset + arch.size) as usize;
+            let end = arch.offset as usize + arch.size as usize;
 
             if start >= ctxt.payload.len() || start >= end {
                 bail!("file offset overflow, {}", start)

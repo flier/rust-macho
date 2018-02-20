@@ -842,12 +842,14 @@ pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: u8 = 0xA0;
 pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u8 = 0xB0;
 pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u8 = 0xC0;
 
+pub const EXPORT_SYMBOL_FLAGS_KIND_MASK: u8 = 0x03;
+pub const EXPORT_SYMBOL_FLAGS_KIND_REGULAR: u8 = 0x00;
+pub const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL: u8 = 0x01;
+pub const EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: u8 = 0x02;
+
 bitflags! {
     /// The following are used on the flags byte of a terminal node in the export information.
     pub struct ExportSymbolFlags: u32 {
-        const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03;
-        const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00;
-        const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01;
         const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04;
         const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08;
         const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10;

@@ -897,22 +897,12 @@ impl LoadCommand {
         Ok((cmd, cmdsize))
     }
 
-    fn read_lc_string<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<String> {
-        let mut v = Vec::new();
-
-        buf.read_until(0, &mut v)?;
-
-        Ok(String::from_utf8(
-            v.split(|&b| b == 0).next().unwrap().to_vec(),
-        )?)
-    }
-
     fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
         let off = buf.read_u32::<O>()? as usize;
 
         buf.consume(off - 12);
 
-        Ok(LcString(off, Self::read_lc_string::<O, T>(buf)?))
+        Ok(LcString(off, buf.read_cstr()?))
     }
 
     fn read_fvmlib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<FvmLib> {
@@ -923,7 +913,7 @@ impl LoadCommand {
         buf.consume(off - 20);
 
         Ok(FvmLib {
-            name: LcString(off, Self::read_lc_string::<O, T>(buf)?),
+            name: LcString(off, buf.read_cstr()?),
             minor_version: minor_version,
             header_addr: header_addr,
         })
@@ -938,7 +928,7 @@ impl LoadCommand {
         buf.consume(off - 24);
 
         Ok(DyLib {
-            name: LcString(off, Self::read_lc_string::<O, T>(buf)?),
+            name: LcString(off, buf.read_cstr()?),
             timestamp: timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),
@@ -1039,6 +1029,50 @@ impl LoadCommand {
             LC_LINKER_OPTIMIZATION_HINT => "LC_LINKER_OPTIMIZATION_HINT",
             _ => "LC_COMMAND",
         }
+    }
+}
+
+pub trait CursorExt<T: AsRef<[u8]>> {
+    fn read_uleb128(&mut self) -> Result<usize>;
+
+    fn read_cstr(&mut self) -> Result<String>;
+}
+
+impl<T> CursorExt<T> for Cursor<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn read_uleb128(&mut self) -> Result<usize> {
+        let mut v = 0;
+        let mut bits = 0;
+
+        loop {
+            let b = self.read_u8()?;
+            let n = usize::from(b & 0x7F);
+
+            if bits > 63 {
+                bail!(MachError::NumberOverflow)
+            }
+
+            v |= n << bits;
+            bits += 7;
+
+            if (b & 0x80) == 0 {
+                break;
+            }
+        }
+
+        Ok(v)
+    }
+
+    fn read_cstr(&mut self) -> Result<String> {
+        let mut v = Vec::new();
+
+        self.read_until(0, &mut v)?;
+
+        Ok(String::from_utf8(
+            v.split(|&b| b == 0).next().unwrap().to_vec(),
+        )?)
     }
 }
 

@@ -63,6 +63,7 @@ fn main() {
     opts.optflag("", "weak-bind", "print the mach-o weak binding info");
     opts.optflag("", "lazy-bind", "print the mach-o lazy binding info");
     opts.optflag("", "rebase", "print the mach-o rebasing info");
+    opts.optflag("", "export", "print the mach-o exported symbols");
     opts.optflag(
         "",
         "version",
@@ -119,6 +120,7 @@ fn main() {
         print_weak_bind_info: matches.opt_present("weak-bind"),
         print_lazy_bind_info: matches.opt_present("lazy-bind"),
         print_rebase_info: matches.opt_present("rebase"),
+        print_export_trie: matches.opt_present("export"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
@@ -159,6 +161,7 @@ struct FileProcessor<T: Write> {
     print_weak_bind_info: bool,
     print_lazy_bind_info: bool,
     print_rebase_info: bool,
+    print_export_trie: bool,
 }
 
 struct FileProcessContext<'a> {
@@ -259,8 +262,7 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -308,8 +310,7 @@ impl<T: Write> FileProcessor<T> {
                                 writeln!(
                                     self.w,
                                     "payloads of ({},{}) section",
-                                    sect.segname,
-                                    sect.sectname
+                                    sect.segname, sect.sectname
                                 )?;
                             }
 
@@ -328,8 +329,7 @@ impl<T: Write> FileProcessor<T> {
                     writeln!(
                         self.w,
                         "\t{} (minor version {})",
-                        fvmlib.name,
-                        fvmlib.minor_version
+                        fvmlib.name, fvmlib.minor_version
                     )?;
                 }
 
@@ -367,7 +367,8 @@ impl<T: Write> FileProcessor<T> {
                     lazy_bind_size,
                     rebase_off,
                     rebase_size,
-                    ..
+                    export_off,
+                    export_size,
                 } => {
                     if self.print_bind_info {
                         let payload = ctxt.payload
@@ -418,6 +419,22 @@ impl<T: Write> FileProcessor<T> {
                         writeln!(self.w, "segment  section            address     type")?;
 
                         for symbol in Rebase::parse(payload, &commands, ptr_size) {
+                            writeln!(self.w, "{}", symbol)?;
+                        }
+                    }
+
+                    if self.print_export_trie {
+                        let payload = ctxt.payload
+                            .checked_slice(export_off as usize, export_size as usize)?;
+
+                        writeln!(self.w, "Exports trie:")?;
+
+                        let export = ExportTrie::parse(payload)?;
+                        let mut symbols = export.symbols().collect::<Vec<ExportSymbol>>();
+
+                        symbols.sort_by(|lhs, rhs| lhs.address().cmp(&rhs.address()));
+
+                        for symbol in symbols {
                             writeln!(self.w, "{}", symbol)?;
                         }
                     }

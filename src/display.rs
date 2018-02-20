@@ -6,6 +6,7 @@ use loader::{ArHeader, FatHeader, MachCommand, MachHeader};
 use commands::{LcString, LoadCommand, Section};
 use symbol::Symbol;
 use opcode::{BindSymbol, BindSymbolFlags, LazyBindSymbol, RebaseSymbol, WeakBindSymbol};
+use export::{ExportKind, ExportSymbol, ExportType};
 use consts::*;
 
 impl fmt::Display for MachHeader {
@@ -654,6 +655,66 @@ impl<'a> fmt::Display for RebaseSymbol<'a> {
             "{:8} {:18} 0x{:08X}  {}",
             self.segment_name, self.section_name, self.address, self.symbol_type
         )
+    }
+}
+
+impl fmt::Display for ExportSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.symbol {
+            ExportType::Reexport { .. } => {
+                write!(f, "[re-export] ")?;
+            }
+            ExportType::Regular { address }
+            | ExportType::Weak { address }
+            | ExportType::Stub {
+                offset: address, ..
+            } => {
+                write!(f, "0x{:08X}  ", address)?;
+            }
+        }
+
+        write!(f, "{}", self.name)?;
+
+        let mut attrs = vec![];
+
+        match self.kind {
+            ExportKind::Absolute => {
+                attrs.push("absolute".to_owned());
+            }
+            ExportKind::ThreadLocal => {
+                attrs.push("per-thread".to_owned());
+            }
+            ExportKind::Regular => {}
+        }
+
+        match self.symbol {
+            ExportType::Reexport { ordinal, ref name } => {
+                attrs.push(format!("{} from dylib #{}", name, ordinal));
+            }
+            ExportType::Weak { .. } => {
+                attrs.push("weak".to_owned());
+            }
+            ExportType::Stub { resolver, .. } => {
+                attrs.push(format!("resolve = 0x{:08X}", resolver));
+            }
+            ExportType::Regular { .. } => {}
+        }
+
+        if !attrs.is_empty() {
+            write!(f, "[")?;
+
+            while let Some(attr) = attrs.pop() {
+                write!(f, "{}", attr)?;
+
+                if !attrs.is_empty() {
+                    write!(f, ", ")?;
+                }
+            }
+
+            write!(f, "]")?;
+        }
+
+        Ok(())
     }
 }
 

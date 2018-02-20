@@ -7,45 +7,40 @@ use commands::CursorExt;
 use consts::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ExportSymbolType {
+pub enum ExportKind {
     Regular,
     ThreadLocal,
     Absolute,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExportSymbol {
+pub enum ExportType {
     Regular { address: usize },
     Weak { address: usize },
     Reexport { ordinal: usize, name: String },
-    Stub { offset: usize },
+    Stub { offset: usize, resolver: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExportNode {
-    Symbol {
-        symbol_type: ExportSymbolType,
-        symbol: ExportSymbol,
-    },
-    Stem {
-        edges: Vec<(String, ExportNode)>,
-    },
+struct Exported {
+    symbol: Option<(ExportKind, ExportType)>,
+    edges: Vec<(String, Exported)>,
 }
 
-impl ExportNode {
-    pub fn parse<'a, T>(cur: &mut Cursor<T>) -> Result<Self>
+impl Exported {
+    pub fn parse<T>(cur: &mut Cursor<T>) -> Result<Exported>
     where
         T: AsRef<[u8]>,
     {
         let terminal_size = cur.read_uleb128()?;
 
-        if terminal_size != 0 {
+        let symbol = if terminal_size != 0 {
             let flags = cur.read_uleb128()?;
 
-            let symbol_type = match flags as u8 & EXPORT_SYMBOL_FLAGS_KIND_MASK {
-                EXPORT_SYMBOL_FLAGS_KIND_REGULAR => ExportSymbolType::Regular,
-                EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL => ExportSymbolType::ThreadLocal,
-                EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE => ExportSymbolType::Absolute,
+            let kind = match flags as u8 & EXPORT_SYMBOL_FLAGS_KIND_MASK {
+                EXPORT_SYMBOL_FLAGS_KIND_REGULAR => ExportKind::Regular,
+                EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL => ExportKind::ThreadLocal,
+                EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE => ExportKind::Absolute,
                 _ => unreachable!(),
             };
 
@@ -55,67 +50,122 @@ impl ExportNode {
                 let ordinal = cur.read_uleb128()?;
                 let name = cur.read_cstr()?;
 
-                ExportSymbol::Reexport { ordinal, name }
+                ExportType::Reexport { ordinal, name }
             } else {
                 let address = cur.read_uleb128()?;
 
                 if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION) {
-                    ExportSymbol::Weak { address }
+                    ExportType::Weak { address }
                 } else if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
-                    ExportSymbol::Stub { offset: address }
+                    let resolver = cur.read_uleb128()?;
+
+                    ExportType::Stub {
+                        offset: address,
+                        resolver,
+                    }
                 } else {
-                    ExportSymbol::Regular { address }
+                    ExportType::Regular { address }
                 }
             };
 
-            Ok(ExportNode::Symbol {
-                symbol_type,
-                symbol,
-            })
+            Some((kind, symbol))
         } else {
-            let edges = (0..cur.read_u8()? as usize)
-                .map(|_| {
-                    let name = cur.read_cstr()?;
-                    let offset = cur.read_uleb128()?;
+            None
+        };
 
-                    Ok((name, offset))
-                })
-                .collect::<Result<Vec<(String, usize)>>>()?;
+        let edges = (0..cur.read_u8()? as usize)
+            .map(|_| {
+                let name = cur.read_cstr()?;
+                let offset = cur.read_uleb128()?;
 
-            let payload = cur.get_ref().as_ref();
+                Ok((name, offset))
+            })
+            .collect::<Result<Vec<(String, usize)>>>()?;
 
-            let edges = edges
-                .into_iter()
-                .map(|(name, offset)| {
-                    if offset > payload.len() {
-                        bail!(MachError::BufferOverflow(offset))
-                    }
+        let payload = cur.get_ref().as_ref();
 
-                    let mut cur = Cursor::new(payload);
+        let edges = edges
+            .into_iter()
+            .map(|(name, offset)| {
+                if offset > payload.len() {
+                    bail!(MachError::BufferOverflow(offset))
+                }
 
-                    cur.set_position(offset as u64);
+                let mut cur = Cursor::new(payload);
 
-                    Ok((name, ExportNode::parse(&mut cur)?))
-                })
-                .collect::<Result<Vec<(String, ExportNode)>>>()?;
+                cur.set_position(offset as u64);
 
-            Ok(ExportNode::Stem { edges })
+                Ok((name, Exported::parse(&mut cur)?))
+            })
+            .collect::<Result<Vec<(String, Exported)>>>()?;
+
+        Ok(Exported { symbol, edges })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExportTrie<'a> {
+    payload: &'a [u8],
+    root: Exported,
+}
+
+impl<'a> ExportTrie<'a> {
+    pub fn parse(payload: &'a [u8]) -> Result<ExportTrie<'a>> {
+        let mut cur = Cursor::new(payload);
+        let root = Exported::parse(&mut cur)?;
+
+        Ok(ExportTrie { payload, root })
+    }
+
+    pub fn symbols(&'a self) -> ExportSymbols<'a> {
+        ExportSymbols {
+            nodes: vec![(Default::default(), &self.root)],
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ExportTrie {
-    root: ExportNode,
+pub struct ExportSymbol {
+    pub name: String,
+    pub kind: ExportKind,
+    pub symbol: ExportType,
 }
 
-impl ExportTrie {
-    pub fn parse<'a, T>(cur: &mut Cursor<T>) -> Result<Self>
-    where
-        T: AsRef<[u8]>,
-    {
-        Ok(ExportTrie {
-            root: ExportNode::parse(cur)?,
-        })
+impl ExportSymbol {
+    pub fn address(&self) -> Option<usize> {
+        match self.symbol {
+            ExportType::Reexport { .. } => None,
+            ExportType::Regular { address }
+            | ExportType::Weak { address }
+            | ExportType::Stub {
+                offset: address, ..
+            } => Some(address),
+        }
+    }
+}
+
+pub struct ExportSymbols<'a> {
+    nodes: Vec<(String, &'a Exported)>,
+}
+
+impl<'a> Iterator for ExportSymbols<'a> {
+    type Item = ExportSymbol;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((prefix, node)) = self.nodes.pop() {
+            for &(ref s, ref node) in &node.edges {
+                self.nodes.push((prefix.clone() + s, &node))
+            }
+
+            if let Some((kind, ref symbol)) = node.symbol {
+                return Some(ExportSymbol {
+                    name: prefix.clone(),
+                    kind,
+                    symbol: symbol.clone(),
+                });
+            }
+        }
+
+        None
     }
 }

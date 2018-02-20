@@ -429,11 +429,14 @@ impl<T: Write> FileProcessor<T> {
 
                         writeln!(self.w, "Exports trie:")?;
 
-                        let mut cur = Cursor::new(payload);
+                        let export = ExportTrie::parse(payload)?;
+                        let mut symbols = export.symbols().collect::<Vec<ExportSymbol>>();
 
-                        let export = ExportTrie::parse(&mut cur)?;
+                        symbols.sort_by(|lhs, rhs| lhs.address().cmp(&rhs.address()));
 
-                        debug!("export trie: {:?}", export);
+                        for symbol in symbols {
+                            writeln!(self.w, "{}", symbol)?;
+                        }
                     }
                 }
 

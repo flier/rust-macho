@@ -262,8 +262,7 @@ impl<T: Write> FileProcessor<T> {
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
                 )?;
@@ -311,8 +310,7 @@ impl<T: Write> FileProcessor<T> {
                                 writeln!(
                                     self.w,
                                     "payloads of ({},{}) section",
-                                    sect.segname,
-                                    sect.sectname
+                                    sect.segname, sect.sectname
                                 )?;
                             }
 
@@ -331,8 +329,7 @@ impl<T: Write> FileProcessor<T> {
                     writeln!(
                         self.w,
                         "\t{} (minor version {})",
-                        fvmlib.name,
-                        fvmlib.minor_version
+                        fvmlib.name, fvmlib.minor_version
                     )?;
                 }
 
@@ -374,15 +371,8 @@ impl<T: Write> FileProcessor<T> {
                     export_size,
                 } => {
                     if self.print_bind_info {
-                        let start = bind_off as usize;
-                        let end = (bind_off + bind_size) as usize;
-
-                        if start > ctxt.payload.len() {
-                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
-                        }
-                        if end > ctxt.payload.len() {
-                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
-                        }
+                        let payload = ctxt.payload
+                            .checked_slice(bind_off as usize, bind_size as usize)?;
 
                         writeln!(self.w, "Bind table:")?;
                         writeln!(
@@ -390,21 +380,14 @@ impl<T: Write> FileProcessor<T> {
                             "segment  section            address    type       addend dylib            symbol"
                         )?;
 
-                        for symbol in Bind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                        for symbol in Bind::parse(payload, &commands, ptr_size) {
                             writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
                     if self.print_weak_bind_info {
-                        let start = weak_bind_off as usize;
-                        let end = (weak_bind_off + weak_bind_size) as usize;
-
-                        if start > ctxt.payload.len() {
-                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
-                        }
-                        if end > ctxt.payload.len() {
-                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
-                        }
+                        let payload = ctxt.payload
+                            .checked_slice(weak_bind_off as usize, weak_bind_size as usize)?;
 
                         writeln!(self.w, "Weak bind table:")?;
                         writeln!(
@@ -412,44 +395,30 @@ impl<T: Write> FileProcessor<T> {
                             "segment section          address       type     addend symbol"
                         )?;
 
-                        for symbol in WeakBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                        for symbol in WeakBind::parse(payload, &commands, ptr_size) {
                             writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
                     if self.print_lazy_bind_info {
-                        let start = lazy_bind_off as usize;
-                        let end = (lazy_bind_off + lazy_bind_size) as usize;
-
-                        if start > ctxt.payload.len() {
-                            bail!("bind_off in LC_DYLD_INFO load command pass end of file");
-                        }
-                        if end > ctxt.payload.len() {
-                            bail!("bind_off plus bind_size in LC_DYLD_INFO load command past end of file");
-                        }
+                        let payload = ctxt.payload
+                            .checked_slice(lazy_bind_off as usize, lazy_bind_size as usize)?;
 
                         writeln!(self.w, "Lazy bind table:")?;
 
-                        for symbol in LazyBind::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                        for symbol in LazyBind::parse(payload, &commands, ptr_size) {
                             writeln!(self.w, "{}", symbol)?;
                         }
                     }
 
                     if self.print_rebase_info {
-                        let start = rebase_off as usize;
-                        let end = (rebase_off + rebase_size) as usize;
-
-                        if start > ctxt.payload.len() {
-                            bail!("rebase_off in LC_DYLD_INFO load command pass end of file");
-                        }
-                        if end > ctxt.payload.len() {
-                            bail!("rebase_off plus bind_size in LC_DYLD_INFO load command past end of file");
-                        }
+                        let payload = ctxt.payload
+                            .checked_slice(rebase_off as usize, rebase_size as usize)?;
 
                         writeln!(self.w, "Rebase table:")?;
                         writeln!(self.w, "segment  section            address     type")?;
 
-                        for symbol in Rebase::parse(&ctxt.payload[start..end], &commands, ptr_size) {
+                        for symbol in Rebase::parse(payload, &commands, ptr_size) {
                             writeln!(self.w, "{}", symbol)?;
                         }
                     }
@@ -501,9 +470,11 @@ impl<T: Write> FileProcessor<T> {
 
         for &(ref arch, ref file) in files {
             let start = arch.offset as usize;
-            let end = (arch.offset + arch.size) as usize;
+            let end = arch.offset
+                .checked_add(arch.size)
+                .ok_or(MachError::NumberOverflow)? as usize;
 
-            if start >= ctxt.payload.len() || start >= end {
+            if start >= ctxt.payload.len() {
                 bail!("file offset overflow, {}", start)
             }
 

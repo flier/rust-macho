@@ -64,4 +64,4 @@ pub use loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHe
 pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
 pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol,
                  Rebase, RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol};
-pub use export::{ExportGraph, ExportNode, ExportSymbol, ExportSymbolType};
+pub use export::{ExportNode, ExportSymbol, ExportSymbolType, ExportTrie};

@@ -15,17 +15,21 @@ pub enum ExportSymbolType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExportSymbol {
-    Regular(usize),
-    Weak(usize),
+    Regular { address: usize },
+    Weak { address: usize },
     Reexport { ordinal: usize, name: String },
-    Stub(usize),
+    Stub { offset: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ExportNode {
-    symbol_type: Option<ExportSymbolType>,
-    symbol: Option<ExportSymbol>,
-    edges: Vec<(String, ExportNode)>,
+pub enum ExportNode {
+    Symbol {
+        symbol_type: ExportSymbolType,
+        symbol: ExportSymbol,
+    },
+    Stem {
+        edges: Vec<(String, ExportNode)>,
+    },
 }
 
 impl ExportNode {
@@ -35,7 +39,7 @@ impl ExportNode {
     {
         let terminal_size = cur.read_uleb128()?;
 
-        let (symbol_type, symbol) = if terminal_size != 0 {
+        if terminal_size != 0 {
             let flags = cur.read_uleb128()?;
 
             let symbol_type = match flags as u8 & EXPORT_SYMBOL_FLAGS_KIND_MASK {
@@ -56,62 +60,61 @@ impl ExportNode {
                 let address = cur.read_uleb128()?;
 
                 if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION) {
-                    ExportSymbol::Weak(address)
+                    ExportSymbol::Weak { address }
                 } else if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
-                    ExportSymbol::Stub(address)
+                    ExportSymbol::Stub { offset: address }
                 } else {
-                    ExportSymbol::Regular(address)
+                    ExportSymbol::Regular { address }
                 }
             };
 
-            (Some(symbol_type), Some(symbol))
+            Ok(ExportNode::Symbol {
+                symbol_type,
+                symbol,
+            })
         } else {
-            (None, None)
-        };
+            let edges = (0..cur.read_u8()? as usize)
+                .map(|_| {
+                    let name = cur.read_cstr()?;
+                    let offset = cur.read_uleb128()?;
 
-        let edges = (0..cur.read_u8()? as usize)
-            .map(|_| {
-                let name = cur.read_cstr()?;
-                let offset = cur.read_uleb128()?;
+                    Ok((name, offset))
+                })
+                .collect::<Result<Vec<(String, usize)>>>()?;
 
-                Ok((name, offset))
-            })
-            .collect::<Result<Vec<(String, usize)>>>()?;
+            let payload = cur.get_ref().as_ref();
 
-        let payload = cur.get_ref().as_ref();
+            let edges = edges
+                .into_iter()
+                .map(|(name, offset)| {
+                    if offset > payload.len() {
+                        bail!(MachError::BufferOverflow(offset))
+                    }
 
-        let edges = edges
-            .into_iter()
-            .map(|(name, offset)| {
-                if offset > payload.len() {
-                    bail!(MachError::BufferOverflow(offset))
-                }
+                    let mut cur = Cursor::new(payload);
 
-                let mut cur = Cursor::new(&payload[offset..]);
+                    cur.set_position(offset as u64);
 
-                Ok((name, ExportNode::parse(&mut cur)?))
-            })
-            .collect::<Result<Vec<(String, ExportNode)>>>()?;
+                    Ok((name, ExportNode::parse(&mut cur)?))
+                })
+                .collect::<Result<Vec<(String, ExportNode)>>>()?;
 
-        Ok(ExportNode {
-            symbol_type,
-            symbol,
-            edges,
-        })
+            Ok(ExportNode::Stem { edges })
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ExportGraph {
+pub struct ExportTrie {
     root: ExportNode,
 }
 
-impl ExportGraph {
+impl ExportTrie {
     pub fn parse<'a, T>(cur: &mut Cursor<T>) -> Result<Self>
     where
         T: AsRef<[u8]>,
     {
-        Ok(ExportGraph {
+        Ok(ExportTrie {
             root: ExportNode::parse(cur)?,
         })
     }

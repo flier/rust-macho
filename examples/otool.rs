@@ -424,23 +424,14 @@ impl<T: Write> FileProcessor<T> {
                     }
 
                     if self.print_export_trie {
-                        let start = export_off as usize;
-                        let end = (export_off + export_size) as usize;
-
-                        if start > ctxt.payload.len() {
-                            bail!("export_off in LC_DYLD_INFO load command pass end of file");
-                        }
-                        if end > ctxt.payload.len() {
-                            bail!("export_off plus export_size in LC_DYLD_INFO load command past end of file");
-                        }
+                        let payload = ctxt.payload
+                            .checked_slice(export_off as usize, export_size as usize)?;
 
                         writeln!(self.w, "Exports trie:")?;
 
-                        let mut cur = Cursor::new(&ctxt.payload[..end]);
+                        let mut cur = Cursor::new(payload);
 
-                        cur.set_position(start as u64);
-
-                        let export = ExportGraph::parse(&mut cur)?;
+                        let export = ExportTrie::parse(&mut cur)?;
 
                         debug!("export trie: {:?}", export);
                     }

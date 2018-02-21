@@ -51,18 +51,16 @@ impl Exported {
                 let name = cur.read_cstr()?;
 
                 ExportType::Reexport { ordinal, name }
+            } else if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
+                let offset = cur.read_uleb128()?;
+                let resolver = cur.read_uleb128()?;
+
+                ExportType::Stub { offset, resolver }
             } else {
                 let address = cur.read_uleb128()?;
 
                 if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION) {
                     ExportType::Weak { address }
-                } else if flags.contains(ExportSymbolFlags::EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
-                    let resolver = cur.read_uleb128()?;
-
-                    ExportType::Stub {
-                        offset: address,
-                        resolver,
-                    }
                 } else {
                     ExportType::Regular { address }
                 }

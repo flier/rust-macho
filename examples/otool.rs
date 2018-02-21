@@ -10,6 +10,7 @@ extern crate pretty_env_logger;
 
 use std::mem;
 use std::env;
+use std::fmt;
 use std::borrow::Cow;
 use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -429,13 +430,14 @@ impl<T: Write> FileProcessor<T> {
 
                         writeln!(self.w, "Exports trie:")?;
 
-                        let export = ExportTrie::parse(payload)?;
-                        let mut symbols = export.symbols().collect::<Vec<ExportSymbol>>();
+                        let mut symbols = ExportTrie::parse(payload)?
+                            .symbols()
+                            .collect::<Vec<ExportSymbol>>();
 
                         symbols.sort_by(|lhs, rhs| lhs.address().cmp(&rhs.address()));
 
                         for symbol in symbols {
-                            writeln!(self.w, "{}", symbol)?;
+                            writeln!(self.w, "{}", ExportSymbolFmt(symbol, &commands))?;
                         }
                     }
                 }
@@ -527,6 +529,90 @@ impl<T: Write> FileProcessor<T> {
             for ref ranlib in ranlibs {
                 writeln!(self.w, "{:<14} {}", ranlib.ran_off, ranlib.ran_strx)?;
             }
+        }
+
+        Ok(())
+    }
+}
+
+struct ExportSymbolFmt<'a>(ExportSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for ExportSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0.symbol {
+            ExportType::Reexport { .. } => {
+                write!(f, "[re-export] ")?;
+            }
+            ExportType::Regular { address }
+            | ExportType::Weak { address }
+            | ExportType::Stub {
+                offset: address, ..
+            } => {
+                write!(f, "0x{:08X}  ", address)?;
+            }
+        }
+
+        write!(f, "{}", self.0.name)?;
+
+        let mut attrs = vec![];
+
+        match self.0.kind {
+            ExportKind::Absolute => {
+                attrs.push("absolute".to_owned());
+            }
+            ExportKind::ThreadLocal => {
+                attrs.push("per-thread".to_owned());
+            }
+            ExportKind::Regular => {}
+        }
+
+        match self.0.symbol {
+            ExportType::Reexport { ordinal, ref name } => {
+                if let Some(dylib_name) = self.1
+                    .iter()
+                    .flat_map(|cmd| match cmd {
+                        &LoadCommand::IdDyLib(ref dylib)
+                        | &LoadCommand::LoadDyLib(ref dylib)
+                        | &LoadCommand::LoadWeakDyLib(ref dylib)
+                        | &LoadCommand::ReexportDyLib(ref dylib)
+                        | &LoadCommand::LoadUpwardDylib(ref dylib)
+                        | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
+                        _ => None,
+                    })
+                    .nth(ordinal - 1)
+                    .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
+                    .and_then(|filename| filename.to_str())
+                {
+                    if name.is_empty() {
+                        attrs.push(format!("from {}", dylib_name));
+                    } else {
+                        attrs.push(format!("{} from {}", name, dylib_name));
+                    }
+                } else {
+                    return Err(fmt::Error);
+                }
+            }
+            ExportType::Weak { .. } => {
+                attrs.push("weak".to_owned());
+            }
+            ExportType::Stub { resolver, .. } => {
+                attrs.push(format!("resolver = 0x{:08X}", resolver));
+            }
+            ExportType::Regular { .. } => {}
+        }
+
+        if !attrs.is_empty() {
+            write!(f, " [")?;
+
+            while let Some(attr) = attrs.pop() {
+                write!(f, "{}", attr)?;
+
+                if !attrs.is_empty() {
+                    write!(f, ", ")?;
+                }
+            }
+
+            write!(f, "]")?;
         }
 
         Ok(())

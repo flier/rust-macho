@@ -1,14 +1,13 @@
 use std::str;
-use std::fmt;
 use std::rc::Rc;
 use std::io::{Cursor, Seek, SeekFrom};
 
-use byteorder::{ByteOrder, ReadBytesExt, LittleEndian, BigEndian};
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
 use errors::*;
 use consts::*;
 use commands::{LoadCommand, Section};
-use loader::{OFile, MachCommand};
+use loader::{MachCommand, OFile};
 
 /// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]
@@ -52,92 +51,24 @@ pub enum Symbol<'a> {
 
 impl<'a> Symbol<'a> {
     pub fn name(&self) -> Option<&str> {
-        match self {
-            &Symbol::Undefined { name, .. } |
-            &Symbol::Absolute { name, .. } |
-            &Symbol::Defined { name, .. } |
-            &Symbol::Prebound { name, .. } |
-            &Symbol::Indirect { name, .. } |
-            &Symbol::Debug { name, .. } => name,
+        match *self {
+            Symbol::Undefined { name, .. }
+            | Symbol::Absolute { name, .. }
+            | Symbol::Defined { name, .. }
+            | Symbol::Prebound { name, .. }
+            | Symbol::Indirect { name, .. }
+            | Symbol::Debug { name, .. } => name,
         }
     }
 
     pub fn is_external(&self) -> bool {
-        match self {
-            &Symbol::Undefined { external, .. } |
-            &Symbol::Absolute { external, .. } |
-            &Symbol::Defined { external, .. } |
-            &Symbol::Prebound { external, .. } |
-            &Symbol::Indirect { external, .. } => external,
+        match *self {
+            Symbol::Undefined { external, .. }
+            | Symbol::Absolute { external, .. }
+            | Symbol::Defined { external, .. }
+            | Symbol::Prebound { external, .. }
+            | Symbol::Indirect { external, .. } => external,
             _ => false,
-        }
-    }
-}
-
-impl<'a> fmt::Display for Symbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Symbol::Undefined { ref name, external, .. } => {
-                write!(f,
-                       "                 {} {}",
-                       if external { "U" } else { "u" },
-                       name.unwrap_or(""))
-            }
-            &Symbol::Absolute { ref name, external, entry, .. } => {
-                write!(f,
-                       "{:016x} {} {}",
-                       entry,
-                       if external { "A" } else { "a" },
-                       name.unwrap_or(""))
-            }
-            &Symbol::Defined { ref name, external, ref section, entry, .. } => {
-                let mut symtype = "s";
-
-                if let &Some(ref section) = section {
-                    let Section { ref sectname, ref segname, .. } = **section;
-
-                    if segname == SEG_TEXT && sectname == SECT_TEXT {
-                        symtype = "t"
-                    } else if segname == SEG_DATA {
-                        if sectname == SECT_DATA {
-                            symtype = "d"
-                        } else if sectname == SECT_BSS {
-                            symtype = "b"
-                        } else if sectname == SECT_COMMON {
-                            symtype = "c"
-                        }
-                    }
-                }
-
-                write!(f,
-                       "{:016x} {} {}",
-                       entry,
-                       if external {
-                           symtype.to_uppercase()
-                       } else {
-                           symtype.to_lowercase()
-                       },
-                       name.unwrap_or(""))
-            }
-            &Symbol::Prebound { ref name, external, .. } => {
-                write!(f,
-                       "                 {} {}",
-                       if external { "P" } else { "p" },
-                       name.unwrap_or(""))
-            }
-            &Symbol::Indirect { ref name, external, .. } => {
-                write!(f,
-                       "                 {} {}",
-                       if external { "I" } else { "i" },
-                       name.unwrap_or(""))
-            }
-            &Symbol::Debug { ref name, addr, .. } => {
-                if addr == 0 {
-                    write!(f, "                 d {}", name.unwrap_or(""))
-                } else {
-                    write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
-                }
-            }
         }
     }
 }
@@ -209,13 +140,13 @@ pub trait SymbolReference {
 
 impl<'a> SymbolReference for Symbol<'a> {
     fn desc(&self) -> u16 {
-        match self {
-            &Symbol::Undefined { desc, .. } |
-            &Symbol::Absolute { desc, .. } |
-            &Symbol::Defined { desc, .. } |
-            &Symbol::Prebound { desc, .. } |
-            &Symbol::Indirect { desc, .. } |
-            &Symbol::Debug { desc, .. } => desc,
+        match *self {
+            Symbol::Undefined { desc, .. }
+            | Symbol::Absolute { desc, .. }
+            | Symbol::Defined { desc, .. }
+            | Symbol::Prebound { desc, .. }
+            | Symbol::Indirect { desc, .. }
+            | Symbol::Debug { desc, .. } => desc,
         }
     }
 }
@@ -241,23 +172,23 @@ impl<'a> SymbolIter<'a> {
     }
 
     pub fn parse_symbol<O: ByteOrder>(&mut self) -> Result<Symbol<'a>> {
-        let strx = try!(self.cur.read_u32::<O>()) as usize;
-        let flags = try!(self.cur.read_u8());
-        let sect = try!(self.cur.read_u8());
-        let desc = try!(self.cur.read_u16::<O>());
+        let strx = self.cur.read_u32::<O>()? as usize;
+        let flags = self.cur.read_u8()?;
+        let sect = self.cur.read_u8()?;
+        let desc = self.cur.read_u16::<O>()?;
         let value = if self.is_64bit {
-            try!(self.cur.read_u64::<O>()) as usize
+            self.cur.read_u64::<O>()? as usize
         } else {
-            try!(self.cur.read_u32::<O>()) as usize
+            self.cur.read_u32::<O>()? as usize
         };
 
         if (flags & N_STAB) != 0 {
             Ok(Symbol::Debug {
-                name: try!(self.load_str(strx)),
+                name: self.load_str(strx)?,
                 section: if sect == NO_SECT {
                     None
                 } else {
-                    self.sections.get((sect - 1) as usize).map(|x| x.clone())
+                    self.sections.get((sect - 1) as usize).cloned()
                 },
                 desc: desc,
                 addr: value,
@@ -268,50 +199,43 @@ impl<'a> SymbolIter<'a> {
             let typ = flags & N_TYPE;
 
             match typ {
-                N_UNDF => {
-                    Ok(Symbol::Undefined {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                    })
-                }
-                N_ABS => {
-                    Ok(Symbol::Absolute {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                        entry: value,
-                    })
-                }
-                N_SECT => {
-                    Ok(Symbol::Defined {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        section: if sect == NO_SECT {
-                            None
-                        } else {
-                            self.sections.get((sect - 1) as usize).map(|x| x.clone())
-                        },
-                        desc: desc,
-                        entry: value,
-                    })
-                }
-                N_PBUD => {
-                    Ok(Symbol::Prebound {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                    })
-                }
-                N_INDR => {
-                    Ok(Symbol::Indirect {
-                        name: try!(self.load_str(strx)),
-                        external: external,
-                        desc: desc,
-                        symbol: try!(self.load_str(value)),
-                    })
-                }
-                _ => Err(Error::LoadError(format!("unknown symbol type 0x{:x}", typ))),
+                N_UNDF => Ok(Symbol::Undefined {
+                    name: self.load_str(strx)?,
+                    external: external,
+                    desc: desc,
+                }),
+                N_ABS => Ok(Symbol::Absolute {
+                    name: self.load_str(strx)?,
+                    external: external,
+                    desc: desc,
+                    entry: value,
+                }),
+                N_SECT => Ok(Symbol::Defined {
+                    name: self.load_str(strx)?,
+                    external: external,
+                    section: if sect == NO_SECT {
+                        None
+                    } else {
+                        self.sections.get((sect - 1) as usize).cloned()
+                    },
+                    desc: desc,
+                    entry: value,
+                }),
+                N_PBUD => Ok(Symbol::Prebound {
+                    name: self.load_str(strx)?,
+                    external: external,
+                    desc: desc,
+                }),
+                N_INDR => Ok(Symbol::Indirect {
+                    name: self.load_str(strx)?,
+                    external: external,
+                    desc: desc,
+                    symbol: self.load_str(value)?,
+                }),
+                _ => bail!(MachError::LoadError(format!(
+                    "unknown symbol type 0x{:x}",
+                    typ
+                ),)),
             }
         }
     }
@@ -320,15 +244,20 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            Err(Error::LoadError(format!("string offset out of range [..{})", self.strsize)))
+            bail!(MachError::LoadError(format!(
+                "string offset out of range [..{})",
+                self.strsize
+            ),))
         } else {
             let buf = *self.cur.get_ref();
-            let s = *&buf[self.stroff as usize + off as usize..]
+            if let Some(s) = buf[self.stroff as usize + off as usize..]
                 .split(|x| *x == 0)
                 .next()
-                .unwrap();
-
-            Ok(Some(try!(str::from_utf8(s))))
+            {
+                Ok(Some(str::from_utf8(s)?))
+            } else {
+                Ok(None)
+            }
         }
     }
 }
@@ -361,11 +290,17 @@ impl<'a> SymbolReader<'a> for OFile {
     type Iter = SymbolIter<'a>;
 
     fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {
-        if let &OFile::MachFile { ref header, ref commands } = self {
-            let sections = commands.iter()
+        if let OFile::MachFile {
+            ref header,
+            ref commands,
+        } = *self
+        {
+            let sections = commands
+                .iter()
                 .filter_map(|cmd| match cmd.0 {
-                    LoadCommand::Segment { ref sections, .. } |
-                    LoadCommand::Segment64 { ref sections, .. } => Some(sections),
+                    LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
+                        Some(sections)
+                    }
                     _ => None,
                 })
                 .flat_map(|sections| sections.clone())
@@ -374,8 +309,14 @@ impl<'a> SymbolReader<'a> for OFile {
             for cmd in commands {
                 let &MachCommand(ref cmd, _) = cmd;
 
-                if let &LoadCommand::SymTab { symoff, nsyms, stroff, strsize } = cmd {
-                    if let Ok(_) = cur.seek(SeekFrom::Start(symoff as u64)) {
+                if let LoadCommand::SymTab {
+                    symoff,
+                    nsyms,
+                    stroff,
+                    strsize,
+                } = *cmd
+                {
+                    if cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
                         return Some(SymbolIter {
                             cur: cur,
                             sections: sections,
@@ -401,20 +342,18 @@ impl<'a> SymbolReader<'a> for OFile {
 //            N_EXT:1;
 // which are used via the following masks.
 //
-const N_STAB: u8 = 0xe0;  /* if any of these bits set, a symbolic debugging entry */
+const N_STAB: u8 = 0xe0; /* if any of these bits set, a symbolic debugging entry */
 #[allow(dead_code)]
-const N_PEXT: u8 = 0x10;  /* private external symbol bit */
-const N_TYPE: u8 = 0x0e;  /* mask for the type bits */
-const N_EXT: u8 = 0x01;  /* external symbol bit, set for external symbols */
-
-
+const N_PEXT: u8 = 0x10; /* private external symbol bit */
+const N_TYPE: u8 = 0x0e; /* mask for the type bits */
+const N_EXT: u8 = 0x01; /* external symbol bit, set for external symbols */
 
 // Values for N_TYPE bits of the n_type field.
 //
-const N_UNDF: u8 = 0x0;    /* undefined, n_sect == NO_SECT */
-const N_ABS: u8 = 0x2;    /* absolute, n_sect == NO_SECT */
-const N_SECT: u8 = 0xe;    /* defined in section number n_sect */
-const N_PBUD: u8 = 0xc;    /* prebound undefined (defined in a dylib) */
-const N_INDR: u8 = 0xa;    /* indirect */
+const N_UNDF: u8 = 0x0; /* undefined, n_sect == NO_SECT */
+const N_ABS: u8 = 0x2; /* absolute, n_sect == NO_SECT */
+const N_SECT: u8 = 0xe; /* defined in section number n_sect */
+const N_PBUD: u8 = 0xc; /* prebound undefined (defined in a dylib) */
+const N_INDR: u8 = 0xa; /* indirect */
 
-const NO_SECT: u8 = 0;   /* symbol is not in any section */
+const NO_SECT: u8 = 0; /* symbol is not in any section */

@@ -1,18 +1,25 @@
 extern crate byteorder;
-extern crate env_logger;
+#[macro_use]
+extern crate failure;
 extern crate getopts;
 #[macro_use]
 extern crate log;
 extern crate mach_object;
 extern crate memmap;
+extern crate pretty_env_logger;
 
+use std::mem;
+use std::ops::Range;
 use std::env;
-use std::mem::size_of;
-use std::io::{stderr, stdout, Cursor, Seek, SeekFrom, Write};
+use std::fmt;
+use std::rc::Rc;
+use std::borrow::Cow;
+use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::fs::File;
 use std::process::exit;
 
+use failure::Error;
 use getopts::Options;
 use byteorder::ReadBytesExt;
 use memmap::Mmap;
@@ -31,7 +38,7 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
-    env_logger::init();
+    pretty_env_logger::init();
 
     let args: Vec<String> = env::args().collect();
     let program = Path::new(args[0].as_str())
@@ -55,6 +62,11 @@ fn main() {
     opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
     opts.optflag("S", "", "print the table of contents of a library");
     opts.optflag("X", "", "print no leading addresses or headers");
+    opts.optflag("", "bind", "print the mach-o binding info");
+    opts.optflag("", "weak-bind", "print the mach-o weak binding info");
+    opts.optflag("", "lazy-bind", "print the mach-o lazy binding info");
+    opts.optflag("", "rebase", "print the mach-o rebasing info");
+    opts.optflag("", "export", "print the mach-o exported symbols");
     opts.optflag(
         "",
         "version",
@@ -77,7 +89,7 @@ fn main() {
     }
 
     if matches.free.is_empty() {
-        write!(stderr(), "at least one file must be specified\n\n").unwrap();
+        println!("at least one file must be specified");
 
         print_usage(&program, opts);
 
@@ -107,17 +119,18 @@ fn main() {
             }
         }),
         print_lib_toc: matches.opt_present("S"),
+        print_bind_info: matches.opt_present("bind"),
+        print_weak_bind_info: matches.opt_present("weak-bind"),
+        print_lazy_bind_info: matches.opt_present("lazy-bind"),
+        print_rebase_info: matches.opt_present("rebase"),
+        print_export_trie: matches.opt_present("export"),
     };
 
     if let Some(flags) = matches.opt_str("arch") {
         if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
             processor.cpu_type = cpu_type;
         } else {
-            write!(
-                stderr(),
-                "unknown architecture specification flag: arch {}\n",
-                flags
-            ).unwrap();
+            eprintln!("unknown architecture specification flag: arch {}", flags);
 
             exit(-1);
         }
@@ -125,7 +138,7 @@ fn main() {
 
     for filename in matches.free {
         if let Err(err) = processor.process(filename.as_str()) {
-            write!(stderr(), "fail to process file {}, {}", filename, err).unwrap();
+            eprintln!("fail to process file {}, {}", filename, err);
 
             exit(-1);
         }
@@ -147,30 +160,44 @@ struct FileProcessor<T: Write> {
     print_symbol_table: bool,
     print_section: Option<(String, Option<String>)>,
     print_lib_toc: bool,
+    print_bind_info: bool,
+    print_weak_bind_info: bool,
+    print_lazy_bind_info: bool,
+    print_rebase_info: bool,
+    print_export_trie: bool,
 }
 
 struct FileProcessContext<'a> {
-    filename: String,
-    cur: &'a mut Cursor<&'a [u8]>,
+    filename: Cow<'a, str>,
+    payload: &'a [u8],
+    cur: Cursor<&'a [u8]>,
 }
 
 impl<'a> FileProcessContext<'a> {
+    pub fn new(filename: &'a str, payload: &'a [u8]) -> FileProcessContext<'a> {
+        FileProcessContext {
+            filename: filename.into(),
+            payload,
+            cur: Cursor::new(payload),
+        }
+    }
+
     fn hexdump(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, Error> {
         let mut w = Vec::new();
 
         for off in 0..size {
             if (off % 16) == 0 {
                 if off > 0 {
-                    try!(write!(&mut w, "\n"));
+                    writeln!(&mut w, "")?;
                 }
 
-                try!(write!(&mut w, "{:016x}\t", addr + off));
+                write!(&mut w, "{:016x}\t", addr + off)?;
             }
 
-            try!(write!(&mut w, "{:02x} ", try!(self.cur.read_u8())));
+            write!(&mut w, "{:02x} ", self.cur.read_u8()?)?;
         }
 
-        try!(write!(&mut w, "\n"));
+        writeln!(&mut w, "")?;
 
         Ok(w)
     }
@@ -179,24 +206,22 @@ impl<'a> FileProcessContext<'a> {
 impl<T: Write> FileProcessor<T> {
     fn process(&mut self, filename: &str) -> Result<(), Error> {
         let file = File::open(filename)?;
-        let mmap = try!(unsafe { Mmap::map(&file) });
-        let mut cur = Cursor::new(mmap.as_ref());
-        let file = try!(OFile::parse(&mut cur));
-        let mut ctxt = FileProcessContext {
-            filename: String::from(filename),
-            cur: &mut cur,
-        };
+        let mmap = unsafe { Mmap::map(&file) }?;
+        let payload = mmap.as_ref();
+        let mut cur = Cursor::new(payload);
+        let file = OFile::parse(&mut cur)?;
+        let mut ctxt = FileProcessContext::new(filename, payload);
 
         debug!("process file {} with {} bytes", filename, mmap.len());
 
-        try!(self.process_ofile(&file, &mut ctxt));
+        self.process_ofile(&file, &mut ctxt)?;
 
         if self.print_symbol_table {
             debug!("dumping symbol table");
 
-            if let Some(symbols) = file.symbols(ctxt.cur) {
+            if let Some(symbols) = file.symbols(&mut ctxt.cur) {
                 for symbol in symbols {
-                    try!(write!(self.w, "{}\n", symbol));
+                    writeln!(self.w, "{}", symbol)?;
                 }
             }
         }
@@ -224,7 +249,7 @@ impl<T: Write> FileProcessor<T> {
     fn process_mach_file(
         &mut self,
         header: &MachHeader,
-        commands: &Vec<MachCommand>,
+        commands: &[MachCommand],
         ctxt: &mut FileProcessContext,
     ) -> Result<(), Error> {
         if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
@@ -233,39 +258,48 @@ impl<T: Write> FileProcessor<T> {
 
         if self.print_headers && self.print_mach_file() {
             if self.cpu_type != 0 {
-                try!(write!(
+                writeln!(
                     self.w,
-                    "{} (architecture {}):\n",
+                    "{} (architecture {}):",
                     ctxt.filename,
                     get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
                         format!(
                             "cputype {} cpusubtype {}",
-                            header.cputype,
-                            header.cpusubtype
+                            header.cputype, header.cpusubtype
                         ).as_str()
                     )
-                ));
+                )?;
             } else {
-                try!(write!(self.w, "{}:\n", ctxt.filename));
+                writeln!(self.w, "{}:", ctxt.filename)?;
             }
         }
 
         if self.print_mach_header {
-            try!(write!(self.w, "{}", header));
+            write!(self.w, "{}", header)?;
         }
 
         if self.print_load_commands {
             for (i, ref cmd) in commands.iter().enumerate() {
-                try!(write!(self.w, "Load command {}\n", i));
-                try!(write!(self.w, "{}", cmd));
+                writeln!(self.w, "Load command {}", i)?;
+                write!(self.w, "{}", cmd)?;
             }
         }
 
-        for cmd in commands {
-            let &MachCommand(ref cmd, _) = cmd;
+        let ptr_size = if header.is_64bit() {
+            mem::size_of::<u64>()
+        } else {
+            mem::size_of::<u32>()
+        };
 
-            match cmd {
-                &LoadCommand::Segment { ref sections, .. } | &LoadCommand::Segment64 { ref sections, .. } => {
+        let commands = commands
+            .iter()
+            .map(|load| load.command())
+            .cloned()
+            .collect::<Vec<LoadCommand>>();
+
+        for cmd in &commands {
+            match *cmd {
+                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
                         let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
 
@@ -276,49 +310,46 @@ impl<T: Write> FileProcessor<T> {
                                 && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
                         {
                             if self.print_headers {
-                                try!(write!(
+                                writeln!(
                                     self.w,
-                                    "Contents of ({},{}) section\n",
-                                    sect.segname,
-                                    sect.sectname
-                                ));
+                                    "payloads of ({},{}) section",
+                                    sect.segname, sect.sectname
+                                )?;
                             }
 
-                            try!(ctxt.cur.seek(SeekFrom::Start(sect.offset as u64)));
+                            ctxt.cur.seek(SeekFrom::Start(sect.offset as u64))?;
 
-                            let dump = try!(ctxt.hexdump(sect.addr, sect.size));
+                            let dump = ctxt.hexdump(sect.addr, sect.size)?;
 
-                            try!(self.w.write(&dump[..]));
+                            self.w.write(&dump[..])?;
                         }
                     }
                 }
 
-                &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib)
+                LoadCommand::IdFvmLib(ref fvmlib) | LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
-                    try!(write!(
+                    writeln!(
                         self.w,
-                        "\t{} (minor version {})\n",
-                        fvmlib.name,
-                        fvmlib.minor_version
-                    ));
+                        "\t{} (minor version {})",
+                        fvmlib.name, fvmlib.minor_version
+                    )?;
                 }
 
-                &LoadCommand::IdDyLib(ref dylib)
-                | &LoadCommand::LoadDyLib(ref dylib)
-                | &LoadCommand::LoadWeakDyLib(ref dylib)
-                | &LoadCommand::ReexportDyLib(ref dylib)
-                | &LoadCommand::LoadUpwardDylib(ref dylib)
-                | &LoadCommand::LazyLoadDylib(ref dylib)
+                LoadCommand::IdDyLib(ref dylib)
+                | LoadCommand::LoadDyLib(ref dylib)
+                | LoadCommand::LoadWeakDyLib(ref dylib)
+                | LoadCommand::ReexportDyLib(ref dylib)
+                | LoadCommand::LoadUpwardDylib(ref dylib)
+                | LoadCommand::LazyLoadDylib(ref dylib)
                     if self.print_shared_lib && (cmd.cmd() == LC_ID_DYLIB || !self.print_shared_lib_just_id) =>
                 {
                     if self.print_shared_lib_just_id {
-                        try!(write!(self.w, "{}", dylib.name));
+                        write!(self.w, "{}", dylib.name)?;
                     } else {
-                        try!(write!(
+                        writeln!(
                             self.w,
-                            "\t{} (compatibility version {}.{}.{}, current version \
-                             {}.{}.{})\n",
+                            "\t{} (compatibility version {}.{}.{}, current version {}.{}.{})",
                             dylib.name,
                             dylib.compatibility_version.major(),
                             dylib.compatibility_version.minor(),
@@ -326,9 +357,93 @@ impl<T: Write> FileProcessor<T> {
                             dylib.current_version.major(),
                             dylib.current_version.minor(),
                             dylib.current_version.release()
-                        ));
+                        )?;
                     }
                 }
+
+                LoadCommand::DyldInfo {
+                    bind_off,
+                    bind_size,
+                    weak_bind_off,
+                    weak_bind_size,
+                    lazy_bind_off,
+                    lazy_bind_size,
+                    rebase_off,
+                    rebase_size,
+                    export_off,
+                    export_size,
+                } => {
+                    if self.print_bind_info {
+                        let payload = ctxt.payload
+                            .checked_slice(bind_off as usize, bind_size as usize)?;
+
+                        writeln!(self.w, "Bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment  section            address    type       addend dylib            symbol"
+                        )?;
+
+                        for symbol in Bind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", BindSymbolFmt(symbol, &commands))?;
+                        }
+                    }
+
+                    if self.print_weak_bind_info {
+                        let payload = ctxt.payload
+                            .checked_slice(weak_bind_off as usize, weak_bind_size as usize)?;
+
+                        writeln!(self.w, "Weak bind table:")?;
+                        writeln!(
+                            self.w,
+                            "segment section          address       type     addend symbol"
+                        )?;
+
+                        for symbol in WeakBind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", WeakBindSymbolFmt(symbol, &commands))?;
+                        }
+                    }
+
+                    if self.print_lazy_bind_info {
+                        let payload = ctxt.payload
+                            .checked_slice(lazy_bind_off as usize, lazy_bind_size as usize)?;
+
+                        writeln!(self.w, "Lazy bind table:")?;
+
+                        for symbol in LazyBind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", LazyBindSymbolFmt(symbol, &commands))?;
+                        }
+                    }
+
+                    if self.print_rebase_info {
+                        let payload = ctxt.payload
+                            .checked_slice(rebase_off as usize, rebase_size as usize)?;
+
+                        writeln!(self.w, "Rebase table:")?;
+                        writeln!(self.w, "segment  section            address     type")?;
+
+                        for symbol in Rebase::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", RebaseSymbolFmt(symbol, &commands))?;
+                        }
+                    }
+
+                    if self.print_export_trie {
+                        let payload = ctxt.payload
+                            .checked_slice(export_off as usize, export_size as usize)?;
+
+                        writeln!(self.w, "Exports trie:")?;
+
+                        let mut symbols = ExportTrie::parse(payload)?
+                            .symbols()
+                            .collect::<Vec<ExportSymbol>>();
+
+                        symbols.sort_by(|lhs, rhs| lhs.address().cmp(&rhs.address()));
+
+                        for symbol in symbols {
+                            writeln!(self.w, "{}", ExportSymbolFmt(symbol, &commands))?;
+                        }
+                    }
+                }
+
                 _ => {}
             }
         }
@@ -348,11 +463,26 @@ impl<T: Write> FileProcessor<T> {
                 archs: files.iter().map(|&(ref arch, _)| arch.clone()).collect(),
             };
 
-            try!(write!(self.w, "{}", header));
+            write!(self.w, "{}", header)?;
         }
 
-        for &(_, ref file) in files {
-            try!(self.process_ofile(file, ctxt));
+        for &(ref arch, ref file) in files {
+            let start = arch.offset as usize;
+            let end = arch.offset
+                .checked_add(arch.size)
+                .ok_or(MachError::NumberOverflow)? as usize;
+
+            if start >= ctxt.payload.len() {
+                bail!("file offset overflow, {}", start)
+            }
+
+            if end > ctxt.payload.len() {
+                bail!("file offset overflow, {}", end)
+            }
+
+            let mut ctxt = FileProcessContext::new(&ctxt.filename, &ctxt.payload[start..end]);
+
+            self.process_ofile(file, &mut ctxt)?;
         }
 
         Ok(())
@@ -360,27 +490,28 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
-            try!(write!(self.w, "Archive :{}\n", ctxt.filename));
+            writeln!(self.w, "Archive :{}", ctxt.filename)?;
         }
 
         if self.print_archive_header {
             for &(ref header, _) in files {
-                try!(write!(self.w, "{}", header));
+                write!(self.w, "{}", header)?;
             }
         }
 
         for &(ref header, ref file) in files {
-            try!(self.process_ofile(
+            self.process_ofile(
                 file,
                 &mut FileProcessContext {
                     filename: if let Some(ref name) = header.ar_member_name {
-                        format!("{}({})", ctxt.filename, name)
+                        format!("{}({})", ctxt.filename, name).into()
                     } else {
                         ctxt.filename.clone()
                     },
-                    cur: &mut ctxt.cur.clone(),
-                }
-            ));
+                    payload: ctxt.payload,
+                    cur: ctxt.cur.clone(),
+                },
+            )?;
         }
 
         Ok(())
@@ -388,29 +519,254 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            try!(write!(
+            writeln!(self.w, "Table of contents from: {}", ctxt.filename)?;
+            writeln!(
                 self.w,
-                "Table of contents from: {}\n",
-                ctxt.filename
-            ));
-            try!(write!(
-                self.w,
-                "size of ranlib structures: {} (number {})\n",
-                ranlibs.len() * size_of::<RanLib>(),
+                "size of ranlib structures: {} (number {})",
+                ranlibs.len() * mem::size_of::<RanLib>(),
                 ranlibs.len()
-            ));
-            try!(write!(self.w, "object offset  string index\n"));
+            )?;
+            writeln!(self.w, "object offset  string index")?;
 
             for ref ranlib in ranlibs {
-                try!(write!(
-                    self.w,
-                    "{:<14} {}\n",
-                    ranlib.ran_off,
-                    ranlib.ran_strx
-                ));
+                writeln!(self.w, "{:<14} {}", ranlib.ran_off, ranlib.ran_strx)?;
             }
         }
 
         Ok(())
     }
+}
+
+struct BindSymbolFmt<'a>(BindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for BindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let dylib_name = dylib_name(self.1, self.0.dylib_ordinal).ok_or(fmt::Error)?;
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
+            segment_name,
+            section_name,
+            address,
+            self.0.symbol_type,
+            self.0.addend,
+            dylib_name,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                " (weak import)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct WeakBindSymbolFmt<'a>(WeakBindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for WeakBindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
+            segment_name,
+            section_name,
+            address,
+            self.0.symbol_type,
+            self.0.addend,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
+                " (strong)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct LazyBindSymbolFmt<'a>(LazyBindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for LazyBindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let dylib_name = dylib_name(self.1, self.0.dylib_ordinal).ok_or(fmt::Error)?;
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:<16} {}{}",
+            segment_name,
+            section_name,
+            address,
+            dylib_name,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                " (weak import)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct RebaseSymbolFmt<'a>(RebaseSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for RebaseSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:18} 0x{:08X}  {}",
+            segment_name, section_name, address, self.0.symbol_type
+        )
+    }
+}
+
+struct ExportSymbolFmt<'a>(ExportSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for ExportSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0.symbol {
+            ExportType::Reexport { .. } => {
+                write!(f, "[re-export] ")?;
+            }
+            ExportType::Regular { address }
+            | ExportType::Weak { address }
+            | ExportType::Stub {
+                offset: address, ..
+            } => {
+                write!(f, "0x{:08X}  ", address)?;
+            }
+        }
+
+        write!(f, "{}", self.0.name)?;
+
+        let mut attrs = vec![];
+
+        match self.0.kind {
+            ExportKind::Absolute => {
+                attrs.push("absolute".to_owned());
+            }
+            ExportKind::ThreadLocal => {
+                attrs.push("per-thread".to_owned());
+            }
+            ExportKind::Regular => {}
+        }
+
+        match self.0.symbol {
+            ExportType::Reexport { ordinal, ref name } => {
+                let dylib_name = dylib_name(self.1, ordinal).ok_or(fmt::Error)?;
+
+                if name.is_empty() {
+                    attrs.push(format!("from {}", dylib_name));
+                } else {
+                    attrs.push(format!("{} from {}", name, dylib_name));
+                }
+            }
+            ExportType::Weak { .. } => {
+                attrs.push("weak".to_owned());
+            }
+            ExportType::Stub { resolver, .. } => {
+                attrs.push(format!("resolver = 0x{:08X}", resolver));
+            }
+            ExportType::Regular { .. } => {}
+        }
+
+        if !attrs.is_empty() {
+            write!(f, " [")?;
+
+            while let Some(attr) = attrs.pop() {
+                write!(f, "{}", attr)?;
+
+                if !attrs.is_empty() {
+                    write!(f, ", ")?;
+                }
+            }
+
+            write!(f, "]")?;
+        }
+
+        Ok(())
+    }
+}
+
+fn segmnet_info(commands: &[LoadCommand], segment_index: usize) -> Option<(&str, Range<usize>, &[Rc<Section>])> {
+    commands.get(segment_index).and_then(|cmd| match cmd {
+        &LoadCommand::Segment {
+            ref segname,
+            vmaddr,
+            vmsize,
+            ref sections,
+            ..
+        }
+        | &LoadCommand::Segment64 {
+            ref segname,
+            vmaddr,
+            vmsize,
+            ref sections,
+            ..
+        } => Some((
+            segname.as_str(),
+            (vmaddr..vmaddr + vmsize),
+            sections.as_slice(),
+        )),
+        _ => None,
+    })
+}
+
+fn section_name(sections: &[Rc<Section>], addr: usize) -> Option<&str> {
+    sections
+        .iter()
+        .map(|section| section.as_ref())
+        .find(|section| section.addr <= addr && section.addr + section.size > addr)
+        .map(|section| section.sectname.as_str())
+}
+
+fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
+    commands
+        .iter()
+        .flat_map(|cmd| match cmd {
+            &LoadCommand::IdDyLib(ref dylib)
+            | &LoadCommand::LoadDyLib(ref dylib)
+            | &LoadCommand::LoadWeakDyLib(ref dylib)
+            | &LoadCommand::ReexportDyLib(ref dylib)
+            | &LoadCommand::LoadUpwardDylib(ref dylib)
+            | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
+            _ => None,
+        })
+        .nth(ordinal - 1)
+        .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
+        .and_then(|filename| filename.to_str())
 }

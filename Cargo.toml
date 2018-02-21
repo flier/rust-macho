@@ -1,6 +1,6 @@
 [package]
 name = "mach_object"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
 description = "Mach-O File Format Parser for Rust"
 documentation = "http://flier.github.io/rust-macho/"
@@ -8,17 +8,24 @@ homepage = "http://flier.github.io/rust-macho/"
 repository = "https://github.com/flier/rust-macho"
 license = "Apache-2.0"
 
+[features]
+default = ["display"]
+display = []
+
 [dependencies]
 log = "0.4"
 libc = "0.2"
 byteorder = "1.0"
+failure = "0.1"
 uuid = "0.5"
 time = "0.1"
 bitflags = "1.0"
 lazy_static = "1.0"
 
+clippy = { version = "*", optional = true }
+
 [dev-dependencies]
-env_logger = "0.5"
+pretty_env_logger = "0.2"
 diff = "0.1"
 getopts = "0.2"
 memmap = "0.6"
@@ -28,6 +35,4 @@ name = "mach_object"
 
 [[example]]
 name = "otool"
-path = "examples/otool.rs"
-test = false
-bench = false
+required-features = ["display"]

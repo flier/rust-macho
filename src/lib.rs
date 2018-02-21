@@ -1,3 +1,6 @@
+#![cfg_attr(feature = "clippy", feature(plugin))]
+#![cfg_attr(feature = "clippy", plugin(clippy(conf_file = "../clippy.toml")))]
+
 //! Mach-O File Format Parser for Rust
 //!
 //! # Examples
@@ -30,24 +33,38 @@
 //! and the [otool](https://github.com/flier/rust-macho/blob/master/examples/otool.rs) example.
 //!
 #[macro_use]
-extern crate log;
-extern crate libc;
-extern crate byteorder;
-extern crate uuid;
-extern crate time;
-#[macro_use]
 extern crate bitflags;
+extern crate byteorder;
+#[macro_use]
+extern crate failure;
 #[macro_use]
 extern crate lazy_static;
+extern crate libc;
+#[macro_use]
+extern crate log;
+extern crate time;
+extern crate uuid;
+
+#[cfg(test)]
+extern crate diff;
+#[cfg(test)]
+extern crate pretty_env_logger;
 
 mod consts;
 mod errors;
 mod commands;
+mod opcode;
+mod export;
 mod loader;
 mod symbol;
+#[cfg(feature = "display")]
+mod display;
 
 pub use consts::*;
-pub use errors::Error;
 pub use commands::*;
-pub use loader::{OFile, MachHeader, MachCommand, FatArch, FatHeader, ArHeader, RanLib};
-pub use symbol::{Symbol, SymbolReference, SymbolIter, SymbolReader};
+pub use errors::MachError;
+pub use loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
+pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
+pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol,
+                 Rebase, RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol};
+pub use export::{ExportKind, ExportSymbol, ExportTrie, ExportType};

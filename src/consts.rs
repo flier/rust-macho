@@ -12,9 +12,9 @@ pub type off_t = u32;
 //
 
 /// mask for architecture bits
-pub const CPU_ARCH_MASK: cpu_type_t = 0xff000000u64 as cpu_type_t;
+pub const CPU_ARCH_MASK: cpu_type_t = 0xff00_0000u32 as cpu_type_t;
 /// 64 bit ABI
-pub const CPU_ARCH_ABI64: cpu_type_t = 0x01000000u64 as cpu_type_t;
+pub const CPU_ARCH_ABI64: cpu_type_t = 0x0100_0000 as cpu_type_t;
 
 //  Machine types known by all.
 //
@@ -22,11 +22,15 @@ pub const CPU_ARCH_ABI64: cpu_type_t = 0x01000000u64 as cpu_type_t;
 pub const CPU_TYPE_ANY: cpu_type_t = -1;
 
 pub const CPU_TYPE_VAX: cpu_type_t = 1;
+pub const CPU_TYPE_ROMP: cpu_type_t = 2;
+pub const CPU_TYPE_NS32032: cpu_type_t = 4;
+pub const CPU_TYPE_NS32332: cpu_type_t = 5;
 pub const CPU_TYPE_MC680X0: cpu_type_t = 6;
 pub const CPU_TYPE_X86: cpu_type_t = 7;
 pub const CPU_TYPE_I386: cpu_type_t = CPU_TYPE_X86;
 pub const CPU_TYPE_X86_64: cpu_type_t = (CPU_TYPE_X86 | CPU_ARCH_ABI64);
 pub const CPU_TYPE_MIPS: cpu_type_t = 8;
+pub const CPU_TYPE_NS32532: cpu_type_t = 9;
 pub const CPU_TYPE_MC98000: cpu_type_t = 10;
 pub const CPU_TYPE_HPPA: cpu_type_t = 11;
 pub const CPU_TYPE_ARM: cpu_type_t = 12;
@@ -35,9 +39,9 @@ pub const CPU_TYPE_MC88000: cpu_type_t = 13;
 pub const CPU_TYPE_SPARC: cpu_type_t = 14;
 pub const CPU_TYPE_I860: cpu_type_t = 15;
 pub const CPU_TYPE_ALPHA: cpu_type_t = 16;
+pub const CPU_TYPE_RS6000: cpu_type_t = 17;
 pub const CPU_TYPE_POWERPC: cpu_type_t = 18;
 pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
-
 
 //  Machine subtypes (these are defined here, instead of in a machine
 //  dependent directory, so that any program can get all definitions
@@ -48,9 +52,9 @@ pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
 //
 
 /// mask for feature flags
-pub const CPU_SUBTYPE_MASK: cpu_subtype_t = 0xff000000u64 as cpu_subtype_t;
+pub const CPU_SUBTYPE_MASK: cpu_subtype_t = 0xff00_0000u32 as cpu_subtype_t;
 /// 64 bit libraries
-pub const CPU_SUBTYPE_LIB64: cpu_subtype_t = 0x80000000u64 as cpu_subtype_t;
+pub const CPU_SUBTYPE_LIB64: cpu_subtype_t = 0x8000_0000u32 as cpu_subtype_t;
 
 pub fn get_cpu_subtype_type(subtype: cpu_subtype_t) -> u32 {
     (subtype as u32) & !(CPU_SUBTYPE_MASK as u32)
@@ -154,7 +158,6 @@ pub const CPU_SUBTYPE_X86_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_64_ALL: cpu_subtype_t = 3;
 pub const CPU_SUBTYPE_X86_ARCH1: cpu_subtype_t = 4;
 pub const CPU_SUBTYPE_X86_64_H: cpu_subtype_t = 8; /* Haswell feature subset */
-
 
 //  Mips subtypes.
 //
@@ -325,28 +328,27 @@ pub fn get_arch_name_from_types(cputype: cpu_type_t, subtype: cpu_subtype_t) -> 
 //
 
 /// the mach magic number
-pub const MH_MAGIC: u32 = 0xfeedface;
-/// NXSwapInt(MH_MAGIC)
-pub const MH_CIGAM: u32 = 0xcefaedfe;
+pub const MH_MAGIC: u32 = 0xfeed_face;
+/// `NXSwapInt(MH_MAGIC)`
+pub const MH_CIGAM: u32 = 0xcefa_edfe;
 
 // Constant for the magic field of the mach_header_64 (64-bit architectures)
 //
 
 /// the 64-bit mach magic number
-pub const MH_MAGIC_64: u32 = 0xfeedfacf;
-/// NXSwapInt(MH_MAGIC_64)
-pub const MH_CIGAM_64: u32 = 0xcffaedfe;
+pub const MH_MAGIC_64: u32 = 0xfeed_facf;
+/// `NXSwapInt(MH_MAGIC_64)`
+pub const MH_CIGAM_64: u32 = 0xcffa_edfe;
 
-pub const FAT_MAGIC: u32 = 0xcafebabe;
-pub const FAT_CIGAM: u32 = 0xbebafeca; /* NXSwapLong(FAT_MAGIC) */
+pub const FAT_MAGIC: u32 = 0xcafe_babe;
+pub const FAT_CIGAM: u32 = 0xbeba_feca; /* NXSwapLong(FAT_MAGIC) */
 
+pub const ARMAG: &[u8] = b"!<arch>\n";
 
-pub const ARMAG: &'static [u8] = b"!<arch>\n";
+pub const AR_EFMT1: &str = "#1/"; /* extended format #1 */
 
-pub const AR_EFMT1: &'static str = "#1/"; /* extended format #1 */
-
-pub const SYMDEF: &'static str = "__.SYMDEF";
-pub const SYMDEF_SORTED: &'static str = "__.SYMDEF SORTED";
+pub const SYMDEF: &str = "__.SYMDEF";
+pub const SYMDEF_SORTED: &str = "__.SYMDEF SORTED";
 
 // The layout of the file depends on the filetype.  For all but the MH_OBJECT
 // file type the segments are padded out and aligned on a segment alignment
@@ -391,7 +393,7 @@ pub const MH_BUNDLE: u32 = 0x8;
 pub const MH_DYLIB_STUB: u32 = 0x9;
 /// companion file with only debug sections
 pub const MH_DSYM: u32 = 0xa;
-/// x86_64 kexts
+/// `x86_64` kexts
 pub const MH_KEXT_BUNDLE: u32 = 0xb;
 
 // Constants for the flags field of the mach_header
@@ -423,10 +425,10 @@ pub const MH_NOMULTIDEFS: u32 = 0x200;
 /// do not have dyld notify the prebinding agent about this executable
 pub const MH_NOFIXPREBINDING: u32 = 0x400;
 /// the binary is not prebound but can have its prebinding redone.
-/// only used when MH_PREBOUND is not set.
+/// only used when `MH_PREBOUND` is not set.
 pub const MH_PREBINDABLE: u32 = 0x800;
 /// indicates that this binary binds to all two-level namespace modules of its dependent libraries.
-/// only used when MH_PREBINDABLE and MH_TWOLEVEL are both set.
+/// only used when `MH_PREBINDABLE` and `MH_TWOLEVEL` are both set.
 pub const MH_ALLMODSBOUND: u32 = 0x1000;
 /// safe to divide up the sections into sub-sections via symbols for dead code stripping
 pub const MH_SUBSECTIONS_VIA_SYMBOLS: u32 = 0x2000;
@@ -435,45 +437,44 @@ pub const MH_CANONICAL: u32 = 0x4000;
 /// the final linked image contains external weak symbols
 pub const MH_WEAK_DEFINES: u32 = 0x8000;
 /// the final linked image uses weak symbols
-pub const MH_BINDS_TO_WEAK: u32 = 0x10000;
+pub const MH_BINDS_TO_WEAK: u32 = 0x0001_0000;
 /// When this bit is set, all stacks in the task will be given stack execution privilege.
-/// Only used in MH_EXECUTE filetypes.
-pub const MH_ALLOW_STACK_EXECUTION: u32 = 0x20000;
+/// Only used in `MH_EXECUTE` filetypes.
+pub const MH_ALLOW_STACK_EXECUTION: u32 = 0x0002_0000;
 /// When this bit is set, the binary declares it is safe
 /// for use in processes with uid zero
-pub const MH_ROOT_SAFE: u32 = 0x40000;
+pub const MH_ROOT_SAFE: u32 = 0x0004_0000;
 /// When this bit is set, the binary declares it is safe
 /// for use in processes when issetugid() is true
-pub const MH_SETUID_SAFE: u32 = 0x80000;
+pub const MH_SETUID_SAFE: u32 = 0x0008_0000;
 /// When this bit is set on a dylib, the static linker does not need to examine dependent dylibs
 /// to see if any are re-exported
-pub const MH_NO_REEXPORTED_DYLIBS: u32 = 0x100000;
+pub const MH_NO_REEXPORTED_DYLIBS: u32 = 0x0010_0000;
 /// When this bit is set, the OS will load the main executable at a random address.
-/// Only used in MH_EXECUTE filetypes.
-pub const MH_PIE: u32 = 0x200000;
+/// Only used in `MH_EXECUTE` filetypes.
+pub const MH_PIE: u32 = 0x0020_0000;
 /// Only for use on dylibs.  When linking against a dylib that has this bit set,
-/// the static linker will automatically not create a LC_LOAD_DYLIB load command
+/// the static linker will automatically not create a `LC_LOAD_DYLIB` load command
 /// to the dylib if no symbols are being referenced from the dylib.
-pub const MH_DEAD_STRIPPABLE_DYLIB: u32 = 0x400000;
-/// Contains a section of type S_THREAD_LOCAL_VARIABLES
-pub const MH_HAS_TLV_DESCRIPTORS: u32 = 0x800000;
+pub const MH_DEAD_STRIPPABLE_DYLIB: u32 = 0x0040_0000;
+/// Contains a section of type `S_THREAD_LOCAL_VARIABLES`
+pub const MH_HAS_TLV_DESCRIPTORS: u32 = 0x0080_0000;
 /// When this bit is set, the OS will run the main executable
 /// with a non-executable heap even on platforms (e.g. i386)
-/// that don't require it. Only used in MH_EXECUTE filetypes.
-pub const MH_NO_HEAP_EXECUTION: u32 = 0x1000000;
+/// that don't require it. Only used in `MH_EXECUTE` filetypes.
+pub const MH_NO_HEAP_EXECUTION: u32 = 0x0100_0000;
 /// The code was linked for use in an application extension.
-pub const MH_APP_EXTENSION_SAFE: u32 = 0x02000000;
-
+pub const MH_APP_EXTENSION_SAFE: u32 = 0x0200_0000;
 
 // After MacOS X 10.1 when a new load command is added that is required to be
 // understood by the dynamic linker for the image to execute properly the
-// LC_REQ_DYLD bit will be or'ed into the load command constant.  If the dynamic
+// `LC_REQ_DYLD` bit will be or'ed into the load command constant.  If the dynamic
 // linker sees such a load command it it does not understand will issue a
 // "unknown load command required for execution" error and refuse to use the
 // image.  Other load commands without this bit that are not understood will
 // simply be ignored.
 //
-pub const LC_REQ_DYLD: u32 = 0x80000000;
+pub const LC_REQ_DYLD: u32 = 0x8000_0000;
 
 // Constants for the cmd field of all load commands, the type
 // segment of this file to be mapped
@@ -556,15 +557,15 @@ pub const LC_DYLD_INFO: u32 = 0x22;
 pub const LC_DYLD_INFO_ONLY: u32 = (0x22 | LC_REQ_DYLD);
 /// load upward dylib
 pub const LC_LOAD_UPWARD_DYLIB: u32 = (0x23 | LC_REQ_DYLD);
-/// build for MacOSX min OS version
+/// build for `MacOSX` min OS version
 pub const LC_VERSION_MIN_MACOSX: u32 = 0x24;
-/// build for iPhoneOS min OS version
+/// build for `iPhoneOS` min OS version
 pub const LC_VERSION_MIN_IPHONEOS: u32 = 0x25;
 /// compressed table of function start addresses
 pub const LC_FUNCTION_STARTS: u32 = 0x26;
 /// string for dyld to treat like environment variable
 pub const LC_DYLD_ENVIRONMENT: u32 = 0x27;
-/// replacement for LC_UNIXTHREAD
+/// replacement for `LC_UNIXTHREAD`
 pub const LC_MAIN: u32 = (0x28 | LC_REQ_DYLD);
 /// table of non-instructions in __text
 pub const LC_DATA_IN_CODE: u32 = 0x29;
@@ -574,11 +575,11 @@ pub const LC_SOURCE_VERSION: u32 = 0x2A;
 pub const LC_DYLIB_CODE_SIGN_DRS: u32 = 0x2B;
 /// 64-bit encrypted segment information
 pub const LC_ENCRYPTION_INFO_64: u32 = 0x2C;
-/// linker options in MH_OBJECT files
+/// linker options in `MH_OBJECT` files
 pub const LC_LINKER_OPTION: u32 = 0x2D;
-/// optimization hints in MH_OBJECT files
+/// optimization hints in `MH_OBJECT` files
 pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2E;
-/// build for AppleTV min OS version
+/// build for `AppleTV` min OS version
 pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 /// build for Watch min OS version
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
@@ -607,8 +608,8 @@ bitflags! {
 // can only have one type) but the section attributes are not (it may have more
 // than one attribute).
 //
-pub const SECTION_TYPE: u32 = 0x000000ff; /* 256 section types */
-pub const SECTION_ATTRIBUTES: u32 = 0xffffff00; /*  24 section attributes */
+pub const SECTION_TYPE: u32 = 0x0000_00ff; /* 256 section types */
+pub const SECTION_ATTRIBUTES: u32 = 0xffff_ff00; /*  24 section attributes */
 
 // Constants for the type of a section
 
@@ -624,7 +625,6 @@ pub const S_4BYTE_LITERALS: u32 = 0x3;
 pub const S_8BYTE_LITERALS: u32 = 0x4;
 /// section with only pointers to literals
 pub const S_LITERAL_POINTERS: u32 = 0x5;
-
 
 // For the two types of symbol pointers sections and the symbol stubs section
 // they have indirect symbol table entries.  For each of the entries in the
@@ -657,7 +657,7 @@ pub const S_GB_ZEROFILL: u32 = 0xc;
 pub const S_INTERPOSING: u32 = 0xd;
 /// section with only 16 byte literals
 pub const S_16BYTE_LITERALS: u32 = 0xe;
-/// section contains DTrace Object Format
+/// section contains `DTrace` Object Format
 pub const S_DTRACE_DOF: u32 = 0xf;
 /// section with only lazy symbol pointers to lazy loaded dylibs
 pub const S_LAZY_DYLIB_SYMBOL_POINTERS: u32 = 0x10;
@@ -680,19 +680,19 @@ bitflags! {
     /// Constants for the section attributes part of the flags field of a section structure.
     pub struct SectionAttributes: u32 {
         /// User setable attributes
-        const SECTION_ATTRIBUTES_USR = 0xff000000;
+        const SECTION_ATTRIBUTES_USR = 0xff00_0000;
         /// section contains only true machine instructions
-        const S_ATTR_PURE_INSTRUCTIONS = 0x80000000;
+        const S_ATTR_PURE_INSTRUCTIONS = 0x8000_0000;
         /// section contains coalesced symbols that are not to be in a ranlib table of contents
-        const S_ATTR_NO_TOC = 0x40000000;
+        const S_ATTR_NO_TOC = 0x4000_0000;
         /// ok to strip static symbols in this section in files with the MH_DYLDLINK flag
-        const S_ATTR_STRIP_STATIC_SYMS = 0x20000000;
+        const S_ATTR_STRIP_STATIC_SYMS = 0x2000_0000;
         /// no dead stripping
-        const S_ATTR_NO_DEAD_STRIP = 0x10000000;
+        const S_ATTR_NO_DEAD_STRIP = 0x1000_0000;
         /// blocks are live if they reference live blocks
-        const S_ATTR_LIVE_SUPPORT = 0x08000000;
+        const S_ATTR_LIVE_SUPPORT = 0x0800_0000;
         /// Used with i386 code stubs written on by dyld
-        const S_ATTR_SELF_MODIFYING_CODE = 0x04000000;
+        const S_ATTR_SELF_MODIFYING_CODE = 0x0400_0000;
 
         // If a segment contains any sections marked with S_ATTR_DEBUG then all
         // sections in that segment must have this attribute.  No section other than
@@ -704,15 +704,15 @@ bitflags! {
         //
 
         /// a debug section
-        const S_ATTR_DEBUG = 0x02000000;
+        const S_ATTR_DEBUG = 0x0200_0000;
         /// system setable attributes
-        const SECTION_ATTRIBUTES_SYS = 0x00ffff00;
+        const SECTION_ATTRIBUTES_SYS = 0x00ff_ff00;
         /// section contains some machine instructions
-        const S_ATTR_SOME_INSTRUCTIONS = 0x00000400;
+        const S_ATTR_SOME_INSTRUCTIONS = 0x0000_0400;
         /// section has external relocation entries
-        const S_ATTR_EXT_RELOC = 0x00000200;
+        const S_ATTR_EXT_RELOC = 0x0000_0200;
         /// section has local relocation entries
-        const S_ATTR_LOC_RELOC = 0x00000100;
+        const S_ATTR_LOC_RELOC = 0x0000_0100;
     }
 }
 
@@ -731,126 +731,125 @@ bitflags! {
 
 // The currently known segment names and the section names in those segments
 
-/// the pagezero segment which has no protections and catches NULL references for MH_EXECUTE files
-pub static SEG_PAGEZERO: &'static str = "__PAGEZERO";
+/// the pagezero segment which has no protections and catches NULL references for `MH_EXECUTE` files
+pub static SEG_PAGEZERO: &str = "__PAGEZERO";
 
 /// the tradition UNIX text segment
-pub static SEG_TEXT: &'static str = "__TEXT";
+pub static SEG_TEXT: &str = "__TEXT";
 /// the real text part of the text
-pub static SECT_TEXT: &'static str = "__text";
+pub static SECT_TEXT: &str = "__text";
 
 // section no headers, and no padding
 //
 
 /// the fvmlib initialization section
-pub static SECT_FVMLIB_INIT0: &'static str = "__fvmlib_init0";
+pub static SECT_FVMLIB_INIT0: &str = "__fvmlib_init0";
 /// the section following the fvmlib initialization section
-pub static SECT_FVMLIB_INIT1: &'static str = "__fvmlib_init1";
+pub static SECT_FVMLIB_INIT1: &str = "__fvmlib_init1";
 
 /// the tradition UNIX data segment
-pub static SEG_DATA: &'static str = "__DATA";
+pub static SEG_DATA: &str = "__DATA";
 /// the real initialized data section no padding, no bss overlap
-pub static SECT_DATA: &'static str = "__data";
+pub static SECT_DATA: &str = "__data";
 /// the real uninitialized data section no padding
-pub static SECT_BSS: &'static str = "__bss";
+pub static SECT_BSS: &str = "__bss";
 /// the section common symbols are allocated in by the link editor
-pub static SECT_COMMON: &'static str = "__common";
+pub static SECT_COMMON: &str = "__common";
 
 /// objective-C runtime segment
-pub static SEG_OBJC: &'static str = "__OBJC";
+pub static SEG_OBJC: &str = "__OBJC";
 /// symbol table
-pub static SECT_OBJC_SYMBOLS: &'static str = "__symbol_table";
+pub static SECT_OBJC_SYMBOLS: &str = "__symbol_table";
 /// module information
-pub static SECT_OBJC_MODULES: &'static str = "__module_info";
+pub static SECT_OBJC_MODULES: &str = "__module_info";
 /// string table
-pub static SECT_OBJC_STRINGS: &'static str = "__selector_strs";
+pub static SECT_OBJC_STRINGS: &str = "__selector_strs";
 /// string table
-pub static SECT_OBJC_REFS: &'static str = "__selector_refs";
+pub static SECT_OBJC_REFS: &str = "__selector_refs";
 
 /// the icon segment
-pub static SEG_ICON: &'static str = "__ICON";
+pub static SEG_ICON: &str = "__ICON";
 /// the icon headers
-pub static SECT_ICON_HEADER: &'static str = "__header";
+pub static SECT_ICON_HEADER: &str = "__header";
 /// the icons in tiff format
-pub static SECT_ICON_TIFF: &'static str = "__tiff";
+pub static SECT_ICON_TIFF: &str = "__tiff";
 
 /// the segment containing all structs created and maintained by the link editor.
-/// Created with -seglinkedit option to ld(1) for MH_EXECUTE and FVMLIB file types only
-pub static SEG_LINKEDIT: &'static str = "__LINKEDIT";
+/// Created with -seglinkedit option to ld(1) for `MH_EXECUTE` and `FVMLIB` file types only
+pub static SEG_LINKEDIT: &str = "__LINKEDIT";
 
 /// the unix stack segment
-pub static SEG_UNIXSTACK: &'static str = "__UNIXSTACK";
+pub static SEG_UNIXSTACK: &str = "__UNIXSTACK";
 
 /// the segment for the self (dyld) modifing code stubs that has read, write and execute permissions
-pub static SEG_IMPORT: &'static str = "__IMPORT";
-
+pub static SEG_IMPORT: &str = "__IMPORT";
 
 // An indirect symbol table entry is simply a 32bit index into the symbol table
 // to the symbol that the pointer or stub is refering to.  Unless it is for a
 // non-lazy symbol pointer section for a defined symbol which strip(1) as
-// removed.  In which case it has the value INDIRECT_SYMBOL_LOCAL.  If the
-// symbol was also absolute INDIRECT_SYMBOL_ABS is or'ed with that.
+// removed.  In which case it has the value `INDIRECT_SYMBOL_LOCAL`.  If the
+// symbol was also absolute `INDIRECT_SYMBOL_ABS` is or'ed with that.
 //
-pub const INDIRECT_SYMBOL_LOCAL: u32 = 0x80000000;
-pub const INDIRECT_SYMBOL_ABS: u32 = 0x40000000;
-
+pub const INDIRECT_SYMBOL_LOCAL: u32 = 0x8000_0000;
+pub const INDIRECT_SYMBOL_ABS: u32 = 0x4000_0000;
 
 // The following are used to encode rebasing information
 //
 
-pub const REBASE_TYPE_POINTER: u32 = 1;
-pub const REBASE_TYPE_TEXT_ABSOLUTE32: u32 = 2;
-pub const REBASE_TYPE_TEXT_PCREL32: u32 = 3;
+pub const REBASE_TYPE_POINTER: u8 = 1;
+pub const REBASE_TYPE_TEXT_ABSOLUTE32: u8 = 2;
+pub const REBASE_TYPE_TEXT_PCREL32: u8 = 3;
 
-pub const REBASE_OPCODE_MASK: u32 = 0xF0;
-pub const REBASE_IMMEDIATE_MASK: u32 = 0x0F;
+pub const REBASE_OPCODE_MASK: u8 = 0xF0;
+pub const REBASE_IMMEDIATE_MASK: u8 = 0x0F;
 
-pub const REBASE_OPCODE_DONE: u32 = 0x00;
-pub const REBASE_OPCODE_SET_TYPE_IMM: u32 = 0x10;
-pub const REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u32 = 0x20;
-pub const REBASE_OPCODE_ADD_ADDR_ULEB: u32 = 0x30;
-pub const REBASE_OPCODE_ADD_ADDR_IMM_SCALED: u32 = 0x40;
-pub const REBASE_OPCODE_DO_REBASE_IMM_TIMES: u32 = 0x50;
-pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES: u32 = 0x60;
-pub const REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: u32 = 0x70;
-pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: u32 = 0x80;
-
+pub const REBASE_OPCODE_DONE: u8 = 0x00;
+pub const REBASE_OPCODE_SET_TYPE_IMM: u8 = 0x10;
+pub const REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u8 = 0x20;
+pub const REBASE_OPCODE_ADD_ADDR_ULEB: u8 = 0x30;
+pub const REBASE_OPCODE_ADD_ADDR_IMM_SCALED: u8 = 0x40;
+pub const REBASE_OPCODE_DO_REBASE_IMM_TIMES: u8 = 0x50;
+pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES: u8 = 0x60;
+pub const REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB: u8 = 0x70;
+pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: u8 = 0x80;
 
 // The following are used to encode binding information
 //
-pub const BIND_TYPE_POINTER: u32 = 1;
-pub const BIND_TYPE_TEXT_ABSOLUTE32: u32 = 2;
-pub const BIND_TYPE_TEXT_PCREL32: u32 = 3;
+pub const BIND_TYPE_POINTER: u8 = 1;
+pub const BIND_TYPE_TEXT_ABSOLUTE32: u8 = 2;
+pub const BIND_TYPE_TEXT_PCREL32: u8 = 3;
 
-pub const BIND_SPECIAL_DYLIB_SELF: i32 = 0;
-pub const BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE: i32 = -1;
-pub const BIND_SPECIAL_DYLIB_FLAT_LOOKUP: i32 = -2;
+pub const BIND_SPECIAL_DYLIB_SELF: isize = 0;
+pub const BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE: isize = -1;
+pub const BIND_SPECIAL_DYLIB_FLAT_LOOKUP: isize = -2;
 
-pub const BIND_SYMBOL_FLAGS_WEAK_IMPORT: u32 = 0x1;
-pub const BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION: u32 = 0x8;
+pub const BIND_SYMBOL_FLAGS_WEAK_IMPORT: u8 = 0x1;
+pub const BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION: u8 = 0x8;
 
-pub const BIND_OPCODE_MASK: u32 = 0xF0;
-pub const BIND_IMMEDIATE_MASK: u32 = 0x0F;
-pub const BIND_OPCODE_DONE: u32 = 0x00;
-pub const BIND_OPCODE_SET_DYLIB_ORDINAL_IMM: u32 = 0x10;
-pub const BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB: u32 = 0x20;
-pub const BIND_OPCODE_SET_DYLIB_SPECIAL_IMM: u32 = 0x30;
-pub const BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM: u32 = 0x40;
-pub const BIND_OPCODE_SET_TYPE_IMM: u32 = 0x50;
-pub const BIND_OPCODE_SET_ADDEND_SLEB: u32 = 0x60;
-pub const BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u32 = 0x70;
-pub const BIND_OPCODE_ADD_ADDR_ULEB: u32 = 0x80;
-pub const BIND_OPCODE_DO_BIND: u32 = 0x90;
-pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: u32 = 0xA0;
-pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u32 = 0xB0;
-pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u32 = 0xC0;
+pub const BIND_OPCODE_MASK: u8 = 0xF0;
+pub const BIND_IMMEDIATE_MASK: u8 = 0x0F;
+pub const BIND_OPCODE_DONE: u8 = 0x00;
+pub const BIND_OPCODE_SET_DYLIB_ORDINAL_IMM: u8 = 0x10;
+pub const BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB: u8 = 0x20;
+pub const BIND_OPCODE_SET_DYLIB_SPECIAL_IMM: u8 = 0x30;
+pub const BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM: u8 = 0x40;
+pub const BIND_OPCODE_SET_TYPE_IMM: u8 = 0x50;
+pub const BIND_OPCODE_SET_ADDEND_SLEB: u8 = 0x60;
+pub const BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB: u8 = 0x70;
+pub const BIND_OPCODE_ADD_ADDR_ULEB: u8 = 0x80;
+pub const BIND_OPCODE_DO_BIND: u8 = 0x90;
+pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB: u8 = 0xA0;
+pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED: u8 = 0xB0;
+pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: u8 = 0xC0;
+
+pub const EXPORT_SYMBOL_FLAGS_KIND_MASK: u8 = 0x03;
+pub const EXPORT_SYMBOL_FLAGS_KIND_REGULAR: u8 = 0x00;
+pub const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL: u8 = 0x01;
+pub const EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: u8 = 0x02;
 
 bitflags! {
     /// The following are used on the flags byte of a terminal node in the export information.
     pub struct ExportSymbolFlags: u32 {
-        const EXPORT_SYMBOL_FLAGS_KIND_MASK              = 0x03;
-        const EXPORT_SYMBOL_FLAGS_KIND_REGULAR           = 0x00;
-        const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL      = 0x01;
         const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04;
         const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08;
         const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER      = 0x10;
@@ -863,67 +862,67 @@ pub const DICE_KIND_JUMP_TABLE16: u16 = 0x0003;
 pub const DICE_KIND_JUMP_TABLE32: u16 = 0x0004;
 pub const DICE_KIND_ABS_JUMP_TABLE32: u16 = 0x0005;
 
-/// global symbol: name,,NO_SECT,type,0
+/// global symbol: `name,,NO_SECT,type,0`
 pub const N_GSYM: u8 = 0x20;
-/// procedure name (f77 kludge): name,,NO_SECT,0,0
+/// procedure name (f77 kludge): `name,,NO_SECT,0,0`
 pub const N_FNAME: u8 = 0x22;
-/// procedure: name,,n_sect,linenumber,address
+/// procedure: `name,,n_sect,linenumber,address`
 pub const N_FUN: u8 = 0x24;
-/// static symbol: name,,n_sect,type,address
+/// static symbol: `name,,n_sect,type,address`
 pub const N_STSYM: u8 = 0x26;
-/// .lcomm symbol: name,,n_sect,type,address
+/// .lcomm symbol: `name,,n_sect,type,address`
 pub const N_LCSYM: u8 = 0x28;
-/// begin nsect sym: 0,,n_sect,0,address
+/// begin nsect sym: `0,,n_sect,0,address`
 pub const N_BNSYM: u8 = 0x2e;
-/// AST file path: name,,NO_SECT,0,0
+/// AST file path: `name,,NO_SECT,0,0`
 pub const N_AST: u8 = 0x32;
-/// emitted with gcc2_compiled and in gcc source
+/// emitted with gcc2 compiled and in gcc source
 pub const N_OPT: u8 = 0x3c;
-/// register sym: name,,NO_SECT,type,register
+/// register sym: `name,,NO_SECT,type,register`
 pub const N_RSYM: u8 = 0x40;
-/// src line: 0,,n_sect,linenumber,address
+/// src line: `0,,n_sect,linenumber,address`
 pub const N_SLINE: u8 = 0x44;
-/// end nsect sym: 0,,n_sect,0,address
+/// end nsect `sym: 0,,n_sect,0,address`
 pub const N_ENSYM: u8 = 0x4e;
-/// structure elt: name,,NO_SECT,type,struct_offset
+/// structure elt: `name,,NO_SECT,type,struct_offset`
 pub const N_SSYM: u8 = 0x60;
-/// source file name: name,,n_sect,0,address
+/// source file name: `name,,n_sect,0,address`
 pub const N_SO: u8 = 0x64;
-/// object file name: name,,0,0,st_mtime
+/// object file name: `name,,0,0,st_mtime`
 pub const N_OSO: u8 = 0x66;
-/// local sym: name,,NO_SECT,type,offset
+/// local sym: `name,,NO_SECT,type,offset`
 pub const N_LSYM: u8 = 0x80;
-/// include file beginning: name,,NO_SECT,0,sum
+/// include file beginning: `name,,NO_SECT,0,sum`
 pub const N_BINCL: u8 = 0x82;
-/// #included file name: name,,n_sect,0,address
+/// #included file name: `name,,n_sect,0,address`
 pub const N_SOL: u8 = 0x84;
-/// compiler parameters: name,,NO_SECT,0,0
+/// compiler parameters: `name,,NO_SECT,0,0`
 pub const N_PARAMS: u8 = 0x86;
-/// compiler version: name,,NO_SECT,0,0
+/// compiler version: `name,,NO_SECT,0,0`
 pub const N_VERSION: u8 = 0x88;
-/// compiler -O level: name,,NO_SECT,0,0
+/// compiler -O level: `name,,NO_SECT,0,0`
 pub const N_OLEVEL: u8 = 0x8A;
-/// parameter: name,,NO_SECT,type,offset
+/// parameter: `name,,NO_SECT,type,offset`
 pub const N_PSYM: u8 = 0xa0;
-/// include file end: name,,NO_SECT,0,0
+/// include file end: `name,,NO_SECT,0,0`
 pub const N_EINCL: u8 = 0xa2;
-/// alternate entry: name,,n_sect,linenumber,address
+/// alternate entry: `name,,n_sect,linenumber,address`
 pub const N_ENTRY: u8 = 0xa4;
-/// left bracket: 0,,NO_SECT,nesting level,address
+/// left bracket: `0,,NO_SECT,nesting level,address`
 pub const N_LBRAC: u8 = 0xc0;
-/// deleted include file: name,,NO_SECT,0,sum
+/// deleted include file: `name,,NO_SECT,0,sum`
 pub const N_EXCL: u8 = 0xc2;
-/// right bracket: 0,,NO_SECT,nesting level,address
+/// right bracket: `0,,NO_SECT,nesting level,address`
 pub const N_RBRAC: u8 = 0xe0;
-/// begin common: name,,NO_SECT,0,0
+/// begin common: `name,,NO_SECT,0,0`
 pub const N_BCOMM: u8 = 0xe2;
-/// end common: name,,n_sect,0,0
+/// end common: `name,,n_sect,0,0`
 pub const N_ECOMM: u8 = 0xe4;
-/// end common (local name): 0,,n_sect,0,address
+/// end common (local name): `0,,n_sect,0,address`
 pub const N_ECOML: u8 = 0xe8;
 /// second stab entry with length information
 pub const N_LENG: u8 = 0xfe;
-/// global pascal symbol: name,,NO_SECT,subtype,line
+/// global pascal symbol: `name,,NO_SECT,subtype,line`
 pub const N_PC: u8 = 0x30;
 
 /// To support the lazy binding of undefined symbols in the dynamic link-editor,
@@ -935,16 +934,16 @@ pub const N_PC: u8 = 0x30;
 /// pointer in a lazy symbol pointer section.
 ///
 /// The implementation of marking nlist structures in the symbol table for
-/// undefined symbols will be to use some of the bits of the n_desc field as a
-/// reference type.  The mask REFERENCE_TYPE will be applied to the n_desc field
+/// undefined symbols will be to use some of the bits of the `n_desc` field as a
+/// reference type.  The mask `REFERENCE_TYPE` will be applied to the `n_desc` field
 /// of an nlist structure for an undefined symbol to determine the type of
 /// undefined reference (lazy or non-lazy).
 ///
 /// The constants for the REFERENCE FLAGS are propagated to the reference table
 /// in a shared library file.  In that case the constant for a defined symbol,
-/// REFERENCE_FLAG_DEFINED, is also used.
+/// `REFERENCE_FLAG_DEFINED`, is also used.
 ///
-/// Reference type bits of the n_desc field of undefined symbols
+/// Reference type bits of the `n_desc` field of undefined symbols
 pub const REFERENCE_TYPE: u8 = 0x7;
 // types of references
 pub const REFERENCE_FLAG_UNDEFINED_NON_LAZY: u8 = 0;
@@ -965,24 +964,24 @@ pub const REFERENCED_DYNAMICALLY: u16 = 0x0010;
 // option in effect the flags field of the mach header is marked with
 // MH_TWOLEVEL.  And the binding of the undefined references of the image are
 // determined by the static link editor.  Which library an undefined symbol is
-// bound to is recorded by the static linker in the high 8 bits of the n_desc
-// field using the SET_LIBRARY_ORDINAL macro below.  The ordinal recorded
-// references the libraries listed in the Mach-O's LC_LOAD_DYLIB,
-// LC_LOAD_WEAK_DYLIB, LC_REEXPORT_DYLIB, LC_LOAD_UPWARD_DYLIB, and
-// LC_LAZY_LOAD_DYLIB, etc. load commands in the order they appear in the
+// bound to is recorded by the static linker in the high 8 bits of the `n_desc`
+// field using the `SET_LIBRARY_ORDINAL` macro below.  The ordinal recorded
+// references the libraries listed in the Mach-O's `LC_LOAD_DYLIB`,
+// `LC_LOAD_WEAK_DYLIB`, `LC_REEXPORT_DYLIB`, `LC_LOAD_UPWARD_DYLIB`, and
+// `LC_LAZY_LOAD_DYLIB`, etc. load commands in the order they appear in the
 // headers.   The library ordinals start from 1.
 // For a dynamic library that is built as a two-level namespace image the
 // undefined references from module defined in another use the same nlist struct
-// an in that case SELF_LIBRARY_ORDINAL is used as the library ordinal.  For
+// an in that case `SELF_LIBRARY_ORDINAL` is used as the library ordinal.  For
 // defined symbols in all images they also must have the library ordinal set to
-// SELF_LIBRARY_ORDINAL.  The EXECUTABLE_ORDINAL refers to the executable
+// `SELF_LIBRARY_ORDINAL`.  The `EXECUTABLE_ORDINAL` refers to the executable
 // image for references from plugins that refer to the executable that loads
 // them.
 //
-// The DYNAMIC_LOOKUP_ORDINAL is for undefined symbols in a two-level namespace
+// The `DYNAMIC_LOOKUP_ORDINAL` is for undefined symbols in a two-level namespace
 // image that are looked up by the dynamic linker with flat namespace semantics.
 // This ordinal was added as a feature in Mac OS X 10.3 by reducing the
-// value of MAX_LIBRARY_ORDINAL by one.  So it is legal for existing binaries
+// value of `MAX_LIBRARY_ORDINAL` by one.  So it is legal for existing binaries
 // or binaries built with older tools to have 0xfe (254) dynamic libraries.  In
 // this case the ordinal value 0xfe (254) must be treated as a library ordinal
 // for compatibility.
@@ -992,53 +991,53 @@ pub const MAX_LIBRARY_ORDINAL: u8 = 0xfd;
 pub const DYNAMIC_LOOKUP_ORDINAL: u8 = 0xfe;
 pub const EXECUTABLE_ORDINAL: u8 = 0xff;
 
-// The bit 0x0020 of the n_desc field is used for two non-overlapping purposes
-// and has two different symbolic names, N_NO_DEAD_STRIP and N_DESC_DISCARDED.
+// The bit 0x0020 of the `n_desc` field is used for two non-overlapping purposes
+// and has two different symbolic names, `N_NO_DEAD_STRIP` and `N_DESC_DISCARDED`.
 //
 
-/// The N_NO_DEAD_STRIP bit of the n_desc field only ever appears in a
-/// relocatable .o file (MH_OBJECT filetype). And is used to indicate to the
+/// The `N_NO_DEAD_STRIP` bit of the `n_desc` field only ever appears in a
+/// relocatable .o file (`MH_OBJECT` filetype). And is used to indicate to the
 /// static link editor it is never to dead strip the symbol.
 ///
 pub const N_NO_DEAD_STRIP: u16 = 0x0020; /* symbol is not to be dead stripped */
 
-/// The N_DESC_DISCARDED bit of the n_desc field never appears in linked image.
+/// The `N_DESC_DISCARDED` bit of the `n_desc` field never appears in linked image.
 /// But is used in very rare cases by the dynamic link editor to mark an in
 /// memory symbol as discared and longer used for linking.
 ///
 pub const N_DESC_DISCARDED: u16 = 0x0020; /* symbol is discarded */
 
-/// The N_WEAK_REF bit of the n_desc field indicates to the dynamic linker that
+/// The `N_WEAK_REF` bit of the `n_desc` field indicates to the dynamic linker that
 /// the undefined symbol is allowed to be missing and is to have the address of
 /// zero when missing.
 ///
 pub const N_WEAK_REF: u16 = 0x0040; /* symbol is weak referenced */
 
-/// The N_WEAK_DEF bit of the n_desc field indicates to the static and dynamic
+/// The `N_WEAK_DEF` bit of the `n_desc` field indicates to the static and dynamic
 /// linkers that the symbol definition is weak, allowing a non-weak symbol to
 /// also be used which causes the weak definition to be discared.  Currently this
 /// is only supported for symbols in coalesed sections.
 ///
 pub const N_WEAK_DEF: u16 = 0x0080; /* coalesed symbol is a weak definition */
 
-/// The N_REF_TO_WEAK bit of the n_desc field indicates to the dynamic linker
+/// The `N_REF_TO_WEAK` bit of the `n_desc` field indicates to the dynamic linker
 /// that the undefined symbol should be resolved using flat namespace searching.
 ///
 pub const N_REF_TO_WEAK: u16 = 0x0080; /* reference to a weak symbol */
 
-/// The N_ARM_THUMB_DEF bit of the n_desc field indicates that the symbol is
+/// The `N_ARM_THUMB_DEF` bit of the `n_desc` field indicates that the symbol is
 /// a defintion of a Thumb function.
 ///
 pub const N_ARM_THUMB_DEF: u16 = 0x0008; /* symbol is a Thumb function (ARM) */
 
-/// The N_SYMBOL_RESOLVER bit of the n_desc field indicates that the
+/// The `N_SYMBOL_RESOLVER` bit of the `n_desc` field indicates that the
 /// that the function is actually a resolver function and should
 /// be called to get the address of the real function to use.
-/// This bit is only available in .o files (MH_OBJECT filetype)
+/// This bit is only available in .o files (`MH_OBJECT` filetype)
 ///
 pub const N_SYMBOL_RESOLVER: u16 = 0x0100;
 
-/// The N_ALT_ENTRY bit of the n_desc field indicates that the
+/// The `N_ALT_ENTRY` bit of the `n_desc` field indicates that the
 /// symbol is pinned to the previous content.
 ///
 pub const N_ALT_ENTRY: u16 = 0x0200;

@@ -152,7 +152,7 @@ impl<'a> Iterator for ExportSymbols<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((prefix, node)) = self.nodes.pop() {
             for &(ref s, ref node) in &node.edges {
-                self.nodes.push((prefix.clone() + s, &node))
+                self.nodes.push((prefix.clone() + s, node))
             }
 
             if let Some((kind, ref symbol)) = node.symbol {

@@ -22,6 +22,8 @@ time = "0.1"
 bitflags = "1.0"
 lazy_static = "1.0"
 
+clippy = { version = "*", optional = true }
+
 [dev-dependencies]
 pretty_env_logger = "0.2"
 diff = "0.1"

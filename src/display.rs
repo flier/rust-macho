@@ -72,8 +72,8 @@ impl MachCommand {
     fn print_segment_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        match cmd {
-            &LoadCommand::Segment {
+        match *cmd {
+            LoadCommand::Segment {
                 ref segname,
                 vmaddr,
                 vmsize,
@@ -84,7 +84,7 @@ impl MachCommand {
                 flags,
                 ref sections,
             }
-            | &LoadCommand::Segment64 {
+            | LoadCommand::Segment64 {
                 ref segname,
                 vmaddr,
                 vmsize,
@@ -95,11 +95,7 @@ impl MachCommand {
                 flags,
                 ref sections,
             } => {
-                let is_64bit = if cmd.cmd() == LC_SEGMENT_64 {
-                    true
-                } else {
-                    false
-                };
+                let is_64bit = cmd.cmd() == LC_SEGMENT_64;
 
                 write!(f, "      cmd {}\n", cmd.name())?;
                 write!(f, "  cmdsize {}\n", cmdsize)?;
@@ -118,7 +114,7 @@ impl MachCommand {
                 write!(f, "   nsects {}\n", sections.len())?;
                 write!(f, "    flags 0x{:x}\n", flags.bits())?;
 
-                for ref section in sections {
+                for section in sections {
                     write!(f, "Section\n")?;
                     write!(f, "  sectname {}\n", section.sectname)?;
                     write!(
@@ -184,7 +180,7 @@ impl MachCommand {
     fn print_dyld_info_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DyldInfo {
+        if let LoadCommand::DyldInfo {
             rebase_off,
             rebase_size,
             bind_off,
@@ -195,7 +191,7 @@ impl MachCommand {
             lazy_bind_size,
             export_off,
             export_size,
-        } = cmd
+        } = *cmd
         {
             write!(f, "            cmd {}\n", cmd.name())?;
             write!(f, "        cmdsize {}\n", cmdsize)?;
@@ -219,12 +215,12 @@ impl MachCommand {
     fn print_symtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::SymTab {
+        if let LoadCommand::SymTab {
             symoff,
             nsyms,
             stroff,
             strsize,
-        } = cmd
+        } = *cmd
         {
             write!(f, "     cmd {}\n", cmd.name())?;
             write!(f, " cmdsize {}\n", cmdsize)?;
@@ -242,7 +238,7 @@ impl MachCommand {
     fn print_dysymtab_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::DySymTab {
+        if let LoadCommand::DySymTab {
             ilocalsym,
             nlocalsym,
             iextdefsym,
@@ -261,7 +257,7 @@ impl MachCommand {
             nextrel,
             locreloff,
             nlocrel,
-        } = cmd
+        } = *cmd
         {
             write!(f, "            cmd {}\n", cmd.name())?;
             write!(f, "        cmdsize {}\n", cmdsize)?;
@@ -293,10 +289,10 @@ impl MachCommand {
     fn print_dylinker_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        match cmd {
-            &LoadCommand::IdDyLinker(LcString(off, ref name))
-            | &LoadCommand::LoadDyLinker(LcString(off, ref name))
-            | &LoadCommand::DyLdEnv(LcString(off, ref name)) => {
+        match *cmd {
+            LoadCommand::IdDyLinker(LcString(off, ref name))
+            | LoadCommand::LoadDyLinker(LcString(off, ref name))
+            | LoadCommand::DyLdEnv(LcString(off, ref name)) => {
                 write!(f, "          cmd {}\n", cmd.name())?;
                 write!(f, "      cmdsize {}\n", cmdsize)?;
                 write!(f, "         name {} (offset {})\n", name, off)?;
@@ -312,8 +308,8 @@ impl MachCommand {
     fn print_fvmlib_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        match cmd {
-            &LoadCommand::IdFvmLib(ref fvmlib) | &LoadCommand::LoadFvmLib(ref fvmlib) => {
+        match *cmd {
+            LoadCommand::IdFvmLib(ref fvmlib) | LoadCommand::LoadFvmLib(ref fvmlib) => {
                 write!(f, "           cmd {}\n", cmd.name())?;
                 write!(f, "       cmdsize {}\n", cmdsize)?;
                 write!(f, " minor version {}\n", fvmlib.minor_version)?;
@@ -330,13 +326,13 @@ impl MachCommand {
     fn print_dylib_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        match cmd {
-            &LoadCommand::IdDyLib(ref dylib)
-            | &LoadCommand::LoadDyLib(ref dylib)
-            | &LoadCommand::LoadWeakDyLib(ref dylib)
-            | &LoadCommand::ReexportDyLib(ref dylib)
-            | &LoadCommand::LoadUpwardDylib(ref dylib)
-            | &LoadCommand::LazyLoadDylib(ref dylib) => {
+        match *cmd {
+            LoadCommand::IdDyLib(ref dylib)
+            | LoadCommand::LoadDyLib(ref dylib)
+            | LoadCommand::LoadWeakDyLib(ref dylib)
+            | LoadCommand::ReexportDyLib(ref dylib)
+            | LoadCommand::LoadUpwardDylib(ref dylib)
+            | LoadCommand::LazyLoadDylib(ref dylib) => {
                 write!(f, "          cmd {}\n", cmd.name())?;
                 write!(f, "      cmdsize {}\n", cmdsize)?;
                 write!(
@@ -344,7 +340,7 @@ impl MachCommand {
                     "         name {} (offset {})\n",
                     dylib.name, dylib.name.0
                 )?;
-                let ts = time::at_utc(time::Timespec::new(dylib.timestamp as i64, 0));
+                let ts = time::at_utc(time::Timespec::new(i64::from(dylib.timestamp), 0));
                 write!(
                     f,
                     "   time stamp {} {}\n",
@@ -377,7 +373,7 @@ impl MachCommand {
     fn print_version_min_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::VersionMin { version, sdk, .. } = cmd {
+        if let LoadCommand::VersionMin { version, sdk, .. } = *cmd {
             write!(f, "      cmd {}\n", cmd.name())?;
             write!(f, "  cmdsize {}\n", cmdsize)?;
             write!(f, "  version {}\n", version)?;
@@ -392,7 +388,7 @@ impl MachCommand {
     fn print_source_version_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::SourceVersion(version) = cmd {
+        if let LoadCommand::SourceVersion(version) = *cmd {
             write!(f, "      cmd {}\n", cmd.name())?;
             write!(f, "  cmdsize {}\n", cmdsize)?;
             write!(f, "  version {}\n", version)?;
@@ -406,7 +402,7 @@ impl MachCommand {
     fn print_uuid_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::Uuid(ref uuid) = cmd {
+        if let LoadCommand::Uuid(ref uuid) = *cmd {
             write!(f, "     cmd {}\n", cmd.name())?;
             write!(f, " cmdsize {}\n", cmdsize)?;
             write!(
@@ -424,10 +420,10 @@ impl MachCommand {
     fn print_entry_point_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let &LoadCommand::EntryPoint {
+        if let LoadCommand::EntryPoint {
             entryoff,
             stacksize,
-        } = cmd
+        } = *cmd
         {
             write!(f, "       cmd {}\n", cmd.name())?;
             write!(f, "   cmdsize {}\n", cmdsize)?;
@@ -443,13 +439,13 @@ impl MachCommand {
     fn print_linkedit_data_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        match cmd {
-            &LoadCommand::CodeSignature(ref data)
-            | &LoadCommand::SegmentSplitInfo(ref data)
-            | &LoadCommand::FunctionStarts(ref data)
-            | &LoadCommand::DataInCode(ref data)
-            | &LoadCommand::DylibCodeSignDrs(ref data)
-            | &LoadCommand::LinkerOptimizationHint(ref data) => {
+        match *cmd {
+            LoadCommand::CodeSignature(ref data)
+            | LoadCommand::SegmentSplitInfo(ref data)
+            | LoadCommand::FunctionStarts(ref data)
+            | LoadCommand::DataInCode(ref data)
+            | LoadCommand::DylibCodeSignDrs(ref data)
+            | LoadCommand::LinkerOptimizationHint(ref data) => {
                 write!(f, "      cmd {}\n", cmd.name())?;
                 write!(f, "  cmdsize {}\n", cmdsize)?;
                 write!(f, "  dataoff {}\n", data.off)?;
@@ -499,8 +495,8 @@ impl fmt::Display for MachCommand {
 
 impl<'a> fmt::Display for Symbol<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Symbol::Undefined {
+        match *self {
+            Symbol::Undefined {
                 ref name, external, ..
             } => write!(
                 f,
@@ -508,7 +504,7 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "U" } else { "u" },
                 name.unwrap_or("")
             ),
-            &Symbol::Absolute {
+            Symbol::Absolute {
                 ref name,
                 external,
                 entry,
@@ -520,7 +516,7 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "A" } else { "a" },
                 name.unwrap_or("")
             ),
-            &Symbol::Defined {
+            Symbol::Defined {
                 ref name,
                 external,
                 ref section,
@@ -529,7 +525,7 @@ impl<'a> fmt::Display for Symbol<'a> {
             } => {
                 let mut symtype = "s";
 
-                if let &Some(ref section) = section {
+                if let Some(ref section) = *section {
                     let Section {
                         ref sectname,
                         ref segname,
@@ -561,7 +557,7 @@ impl<'a> fmt::Display for Symbol<'a> {
                     name.unwrap_or("")
                 )
             }
-            &Symbol::Prebound {
+            Symbol::Prebound {
                 ref name, external, ..
             } => write!(
                 f,
@@ -569,7 +565,7 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "P" } else { "p" },
                 name.unwrap_or("")
             ),
-            &Symbol::Indirect {
+            Symbol::Indirect {
                 ref name, external, ..
             } => write!(
                 f,
@@ -577,7 +573,7 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "I" } else { "i" },
                 name.unwrap_or("")
             ),
-            &Symbol::Debug { ref name, addr, .. } => if addr == 0 {
+            Symbol::Debug { ref name, addr, .. } => if addr == 0 {
                 write!(f, "                 d {}", name.unwrap_or(""))
             } else {
                 write!(f, "{:016x} d {}", addr, name.unwrap_or(""))

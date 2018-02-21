@@ -120,7 +120,7 @@ impl Into<u32> for BuildTarget {
     }
 }
 
-/// A variable length string in a load command is represented by an LcString structure.
+/// A variable length string in a load command is represented by an `LcString` structure.
 ///
 /// The strings are stored just after the load command structure and
 /// the offset is from the start of the load command structure.  The size
@@ -158,8 +158,9 @@ impl Deref for LcString {
 /// Fixed virtual memory shared libraries are identified by two things.
 ///
 /// The target pathname (the name of the library as found for execution),
-/// and the minor version number.  The address of where the headers are loaded is in
-/// header_addr. (THIS IS OBSOLETE and no longer supported).
+/// and the minor version number.
+/// The address of where the headers are loaded is in `header_addr`.
+/// (THIS IS OBSOLETE and no longer supported).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FvmLib {
     /// library's target pathname
@@ -234,7 +235,7 @@ pub struct DyLibModule {
     pub objc_module_info_size: usize,
 }
 
-/// The linkedit_data_command contains the offsets and sizes of a blob
+/// The `LinkEditData` contains the offsets and sizes of a blob
 /// of data in the __LINKEDIT segment.
 ///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -245,7 +246,7 @@ pub struct LinkEditData {
     pub size: u32,
 }
 
-/// The load commands directly follow the mach_header.
+/// The load commands directly follow the mach header.
 ///
 #[derive(Debug, Clone)]
 pub enum LoadCommand {
@@ -538,7 +539,7 @@ pub enum LoadCommand {
     ///
     Uuid(Uuid),
 
-    // The linkedit_data_command contains the offsets and sizes of a blob
+    // The `LinkEditData` contains the offsets and sizes of a blob
     // of data in the __LINKEDIT segment.
     //
     /// local of code signature
@@ -943,34 +944,34 @@ impl LoadCommand {
     }
 
     pub fn cmd(&self) -> u32 {
-        match self {
-            &LoadCommand::Segment { .. } => LC_SEGMENT,
-            &LoadCommand::Segment64 { .. } => LC_SEGMENT_64,
-            &LoadCommand::IdFvmLib(_) => LC_IDFVMLIB,
-            &LoadCommand::LoadFvmLib(_) => LC_LOADFVMLIB,
-            &LoadCommand::IdDyLib(_) => LC_ID_DYLIB,
-            &LoadCommand::LoadDyLib(_) => LC_LOAD_DYLIB,
-            &LoadCommand::LoadWeakDyLib(_) => LC_LOAD_WEAK_DYLIB,
-            &LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
-            &LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
-            &LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
-            &LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
-            &LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
-            &LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
-            &LoadCommand::SymTab { .. } => LC_SYMTAB,
-            &LoadCommand::DySymTab { .. } => LC_DYSYMTAB,
-            &LoadCommand::Uuid(_) => LC_UUID,
-            &LoadCommand::CodeSignature(_) => LC_CODE_SIGNATURE,
-            &LoadCommand::SegmentSplitInfo(_) => LC_SEGMENT_SPLIT_INFO,
-            &LoadCommand::FunctionStarts(_) => LC_FUNCTION_STARTS,
-            &LoadCommand::DataInCode(_) => LC_DATA_IN_CODE,
-            &LoadCommand::DylibCodeSignDrs(_) => LC_DYLIB_CODE_SIGN_DRS,
-            &LoadCommand::LinkerOptimizationHint(_) => LC_LINKER_OPTIMIZATION_HINT,
-            &LoadCommand::VersionMin { target, .. } => BuildTarget::into(target),
-            &LoadCommand::DyldInfo { .. } => LC_DYLD_INFO_ONLY,
-            &LoadCommand::EntryPoint { .. } => LC_MAIN,
-            &LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
-            &LoadCommand::Command { cmd, .. } => cmd,
+        match *self {
+            LoadCommand::Segment { .. } => LC_SEGMENT,
+            LoadCommand::Segment64 { .. } => LC_SEGMENT_64,
+            LoadCommand::IdFvmLib(_) => LC_IDFVMLIB,
+            LoadCommand::LoadFvmLib(_) => LC_LOADFVMLIB,
+            LoadCommand::IdDyLib(_) => LC_ID_DYLIB,
+            LoadCommand::LoadDyLib(_) => LC_LOAD_DYLIB,
+            LoadCommand::LoadWeakDyLib(_) => LC_LOAD_WEAK_DYLIB,
+            LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
+            LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
+            LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
+            LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
+            LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
+            LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
+            LoadCommand::SymTab { .. } => LC_SYMTAB,
+            LoadCommand::DySymTab { .. } => LC_DYSYMTAB,
+            LoadCommand::Uuid(_) => LC_UUID,
+            LoadCommand::CodeSignature(_) => LC_CODE_SIGNATURE,
+            LoadCommand::SegmentSplitInfo(_) => LC_SEGMENT_SPLIT_INFO,
+            LoadCommand::FunctionStarts(_) => LC_FUNCTION_STARTS,
+            LoadCommand::DataInCode(_) => LC_DATA_IN_CODE,
+            LoadCommand::DylibCodeSignDrs(_) => LC_DYLIB_CODE_SIGN_DRS,
+            LoadCommand::LinkerOptimizationHint(_) => LC_LINKER_OPTIMIZATION_HINT,
+            LoadCommand::VersionMin { target, .. } => BuildTarget::into(target),
+            LoadCommand::DyldInfo { .. } => LC_DYLD_INFO_ONLY,
+            LoadCommand::EntryPoint { .. } => LC_MAIN,
+            LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
+            LoadCommand::Command { cmd, .. } => cmd,
         }
     }
 
@@ -1103,19 +1104,19 @@ impl Into<u32> for SectionFlags {
 
 /// A segment is made up of zero or more sections.
 ///
-/// Non-MH_OBJECT files have all of their segments with the proper sections in each,
+/// `Non-MH_OBJECT` files have all of their segments with the proper sections in each,
 /// and padded to the specified segment alignment when produced by the link editor.
-/// The first segment of a MH_EXECUTE and MH_FVMLIB format file contains the mach_header
+/// The first segment of a `MH_EXECUTE` and `MH_FVMLIB` format file contains the mach header
 /// and load commands of the object file before its first section.  The zero
 /// fill sections are always last in their segment (in all formats).  This
 /// allows the zeroed segment padding to be mapped into memory where zero fill
 /// sections might be. The gigabyte zero fill sections, those with the section
-/// type S_GB_ZEROFILL, can only be in a segment with sections of this type.
+/// type `S_GB_ZEROFILL`, can only be in a segment with sections of this type.
 /// These segments are then placed after all other segments.
 ///
-/// The MH_OBJECT format has all of its sections in one segment for
+/// The `MH_OBJECT` format has all of its sections in one segment for
 /// compactness.  There is no padding to a specified segment boundary and the
-/// mach_header and load commands are not part of the segment.
+/// mach header and load commands are not part of the segment.
 ///
 /// Sections with the same section name, sectname, going into the same segment,
 /// segname, are combined by the link editor.  The resulting section is aligned
@@ -1197,8 +1198,8 @@ impl Section {
     }
 }
 
-/// The LC_DATA_IN_CODE load commands uses a linkedit_data_command
-/// to point to an array of data_in_code_entry entries.
+/// The `LC_DATA_IN_CODE` load commands uses a `LinkEditData`
+/// to point to an array of `DataInCodeEntry` entries.
 ///
 /// Each entry describes a range of data in a code section.
 ///

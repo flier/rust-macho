@@ -48,7 +48,7 @@ impl Default for BindSymbolFlags {
     }
 }
 
-/// OpCode for the binding symbol
+/// `OpCode` for the binding symbol
 #[derive(Clone, Debug, PartialEq)]
 pub enum BindOpCode {
     Done,
@@ -123,10 +123,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         None
                     }
                 },
-                (BIND_OPCODE_SET_ADDEND_SLEB, _) => self.iter
-                    .read_uleb128()
-                    .ok()
-                    .map(|addend| BindOpCode::SetAddend(addend)),
+                (BIND_OPCODE_SET_ADDEND_SLEB, _) => self.iter.read_uleb128().ok().map(BindOpCode::SetAddend),
                 (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
                     |segment_offset| BindOpCode::SetSegmentOffset {
                         segment_index,
@@ -411,8 +408,6 @@ impl<'a> Iterator for LazyBind<'a> {
                         self.symbol.name = name;
                         self.symbol.flags = flags;
                     }
-                    BindOpCode::SetSymbolType(symbol_type) => {}
-                    BindOpCode::SetAddend(addend) => {}
                     BindOpCode::SetSegmentOffset {
                         segment_index,
                         segment_offset,
@@ -444,7 +439,7 @@ impl<'a> Iterator for LazyBind<'a> {
     }
 }
 
-/// OpCode for the rebasing symbol
+/// `OpCode` for the rebasing symbol
 #[derive(Clone, Debug, PartialEq)]
 pub enum RebaseOpCode {
     Done,

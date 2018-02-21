@@ -51,23 +51,23 @@ pub enum Symbol<'a> {
 
 impl<'a> Symbol<'a> {
     pub fn name(&self) -> Option<&str> {
-        match self {
-            &Symbol::Undefined { name, .. }
-            | &Symbol::Absolute { name, .. }
-            | &Symbol::Defined { name, .. }
-            | &Symbol::Prebound { name, .. }
-            | &Symbol::Indirect { name, .. }
-            | &Symbol::Debug { name, .. } => name,
+        match *self {
+            Symbol::Undefined { name, .. }
+            | Symbol::Absolute { name, .. }
+            | Symbol::Defined { name, .. }
+            | Symbol::Prebound { name, .. }
+            | Symbol::Indirect { name, .. }
+            | Symbol::Debug { name, .. } => name,
         }
     }
 
     pub fn is_external(&self) -> bool {
-        match self {
-            &Symbol::Undefined { external, .. }
-            | &Symbol::Absolute { external, .. }
-            | &Symbol::Defined { external, .. }
-            | &Symbol::Prebound { external, .. }
-            | &Symbol::Indirect { external, .. } => external,
+        match *self {
+            Symbol::Undefined { external, .. }
+            | Symbol::Absolute { external, .. }
+            | Symbol::Defined { external, .. }
+            | Symbol::Prebound { external, .. }
+            | Symbol::Indirect { external, .. } => external,
             _ => false,
         }
     }
@@ -140,13 +140,13 @@ pub trait SymbolReference {
 
 impl<'a> SymbolReference for Symbol<'a> {
     fn desc(&self) -> u16 {
-        match self {
-            &Symbol::Undefined { desc, .. }
-            | &Symbol::Absolute { desc, .. }
-            | &Symbol::Defined { desc, .. }
-            | &Symbol::Prebound { desc, .. }
-            | &Symbol::Indirect { desc, .. }
-            | &Symbol::Debug { desc, .. } => desc,
+        match *self {
+            Symbol::Undefined { desc, .. }
+            | Symbol::Absolute { desc, .. }
+            | Symbol::Defined { desc, .. }
+            | Symbol::Prebound { desc, .. }
+            | Symbol::Indirect { desc, .. }
+            | Symbol::Debug { desc, .. } => desc,
         }
     }
 }
@@ -188,7 +188,7 @@ impl<'a> SymbolIter<'a> {
                 section: if sect == NO_SECT {
                     None
                 } else {
-                    self.sections.get((sect - 1) as usize).map(|x| x.clone())
+                    self.sections.get((sect - 1) as usize).cloned()
                 },
                 desc: desc,
                 addr: value,
@@ -216,7 +216,7 @@ impl<'a> SymbolIter<'a> {
                     section: if sect == NO_SECT {
                         None
                     } else {
-                        self.sections.get((sect - 1) as usize).map(|x| x.clone())
+                        self.sections.get((sect - 1) as usize).cloned()
                     },
                     desc: desc,
                     entry: value,
@@ -250,12 +250,14 @@ impl<'a> SymbolIter<'a> {
             ),))
         } else {
             let buf = *self.cur.get_ref();
-            let s = *&buf[self.stroff as usize + off as usize..]
+            if let Some(s) = buf[self.stroff as usize + off as usize..]
                 .split(|x| *x == 0)
                 .next()
-                .unwrap();
-
-            Ok(Some(str::from_utf8(s)?))
+            {
+                Ok(Some(str::from_utf8(s)?))
+            } else {
+                Ok(None)
+            }
         }
     }
 }
@@ -288,10 +290,10 @@ impl<'a> SymbolReader<'a> for OFile {
     type Iter = SymbolIter<'a>;
 
     fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {
-        if let &OFile::MachFile {
+        if let OFile::MachFile {
             ref header,
             ref commands,
-        } = self
+        } = *self
         {
             let sections = commands
                 .iter()
@@ -307,14 +309,14 @@ impl<'a> SymbolReader<'a> for OFile {
             for cmd in commands {
                 let &MachCommand(ref cmd, _) = cmd;
 
-                if let &LoadCommand::SymTab {
+                if let LoadCommand::SymTab {
                     symoff,
                     nsyms,
                     stroff,
                     strsize,
-                } = cmd
+                } = *cmd
                 {
-                    if let Ok(_) = cur.seek(SeekFrom::Start(symoff as u64)) {
+                    if cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
                         return Some(SymbolIter {
                             cur: cur,
                             sections: sections,

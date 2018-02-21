@@ -114,7 +114,7 @@ impl MachCommand {
 }
 
 /// The structures of the file format for "fat" architecture specific file (wrapper design).
-/// At the begining of the file there is one FatHeader structure followed by a number of FatArch
+/// At the begining of the file there is one `FatHeader` structure followed by a number of `FatArch`
 /// structures.
 ///
 #[derive(Debug, Default, Clone)]
@@ -126,7 +126,7 @@ pub struct FatHeader {
 }
 
 /// For each architecture in the file, specified by a pair of cputype and cpusubtype,
-/// the FatArch describes the file offset, file size and alignment
+/// the `FatArch` describes the file offset, file size and alignment
 /// in the file of the architecture specific member.
 ///
 #[derive(Debug, Default, Clone)]
@@ -215,7 +215,7 @@ impl ArHeader {
 /// __.SYMDEF begins with a long giving the size in bytes of the ranlib
 /// structures which immediately follow, and then continues with a string
 /// table consisting of a long giving the number of bytes of strings which
-/// follow and then the strings themselves.  The ran_strx fields index the
+/// follow and then the strings themselves.  The `ran_strx` fields index the
 /// string table whose first byte is numbered 0.
 ///
 #[derive(Debug, Default, Clone)]
@@ -272,9 +272,10 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(
-                        format!("unknown file format 0x{:x}", magic),
-                    ))
+                    bail!(MachError::LoadError(format!(
+                        "unknown file format 0x{:x}",
+                        magic
+                    ),))
                 }
             }
         }
@@ -337,12 +338,10 @@ impl OFile {
         for arch in archs {
             debug!(
                 "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset,
-                arch
+                arch.offset, arch
             );
 
-            let mut cur = Cursor::new(payload
-                .checked_slice(arch.offset as usize, arch.size as usize)?);
+            let mut cur = Cursor::new(payload.checked_slice(arch.offset as usize, arch.size as usize)?);
 
             let file = OFile::parse(&mut cur)?;
 
@@ -377,8 +376,8 @@ impl OFile {
                         let toc_strsize = buf.read_u32::<O>()?;
 
                         let end = buf.position()
-                            .checked_add(toc_strsize as u64)
-                            .ok_or(MachError::BufferOverflow(toc_strsize as usize))?;
+                            .checked_add(u64::from(toc_strsize))
+                            .ok_or_else(|| MachError::BufferOverflow(toc_strsize as usize))?;
 
                         buf.seek(SeekFrom::Start(end))?;
 
@@ -393,11 +392,11 @@ impl OFile {
                     } else {
                         let mut end = buf.position()
                             .checked_add(header.ar_size as u64)
-                            .ok_or(MachError::BufferOverflow(header.ar_size as usize))?;
+                            .ok_or_else(|| MachError::BufferOverflow(header.ar_size as usize))?;
 
                         if let Some(size) = header.extended_format_size() {
                             end = end.checked_sub(size as u64)
-                                .ok_or(MachError::BufferOverflow(size))?;
+                                .ok_or_else(|| MachError::BufferOverflow(size))?;
                         }
 
                         let file = Self::parse(buf)?;
@@ -440,7 +439,7 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
         let s = self.as_ref();
         let start = off as usize;
         let end = off.checked_add(len)
-            .ok_or(MachError::BufferOverflow(len))? as usize;
+            .ok_or_else(|| MachError::BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
             bail!(MachError::BufferOverflow(start))

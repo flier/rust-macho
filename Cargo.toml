@@ -22,7 +22,7 @@ time = "0.1"
 bitflags = "1.0"
 lazy_static = "1.0"
 
-clippy = { version = "*", optional = true }
+clippy = { version = "0.0.186", optional = true }
 
 [dev-dependencies]
 pretty_env_logger = "0.2"

@@ -9,8 +9,10 @@ extern crate memmap;
 extern crate pretty_env_logger;
 
 use std::mem;
+use std::ops::Range;
 use std::env;
 use std::fmt;
+use std::rc::Rc;
 use std::borrow::Cow;
 use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -381,8 +383,8 @@ impl<T: Write> FileProcessor<T> {
                             "segment  section            address    type       addend dylib            symbol"
                         )?;
 
-                        for symbol in Bind::parse(payload, &commands, ptr_size) {
-                            writeln!(self.w, "{}", symbol)?;
+                        for symbol in Bind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", BindSymbolFmt(symbol, &commands))?;
                         }
                     }
 
@@ -396,8 +398,8 @@ impl<T: Write> FileProcessor<T> {
                             "segment section          address       type     addend symbol"
                         )?;
 
-                        for symbol in WeakBind::parse(payload, &commands, ptr_size) {
-                            writeln!(self.w, "{}", symbol)?;
+                        for symbol in WeakBind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", WeakBindSymbolFmt(symbol, &commands))?;
                         }
                     }
 
@@ -407,8 +409,8 @@ impl<T: Write> FileProcessor<T> {
 
                         writeln!(self.w, "Lazy bind table:")?;
 
-                        for symbol in LazyBind::parse(payload, &commands, ptr_size) {
-                            writeln!(self.w, "{}", symbol)?;
+                        for symbol in LazyBind::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", LazyBindSymbolFmt(symbol, &commands))?;
                         }
                     }
 
@@ -419,8 +421,8 @@ impl<T: Write> FileProcessor<T> {
                         writeln!(self.w, "Rebase table:")?;
                         writeln!(self.w, "segment  section            address     type")?;
 
-                        for symbol in Rebase::parse(payload, &commands, ptr_size) {
-                            writeln!(self.w, "{}", symbol)?;
+                        for symbol in Rebase::parse(payload, ptr_size) {
+                            writeln!(self.w, "{}", RebaseSymbolFmt(symbol, &commands))?;
                         }
                     }
 
@@ -535,6 +537,123 @@ impl<T: Write> FileProcessor<T> {
     }
 }
 
+struct BindSymbolFmt<'a>(BindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for BindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let dylib_name = dylib_name(self.1, self.0.dylib_ordinal).ok_or(fmt::Error)?;
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
+            segment_name,
+            section_name,
+            address,
+            self.0.symbol_type,
+            self.0.addend,
+            dylib_name,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                " (weak import)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct WeakBindSymbolFmt<'a>(WeakBindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for WeakBindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
+            segment_name,
+            section_name,
+            address,
+            self.0.symbol_type,
+            self.0.addend,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
+                " (strong)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct LazyBindSymbolFmt<'a>(LazyBindSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for LazyBindSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let dylib_name = dylib_name(self.1, self.0.dylib_ordinal).ok_or(fmt::Error)?;
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:16} 0x{:08X} {:<16} {}{}",
+            segment_name,
+            section_name,
+            address,
+            dylib_name,
+            self.0.name,
+            if self.0.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
+                " (weak import)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+struct RebaseSymbolFmt<'a>(RebaseSymbol, &'a [LoadCommand]);
+
+impl<'a> fmt::Display for RebaseSymbolFmt<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (segment_name, segment_range, sections) = segmnet_info(self.1, self.0.segment_index).ok_or(fmt::Error)?;
+
+        let address = (segment_range.start as isize + self.0.symbol_offset) as usize;
+
+        if address >= segment_range.end {
+            return Err(fmt::Error);
+        }
+
+        let section_name = section_name(sections, address).ok_or(fmt::Error)?;
+
+        write!(
+            f,
+            "{:8} {:18} 0x{:08X}  {}",
+            segment_name, section_name, address, self.0.symbol_type
+        )
+    }
+}
+
 struct ExportSymbolFmt<'a>(ExportSymbol, &'a [LoadCommand]);
 
 impl<'a> fmt::Display for ExportSymbolFmt<'a> {
@@ -568,28 +687,12 @@ impl<'a> fmt::Display for ExportSymbolFmt<'a> {
 
         match self.0.symbol {
             ExportType::Reexport { ordinal, ref name } => {
-                if let Some(dylib_name) = self.1
-                    .iter()
-                    .flat_map(|cmd| match cmd {
-                        &LoadCommand::IdDyLib(ref dylib)
-                        | &LoadCommand::LoadDyLib(ref dylib)
-                        | &LoadCommand::LoadWeakDyLib(ref dylib)
-                        | &LoadCommand::ReexportDyLib(ref dylib)
-                        | &LoadCommand::LoadUpwardDylib(ref dylib)
-                        | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
-                        _ => None,
-                    })
-                    .nth(ordinal - 1)
-                    .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
-                    .and_then(|filename| filename.to_str())
-                {
-                    if name.is_empty() {
-                        attrs.push(format!("from {}", dylib_name));
-                    } else {
-                        attrs.push(format!("{} from {}", name, dylib_name));
-                    }
+                let dylib_name = dylib_name(self.1, ordinal).ok_or(fmt::Error)?;
+
+                if name.is_empty() {
+                    attrs.push(format!("from {}", dylib_name));
                 } else {
-                    return Err(fmt::Error);
+                    attrs.push(format!("{} from {}", name, dylib_name));
                 }
             }
             ExportType::Weak { .. } => {
@@ -617,4 +720,53 @@ impl<'a> fmt::Display for ExportSymbolFmt<'a> {
 
         Ok(())
     }
+}
+
+fn segmnet_info(commands: &[LoadCommand], segment_index: usize) -> Option<(&str, Range<usize>, &[Rc<Section>])> {
+    commands.get(segment_index).and_then(|cmd| match cmd {
+        &LoadCommand::Segment {
+            ref segname,
+            vmaddr,
+            vmsize,
+            ref sections,
+            ..
+        }
+        | &LoadCommand::Segment64 {
+            ref segname,
+            vmaddr,
+            vmsize,
+            ref sections,
+            ..
+        } => Some((
+            segname.as_str(),
+            (vmaddr..vmaddr + vmsize),
+            sections.as_slice(),
+        )),
+        _ => None,
+    })
+}
+
+fn section_name(sections: &[Rc<Section>], addr: usize) -> Option<&str> {
+    sections
+        .iter()
+        .map(|section| section.as_ref())
+        .find(|section| section.addr <= addr && section.addr + section.size > addr)
+        .map(|section| section.sectname.as_str())
+}
+
+fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
+    commands
+        .iter()
+        .flat_map(|cmd| match cmd {
+            &LoadCommand::IdDyLib(ref dylib)
+            | &LoadCommand::LoadDyLib(ref dylib)
+            | &LoadCommand::LoadWeakDyLib(ref dylib)
+            | &LoadCommand::ReexportDyLib(ref dylib)
+            | &LoadCommand::LoadUpwardDylib(ref dylib)
+            | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
+            _ => None,
+        })
+        .nth(ordinal - 1)
+        .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
+        .and_then(|filename| filename.to_str())
 }

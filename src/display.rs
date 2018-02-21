@@ -5,7 +5,6 @@ use time;
 use loader::{ArHeader, FatHeader, MachCommand, MachHeader};
 use commands::{LcString, LoadCommand, Section};
 use symbol::Symbol;
-use opcode::{BindSymbol, BindSymbolFlags, LazyBindSymbol, RebaseSymbol, WeakBindSymbol};
 use consts::*;
 
 impl fmt::Display for MachHeader {
@@ -584,76 +583,6 @@ impl<'a> fmt::Display for Symbol<'a> {
                 write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
             },
         }
-    }
-}
-
-impl<'a> fmt::Display for BindSymbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:8} {:16} 0x{:08X} {:10}  {:5} {:<16} {}{}",
-            self.segment_name,
-            self.section_name,
-            self.address,
-            self.symbol_type,
-            self.addend,
-            self.dylib_name,
-            self.name,
-            if self.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                " (weak import)"
-            } else {
-                ""
-            }
-        )
-    }
-}
-
-impl<'a> fmt::Display for WeakBindSymbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:8} {:16} 0x{:08X} {:10}  {:5} {}{}",
-            self.segment_name,
-            self.section_name,
-            self.address,
-            self.symbol_type,
-            self.addend,
-            self.name,
-            if self.flags.contains(BindSymbolFlags::NON_WEAK_DEFINITION) {
-                " (strong)"
-            } else {
-                ""
-            }
-        )
-    }
-}
-
-impl<'a> fmt::Display for LazyBindSymbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:8} {:16} 0x{:08X} {:<16} {}{}",
-            self.segment_name,
-            self.section_name,
-            self.address,
-            self.dylib_name,
-            self.name,
-            if self.flags.contains(BindSymbolFlags::WEAK_IMPORT) {
-                " (weak import)"
-            } else {
-                ""
-            }
-        )
-    }
-}
-
-impl<'a> fmt::Display for RebaseSymbol<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{:8} {:18} 0x{:08X}  {}",
-            self.segment_name, self.section_name, self.address, self.symbol_type
-        )
     }
 }
 

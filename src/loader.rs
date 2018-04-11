@@ -272,10 +272,7 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!(
-                        "unknown file format 0x{:x}",
-                        magic
-                    ),))
+                    bail!(MachError::LoadError(format!("unknown file format 0x{:x}", magic),))
                 }
             }
         }
@@ -310,7 +307,7 @@ impl OFile {
         let nfat_arch = buf.read_u32::<O>()?;
 
         debug!(
-            "parsed fat header @ 0x{:08} with {} archs, magic=0x{:x}",
+            "0x{:08}\tparsed fat header with {} archs, magic=0x{:x}",
             buf.position(),
             nfat_arch,
             magic
@@ -327,21 +324,25 @@ impl OFile {
                 align: buf.read_u32::<O>()?,
             };
 
-            debug!("fat header arch#{}, arch={:?}", i, arch);
+            debug!("0x{:08}\tfat header arch#{}, arch={:?}", buf.position(), i, arch);
 
             archs.push(arch);
         }
 
+        let start = buf.position();
         let payload = buf.get_ref().as_ref();
         let mut files = Vec::new();
 
         for arch in archs {
-            debug!(
-                "parsing mach-o file at 0x{:x}, arch={:?}",
-                arch.offset, arch
-            );
+            if (arch.offset as u64) < start {
+                bail!(MachError::BufferOverflow(arch.offset as usize))
+            }
 
-            let mut cur = Cursor::new(payload.checked_slice(arch.offset as usize, arch.size as usize)?);
+            let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
+
+            debug!("0x{:08}\tparsing mach-o file, arch={:?}", arch.offset, arch);
+
+            let mut cur = Cursor::new(content);
 
             let file = OFile::parse(&mut cur)?;
 
@@ -438,8 +439,7 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
     fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
         let s = self.as_ref();
         let start = off as usize;
-        let end = off.checked_add(len)
-            .ok_or_else(|| MachError::BufferOverflow(len))? as usize;
+        let end = off.checked_add(len).ok_or_else(|| MachError::BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
             bail!(MachError::BufferOverflow(start))

@@ -342,6 +342,8 @@ pub enum LoadCommand {
     LoadUpwardDylib(DyLib),
     /// delay load of dylib until first use
     LazyLoadDylib(DyLib),
+    /// add a runtime search path for shared libraries
+    Rpath(String),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
     // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
@@ -794,6 +796,10 @@ impl LoadCommand {
             LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(Self::read_dylib::<O, T>(buf)?),
             LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(Self::read_dylib::<O, T>(buf)?),
             LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(Self::read_dylib::<O, T>(buf)?),
+            LC_RPATH => LoadCommand::Rpath({
+                let offset = buf.read_u32::<O>()? as usize;
+                buf.read_fixed_size_string(cmdsize - offset)?
+            }),
 
             LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_dylinker::<O, T>(buf)?),
             LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_dylinker::<O, T>(buf)?),
@@ -955,6 +961,7 @@ impl LoadCommand {
             LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
             LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
             LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
+            LoadCommand::Rpath(_) => LC_RPATH,
             LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
             LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
             LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
@@ -1598,6 +1605,14 @@ pub mod tests {
             assert_eq!(size, 0);
         } else {
             panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_rpath_command() {
+        if let (LoadCommand::Rpath(path), cmdsize) = parse_command!(LC_RPATH_DATA) {
+            assert_eq!(cmdsize, 64);
+            assert_eq!(path, "@executable_path/../../Library/PrivateFrameworks");
         }
     }
 }

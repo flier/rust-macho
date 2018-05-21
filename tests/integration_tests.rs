@@ -2,6 +2,7 @@
 extern crate log;
 #[macro_use]
 extern crate failure;
+extern crate hexplay;
 extern crate memmap;
 #[cfg(test)]
 extern crate pretty_env_logger;
@@ -17,10 +18,11 @@ mod integration {
     use std::path::Path;
 
     use failure::Error;
+    use hexplay::HexViewBuilder;
     use memmap::Mmap;
     use pretty_env_logger;
 
-    use mach_object::OFile;
+    use mach_object::{LoadCommand, MachCommand, OFile};
 
     const SYSTEM_BINARY_PATH: &[&str] = &[
         "/bin",
@@ -55,7 +57,13 @@ mod integration {
             let path = dir.join(symlink.read_link().expect(&format!("read symlink: {:?}", entry)));
 
             if !path.exists() {
-                trace!("skip the broken link: {:?} -> {:?}", entry, symlink);
+                trace!("skip the broken link: {:?} -> {:?}", entry.path(), symlink);
+
+                return Ok(());
+            }
+
+            if path.is_dir() {
+                trace!("skip the symbol linked directory, {:?} -> {:?}", entry.path(), path);
 
                 return Ok(());
             }
@@ -78,6 +86,19 @@ mod integration {
                     let mut cur = Cursor::new(payload);
                     let ofile = OFile::parse(&mut cur)?;
 
+                    if let OFile::MachFile { ref commands, .. } = ofile {
+                        for &MachCommand(ref cmd, cmdsize) in commands {
+                            if let LoadCommand::Command { cmd, ref payload } = cmd {
+                                warn!(
+                                    "unsolved command #{} with {} bytes:\n{}",
+                                    cmd,
+                                    cmdsize,
+                                    HexViewBuilder::new(payload).finish()
+                                );
+                            }
+                        }
+                    }
+
                     trace!("loaded ofile, {:?}", path);
                 }
 
@@ -94,11 +115,11 @@ mod integration {
 
     #[test]
     fn test_system_binaries() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
 
         let mut files = HashSet::new();
 
-        for path in SYSTEM_BINARY_PATH {
+        for path in SYSTEM_BINARY_PATH.iter().chain(SYSTEM_LIBRARY_PATH.iter()) {
             let path = Path::new(path);
 
             if path.exists() && path.is_dir() {
@@ -130,7 +151,7 @@ mod integration {
 
     #[test]
     fn test_system_libraries() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
 
         let mut files = HashSet::new();
 
@@ -147,11 +168,15 @@ mod integration {
                         if files.contains(&path) {
                             trace!("skip duplicated file: {:?}", path);
                         } else {
-                            match path.extension().and_then(|ext| ext.to_str()) {
-                                Some("dylib") | Some("so") | Some("a") | Some("o") => {
-                                    load_mach_file(&entry).expect(&format!("load library file: {:?}", entry));
+                            let file_type = entry.file_type().unwrap();
+
+                            if file_type.is_file() || file_type.is_symlink() {
+                                match path.extension().and_then(|ext| ext.to_str()) {
+                                    Some("dylib") | Some("so") | Some("a") | Some("o") => {
+                                        load_mach_file(&entry).expect(&format!("load library file: {:?}", entry));
+                                    }
+                                    ext => trace!("skip file {:?} with extention: {:?}", path, ext),
                                 }
-                                ext => trace!("skip file with extention: {:?}", ext),
                             }
 
                             files.insert(path);
@@ -164,11 +189,11 @@ mod integration {
 
     #[test]
     fn test_system_frameworks() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
     }
 
     #[test]
     fn test_system_applications() {
-        pretty_env_logger::try_init();
+        let _ = pretty_env_logger::try_init();
     }
 }

@@ -1,14 +1,14 @@
 #![allow(non_camel_case_types)]
 use std::convert::From;
-use std::mem::size_of;
 use std::io::{BufRead, Cursor, ErrorKind, Read, Seek, SeekFrom};
+use std::mem::size_of;
 
-use libc;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, ReadBytesExt};
+use libc;
 
+use commands::{LoadCommand, ReadStringExt};
 use consts::*;
 use errors::*;
-use commands::{LoadCommand, ReadStringExt};
 
 /// The architecture of mach header
 ///
@@ -208,6 +208,10 @@ impl ArHeader {
 
         Ok(v)
     }
+
+    pub fn name(&self) -> &str {
+        self.ar_member_name.as_ref().unwrap_or(&self.ar_name).as_str()
+    }
 }
 
 /// Structure of the __.SYMDEF table of contents for an archive.
@@ -362,57 +366,55 @@ impl OFile {
             debug!("0x{:08x}\tparsing ar header", buf.position());
 
             match ArHeader::parse(buf) {
-                Ok(ref mut header) => if let Some(ref member_name) = header.ar_member_name {
-                    if member_name == SYMDEF || member_name == SYMDEF_SORTED {
-                        let ranlib_len = buf.read_u32::<O>()? as usize;
-                        let mut ranlibs = Vec::new();
+                Ok(ref mut header) => if header.name() == SYMDEF || header.name() == SYMDEF_SORTED {
+                    let ranlib_len = buf.read_u32::<O>()? as usize;
+                    let mut ranlibs = Vec::new();
 
-                        for _ in 0..(ranlib_len / size_of::<RanLib>()) {
-                            ranlibs.push(RanLib {
-                                ran_strx: buf.read_u32::<O>()?,
-                                ran_off: buf.read_u32::<O>()?,
-                            })
-                        }
-
-                        let toc_strsize = buf.read_u32::<O>()?;
-
-                        let end = buf.position()
-                            .checked_add(u64::from(toc_strsize))
-                            .ok_or_else(|| MachError::BufferOverflow(toc_strsize as usize))?;
-
-                        buf.seek(SeekFrom::Start(end))?;
-
-                        debug!(
-                            "parsed {} with {} ranlibs and {} bytes string",
-                            member_name,
-                            ranlibs.len(),
-                            toc_strsize
-                        );
-
-                        files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
-                    } else {
-                        let mut end = buf.position()
-                            .checked_add(header.ar_size as u64)
-                            .ok_or_else(|| MachError::BufferOverflow(header.ar_size as usize))?;
-
-                        if let Some(size) = header.extended_format_size() {
-                            end = end.checked_sub(size as u64)
-                                .ok_or_else(|| MachError::BufferOverflow(size))?;
-                        }
-
-                        let file = Self::parse(buf)?;
-
-                        debug!(
-                            "0x{:08x}\tseek to 0x{:08x}, skip {} bytes",
-                            buf.position(),
-                            end,
-                            end - buf.position()
-                        );
-
-                        buf.seek(SeekFrom::Start(end))?;
-
-                        files.push((header.clone(), file));
+                    for _ in 0..(ranlib_len / size_of::<RanLib>()) {
+                        ranlibs.push(RanLib {
+                            ran_strx: buf.read_u32::<O>()?,
+                            ran_off: buf.read_u32::<O>()?,
+                        })
                     }
+
+                    let toc_strsize = buf.read_u32::<O>()?;
+
+                    let end = buf.position()
+                        .checked_add(u64::from(toc_strsize))
+                        .ok_or_else(|| MachError::BufferOverflow(toc_strsize as usize))?;
+
+                    buf.seek(SeekFrom::Start(end))?;
+
+                    debug!(
+                        "parsed {} with {} ranlibs and {} bytes string",
+                        header.name(),
+                        ranlibs.len(),
+                        toc_strsize
+                    );
+
+                    files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
+                } else {
+                    let mut end = buf.position()
+                        .checked_add(header.ar_size as u64)
+                        .ok_or_else(|| MachError::BufferOverflow(header.ar_size as usize))?;
+
+                    if let Some(size) = header.extended_format_size() {
+                        end = end.checked_sub(size as u64)
+                            .ok_or_else(|| MachError::BufferOverflow(size))?;
+                    }
+
+                    let file = Self::parse(buf)?;
+
+                    debug!(
+                        "0x{:08x}\tseek to 0x{:08x}, skip {} bytes",
+                        buf.position(),
+                        end,
+                        end - buf.position()
+                    );
+
+                    buf.seek(SeekFrom::Start(end))?;
+
+                    files.push((header.clone(), file));
                 },
                 Err(err) => {
                     match err.downcast_ref::<::std::io::Error>() {

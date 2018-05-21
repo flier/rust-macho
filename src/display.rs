@@ -2,10 +2,10 @@ use std::fmt;
 
 use time;
 
-use loader::{ArHeader, FatHeader, MachCommand, MachHeader};
 use commands::{LcString, LoadCommand, Section};
-use symbol::Symbol;
 use consts::*;
+use loader::{ArHeader, FatHeader, MachCommand, MachHeader};
+use symbol::Symbol;
 
 impl fmt::Display for MachHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -39,16 +39,8 @@ impl fmt::Display for FatHeader {
         for (i, arch) in self.archs.iter().enumerate() {
             write!(f, "architecture {}\n", i)?;
             write!(f, "    cputype {}\n", arch.cputype)?;
-            write!(
-                f,
-                "    cpusubtype {}\n",
-                get_cpu_subtype_type(arch.cpusubtype)
-            )?;
-            write!(
-                f,
-                "    capabilities 0x{:x}\n",
-                get_cpu_subtype_feature(arch.cpusubtype)
-            )?;
+            write!(f, "    cpusubtype {}\n", get_cpu_subtype_type(arch.cpusubtype))?;
+            write!(f, "    capabilities 0x{:x}\n", get_cpu_subtype_feature(arch.cpusubtype))?;
             write!(f, "    offset {}\n", arch.offset)?;
             write!(f, "    size {}\n", arch.size)?;
             write!(f, "    align 2^{} ({})\n", arch.align, 1 << arch.align)?;
@@ -135,12 +127,7 @@ impl MachCommand {
                         write!(f, "      size 0x{:08x}\n", section.size)?;
                     }
                     write!(f, "    offset {}\n", section.offset)?;
-                    write!(
-                        f,
-                        "     align 2^{} ({})\n",
-                        section.align,
-                        1 << section.align
-                    )?;
+                    write!(f, "     align 2^{} ({})\n", section.align, 1 << section.align)?;
                     write!(f, "    reloff {}\n", section.reloff)?;
                     write!(f, "    nreloc {}\n", section.nreloc)?;
                     let flags: u32 = section.flags.into();
@@ -335,11 +322,7 @@ impl MachCommand {
             | LoadCommand::LazyLoadDylib(ref dylib) => {
                 write!(f, "          cmd {}\n", cmd.name())?;
                 write!(f, "      cmdsize {}\n", cmdsize)?;
-                write!(
-                    f,
-                    "         name {} (offset {})\n",
-                    dylib.name, dylib.name.0
-                )?;
+                write!(f, "         name {} (offset {})\n", dylib.name, dylib.name.0)?;
                 let ts = time::at_utc(time::Timespec::new(i64::from(dylib.timestamp), 0));
                 write!(
                     f,
@@ -405,11 +388,7 @@ impl MachCommand {
         if let LoadCommand::Uuid(ref uuid) = *cmd {
             write!(f, "     cmd {}\n", cmd.name())?;
             write!(f, " cmdsize {}\n", cmdsize)?;
-            write!(
-                f,
-                "    uuid {}\n",
-                uuid.hyphenated().to_string().to_uppercase()
-            )?;
+            write!(f, "    uuid {}\n", uuid.hyphenated().to_string().to_uppercase())?;
 
             Ok(())
         } else {
@@ -420,11 +399,7 @@ impl MachCommand {
     fn print_entry_point_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
-        if let LoadCommand::EntryPoint {
-            entryoff,
-            stacksize,
-        } = *cmd
-        {
+        if let LoadCommand::EntryPoint { entryoff, stacksize } = *cmd {
             write!(f, "       cmd {}\n", cmd.name())?;
             write!(f, "   cmdsize {}\n", cmdsize)?;
             write!(f, "  entryoff {}\n", entryoff)?;
@@ -496,9 +471,7 @@ impl fmt::Display for MachCommand {
 impl<'a> fmt::Display for Symbol<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Symbol::Undefined {
-                ref name, external, ..
-            } => write!(
+            Symbol::Undefined { ref name, external, .. } => write!(
                 f,
                 "                 {} {}",
                 if external { "U" } else { "u" },
@@ -557,17 +530,13 @@ impl<'a> fmt::Display for Symbol<'a> {
                     name.unwrap_or("")
                 )
             }
-            Symbol::Prebound {
-                ref name, external, ..
-            } => write!(
+            Symbol::Prebound { ref name, external, .. } => write!(
                 f,
                 "                 {} {}",
                 if external { "P" } else { "p" },
                 name.unwrap_or("")
             ),
-            Symbol::Indirect {
-                ref name, external, ..
-            } => write!(
+            Symbol::Indirect { ref name, external, .. } => write!(
                 f,
                 "                 {} {}",
                 if external { "I" } else { "i" },
@@ -584,41 +553,41 @@ impl<'a> fmt::Display for Symbol<'a> {
 
 #[cfg(test)]
 pub mod tests {
-    use std::str;
     use std::io::Write;
+    use std::str;
 
     use diff;
 
     use loader::OFile;
 
-    static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../test/helloworld");
-    static HELLO_WORLD_LC: &'static str = include_str!("../test/helloworld.lc");
-    static HELLO_UNIVERSAL_BIN: &'static [u8] = include_bytes!("../test/helloworld.universal");
+    static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../tests/helloworld");
+    static HELLO_WORLD_LC: &'static str = include_str!("../tests/helloworld.lc");
+    static HELLO_UNIVERSAL_BIN: &'static [u8] = include_bytes!("../tests/helloworld.universal");
     static HELLO_UNIVERSAL_I386_LC: &'static str = include_str!(
-        "../test/helloworld.universal.\
+        "../tests/helloworld.universal.\
          i386.lc"
     );
     static HELLO_UNIVERSAL_X86_64_LC: &'static str = include_str!(
-        "../test/helloworld.universal.\
+        "../tests/helloworld.universal.\
          x86_64.lc"
     );
-    static HELLO_OBJC_BIN: &'static [u8] = include_bytes!("../test/helloobjc");
-    static HELLO_OBJC_LC: &'static str = include_str!("../test/helloobjc.lc");
-    static HELLO_RUST_BIN: &'static [u8] = include_bytes!("../test/hellorust");
-    static HELLO_RUST_LC: &'static str = include_str!("../test/hellorust.lc");
+    static HELLO_OBJC_BIN: &'static [u8] = include_bytes!("../tests/helloobjc");
+    static HELLO_OBJC_LC: &'static str = include_str!("../tests/helloobjc.lc");
+    static HELLO_RUST_BIN: &'static [u8] = include_bytes!("../tests/hellorust");
+    static HELLO_RUST_LC: &'static str = include_str!("../tests/hellorust.lc");
 
     macro_rules! parse_test_file {
-        ($buf: expr) => ({
+        ($buf:expr) => {{
             let _ = ::pretty_env_logger::try_init();
 
             let mut cursor = ::std::io::Cursor::new($buf);
 
             $crate::OFile::parse(&mut cursor).unwrap()
-        })
+        }};
     }
 
     macro_rules! assert_nodiff {
-        ($left:expr, $right:expr) => ({
+        ($left:expr, $right:expr) => {{
             let mut w = Vec::new();
             let mut diffs = 0;
             let left = $left.replace("\r\n", "\n");
@@ -629,12 +598,12 @@ pub mod tests {
                     diff::Result::Left(l) => {
                         diffs += 1;
                         write!(w, "-{}\n", l).unwrap()
-                    },
+                    }
                     diff::Result::Both(_, _) => {}
                     diff::Result::Right(r) => {
                         diffs += 1;
                         write!(w, "+{}\n", r).unwrap()
-                    },
+                    }
                 }
             }
 
@@ -643,7 +612,7 @@ pub mod tests {
             }
 
             assert_eq!(&left, &right);
-        })
+        }};
     }
 
     #[test]
@@ -711,10 +680,7 @@ pub mod tests {
         if let OFile::FatFile { ref files, .. } = parse_test_file!(HELLO_UNIVERSAL_BIN) {
             assert_eq!(files.len(), 2);
 
-            for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC]
-                .iter()
-                .enumerate()
-            {
+            for (i, arch_dump) in [HELLO_UNIVERSAL_I386_LC, HELLO_UNIVERSAL_X86_64_LC].iter().enumerate() {
                 let mut w = Vec::<u8>::new();
 
                 write!(w, "helloworld.universal:\n").unwrap();

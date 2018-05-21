@@ -11,6 +11,7 @@ license = "Apache-2.0"
 [features]
 default = ["display"]
 display = []
+integration_tests = []
 
 [dependencies]
 log = "0.4"

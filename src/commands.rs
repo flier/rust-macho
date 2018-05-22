@@ -247,6 +247,44 @@ pub struct LinkEditData {
     pub size: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum X86ThreadFlavor {
+    x86_THREAD_STATE32 = 1,
+    x86_FLOAT_STATE32 = 2,
+    x86_EXCEPTION_STATE32 = 3,
+    x86_THREAD_STATE64 = 4,
+    x86_FLOAT_STATE64 = 5,
+    x86_EXCEPTION_STATE64 = 6,
+    x86_THREAD_STATE = 7,
+    x86_FLOAT_STATE = 8,
+    x86_EXCEPTION_STATE = 9,
+    x86_DEBUG_STATE32 = 10,
+    x86_DEBUG_STATE64 = 11,
+    x86_DEBUG_STATE = 12,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ARMThreadFlavors {
+    ARM_THREAD_STATE = 1,
+    ARM_VFP_STATE = 2,
+    ARM_EXCEPTION_STATE = 3,
+    ARM_DEBUG_STATE = 4,
+    ARN_THREAD_STATE_NONE = 5,
+    ARM_THREAD_STATE64 = 6,
+    ARM_EXCEPTION_STATE64 = 7,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PPCThreadFlavors {
+    PPC_THREAD_STATE = 1,
+    PPC_FLOAT_STATE = 2,
+    PPC_EXCEPTION_STATE = 3,
+    PPC_VECTOR_STATE = 4,
+    PPC_THREAD_STATE64 = 5,
+    PPC_EXCEPTION_STATE64 = 6,
+    PPC_THREAD_STATE_NONE = 7,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThreadState {
     I386 {
@@ -317,6 +355,25 @@ pub enum ThreadState {
         __cpsr: u32,
         /// Same size for 32-bit or 64-bit clients
         __pad: u32,
+    },
+    PowerPC {
+        __srr: [u32; 2],
+        __r: [u32; 32],
+        __ct: u32,
+        __xer: u32,
+        __lr: u32,
+        __ctr: u32,
+        __mq: u32,
+        __vrsave: u32,
+    },
+    PowerPC64 {
+        __srr: [u64; 2],
+        __r: [u64; 32],
+        __cr: u32,
+        __xer: u64,
+        __lr: u64,
+        __ctr: u64,
+        __vrsave: u32,
     },
 }
 
@@ -772,7 +829,7 @@ pub enum LoadCommand {
     /// use in the thread state primitives.  The machine specific data structures
     /// follow the struct thread_command as follows.
     /// Each flavor of machine specific data structure is preceded by an unsigned
-    /// long constant for the flavor of that data structure, an uint32_t
+    /// long constant for the flavor of that data structure, an
     /// that is the count of longs of the size of the state data structure and then
     /// the state data structure follows.  This triple may be repeated for many
     /// flavors.  The constants for the flavors, counts and state data structure
@@ -1103,6 +1160,53 @@ impl LoadCommand {
                         __pc: buf.read_u64::<O>()?,
                         __cpsr: buf.read_u32::<O>()?,
                         __pad: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_POWERPC => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __srr = [0u32; 2];
+                let mut __r = [0u32; 32];
+
+                buf.read_u32_into::<O>(&mut __srr)?;
+                buf.read_u32_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::PowerPC {
+                        __srr,
+                        __r,
+                        __ct: buf.read_u32::<O>()?,
+                        __xer: buf.read_u32::<O>()?,
+                        __lr: buf.read_u32::<O>()?,
+                        __ctr: buf.read_u32::<O>()?,
+                        __mq: buf.read_u32::<O>()?,
+                        __vrsave: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_POWERPC64 => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __srr = [0u64; 2];
+                let mut __r = [0u64; 32];
+
+                buf.read_u64_into::<O>(&mut __srr)?;
+                buf.read_u64_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::PowerPC64 {
+                        __srr,
+                        __r,
+                        __cr: buf.read_u32::<O>()?,
+                        __xer: buf.read_u64::<O>()?,
+                        __lr: buf.read_u64::<O>()?,
+                        __ctr: buf.read_u64::<O>()?,
+                        __vrsave: buf.read_u32::<O>()?,
                     },
                 }
             }

@@ -1278,6 +1278,10 @@ impl LoadCommand {
             LC_ENCRYPTION_INFO_64 => "LC_ENCRYPTION_INFO_64",
             LC_LINKER_OPTION => "LC_LINKER_OPTION",
             LC_LINKER_OPTIMIZATION_HINT => "LC_LINKER_OPTIMIZATION_HINT",
+            LC_VERSION_MIN_TVOS => "LC_VERSION_MIN_TVOS",
+            LC_VERSION_MIN_WATCHOS => "LC_VERSION_MIN_WATCHOS",
+            LC_NOTE => "LC_NOTE",
+            LC_BUILD_VERSION => "LC_BUILD_VERSION",
             _ => "LC_COMMAND",
         }
     }

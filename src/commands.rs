@@ -1,13 +1,14 @@
 use std::fmt;
-use std::rc::Rc;
 use std::io::{BufRead, Cursor, Read};
 use std::ops::Deref;
+use std::rc::Rc;
 
-use uuid::Uuid;
 use byteorder::{ByteOrder, ReadBytesExt};
+use uuid::Uuid;
 
 use consts::*;
 use errors::*;
+use loader::MachHeader;
 
 /// The encoded version.
 ///
@@ -244,6 +245,79 @@ pub struct LinkEditData {
     pub off: u32,
     /// file size of data in __LINKEDIT segment
     pub size: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThreadState {
+    I386 {
+        __eax: u32,
+        __ebx: u32,
+        __ecx: u32,
+        __edx: u32,
+        __edi: u32,
+        __esi: u32,
+        __ebp: u32,
+        __esp: u32,
+        __ss: u32,
+        __eflags: u32,
+        __eip: u32,
+        __cs: u32,
+        __ds: u32,
+        __es: u32,
+        __fs: u32,
+        __gs: u32,
+    },
+    X86_64 {
+        __rax: u64,
+        __rbx: u64,
+        __rcx: u64,
+        __rdx: u64,
+        __rdi: u64,
+        __rsi: u64,
+        __rbp: u64,
+        __rsp: u64,
+        __r8: u64,
+        __r9: u64,
+        __r10: u64,
+        __r11: u64,
+        __r12: u64,
+        __r13: u64,
+        __r14: u64,
+        __r15: u64,
+        __rip: u64,
+        __rflags: u64,
+        __cs: u64,
+        __fs: u64,
+        __gs: u64,
+    },
+    Arm {
+        /// General purpose register r0-r12
+        __r: [u32; 13],
+        /// Stack pointer r13
+        __sp: u32,
+        /// Link register r14
+        __lr: u32,
+        /// Program counter r15
+        __pc: u32,
+        /// Current program status register
+        __cpsr: u32,
+    },
+    Arm64 {
+        /// General purpose registers x0-x28
+        __x: [u64; 29],
+        /// Frame pointer x29
+        __fp: u64,
+        /// Link register x30
+        __lr: u64,
+        /// Stack pointer x31
+        __sp: u64,
+        /// Program counter
+        __pc: u64,
+        /// Current program status register
+        __cpsr: u32,
+        /// Same size for 32-bit or 64-bit clients
+        __pad: u32,
+    },
 }
 
 /// The load commands directly follow the mach header.
@@ -693,6 +767,29 @@ pub enum LoadCommand {
     /// the version of the sources used to build the binary.
     ///
     SourceVersion(SourceVersionTag),
+
+    /// Thread commands contain machine-specific data structures suitable for
+    /// use in the thread state primitives.  The machine specific data structures
+    /// follow the struct thread_command as follows.
+    /// Each flavor of machine specific data structure is preceded by an unsigned
+    /// long constant for the flavor of that data structure, an uint32_t
+    /// that is the count of longs of the size of the state data structure and then
+    /// the state data structure follows.  This triple may be repeated for many
+    /// flavors.  The constants for the flavors, counts and state data structure
+    /// definitions are expected to be in the header file <machine/thread_status.h>.
+    /// These machine specific data structures sizes must be multiples of
+    /// 4 bytes  The cmdsize reflects the total size of the thread_command
+    /// and all of the sizes of the constants for the flavors, counts and state
+    /// data structures.
+    UnixThread {
+        /// flavor of thread state
+        flavor: u32,
+        /// count of longs in thread state
+        count: u32,
+        /// thread state for this flavor
+        state: ThreadState,
+    },
+
     Command {
         /// type of load command
         cmd: u32,
@@ -710,9 +807,7 @@ pub trait ReadStringExt: Read {
 
         self.read_exact(&mut buf)?;
 
-        Ok(String::from_utf8(
-            buf.split(|&b| b == 0).next().unwrap().to_vec(),
-        )?)
+        Ok(String::from_utf8(buf.split(|&b| b == 0).next().unwrap().to_vec())?)
     }
 }
 
@@ -721,7 +816,10 @@ impl<R: Read + ?Sized> ReadStringExt for R {}
 const LOAD_COMMAND_HEADER_SIZE: usize = 8; // cmd + cmdsize
 
 impl LoadCommand {
-    pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<(LoadCommand, usize)> {
+    pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(
+        header: &MachHeader,
+        buf: &mut Cursor<T>,
+    ) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
         let cmd = buf.read_u32::<O>()?;
         let cmdsize = buf.read_u32::<O>()? as usize;
@@ -869,6 +967,95 @@ impl LoadCommand {
                 stacksize: buf.read_u64::<O>()?,
             },
             LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(buf.read_u64::<O>()?)),
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_I386 => LoadCommand::UnixThread {
+                flavor: buf.read_u32::<O>()?,
+                count: buf.read_u32::<O>()?,
+                state: ThreadState::I386 {
+                    __eax: buf.read_u32::<O>()?,
+                    __ebx: buf.read_u32::<O>()?,
+                    __ecx: buf.read_u32::<O>()?,
+                    __edx: buf.read_u32::<O>()?,
+                    __edi: buf.read_u32::<O>()?,
+                    __esi: buf.read_u32::<O>()?,
+                    __ebp: buf.read_u32::<O>()?,
+                    __esp: buf.read_u32::<O>()?,
+                    __ss: buf.read_u32::<O>()?,
+                    __eflags: buf.read_u32::<O>()?,
+                    __eip: buf.read_u32::<O>()?,
+                    __cs: buf.read_u32::<O>()?,
+                    __ds: buf.read_u32::<O>()?,
+                    __es: buf.read_u32::<O>()?,
+                    __fs: buf.read_u32::<O>()?,
+                    __gs: buf.read_u32::<O>()?,
+                },
+            },
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_X86_64 => LoadCommand::UnixThread {
+                flavor: buf.read_u32::<O>()?,
+                count: buf.read_u32::<O>()?,
+                state: ThreadState::X86_64 {
+                    __rax: buf.read_u64::<O>()?,
+                    __rbx: buf.read_u64::<O>()?,
+                    __rcx: buf.read_u64::<O>()?,
+                    __rdx: buf.read_u64::<O>()?,
+                    __rdi: buf.read_u64::<O>()?,
+                    __rsi: buf.read_u64::<O>()?,
+                    __rbp: buf.read_u64::<O>()?,
+                    __rsp: buf.read_u64::<O>()?,
+                    __r8: buf.read_u64::<O>()?,
+                    __r9: buf.read_u64::<O>()?,
+                    __r10: buf.read_u64::<O>()?,
+                    __r11: buf.read_u64::<O>()?,
+                    __r12: buf.read_u64::<O>()?,
+                    __r13: buf.read_u64::<O>()?,
+                    __r14: buf.read_u64::<O>()?,
+                    __r15: buf.read_u64::<O>()?,
+                    __rip: buf.read_u64::<O>()?,
+                    __rflags: buf.read_u64::<O>()?,
+                    __cs: buf.read_u64::<O>()?,
+                    __fs: buf.read_u64::<O>()?,
+                    __gs: buf.read_u64::<O>()?,
+                },
+            },
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_ARM => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __r = [0u32; 13];
+
+                buf.read_u32_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::Arm {
+                        __r,
+                        __sp: buf.read_u32::<O>()?,
+                        __lr: buf.read_u32::<O>()?,
+                        __pc: buf.read_u32::<O>()?,
+                        __cpsr: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_ARM64 => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __x = [0u64; 29];
+
+                buf.read_u64_into::<O>(&mut __x)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::Arm64 {
+                        __x,
+                        __fp: buf.read_u64::<O>()?,
+                        __lr: buf.read_u64::<O>()?,
+                        __sp: buf.read_u64::<O>()?,
+                        __pc: buf.read_u64::<O>()?,
+                        __cpsr: buf.read_u32::<O>()?,
+                        __pad: buf.read_u32::<O>()?,
+                    },
+                }
+            }
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -978,6 +1165,7 @@ impl LoadCommand {
             LoadCommand::DyldInfo { .. } => LC_DYLD_INFO_ONLY,
             LoadCommand::EntryPoint { .. } => LC_MAIN,
             LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
+            LoadCommand::UnixThread { .. } => LC_UNIXTHREAD,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }
@@ -1078,9 +1266,7 @@ where
 
         self.read_until(0, &mut v)?;
 
-        Ok(String::from_utf8(
-            v.split(|&b| b == 0).next().unwrap().to_vec(),
-        )?)
+        Ok(String::from_utf8(v.split(|&b| b == 0).next().unwrap().to_vec())?)
     }
 }
 
@@ -1227,15 +1413,16 @@ pub mod tests {
     include!("testdata.rs");
 
     macro_rules! parse_command {
-        ($buf:expr) => ({
+        ($buf:expr) => {{
+            let header = MachHeader::default();
             let mut buf = Vec::new();
 
             buf.extend_from_slice(&$buf[..]);
 
             let mut cur = Cursor::new(buf);
 
-            LoadCommand::parse::<LittleEndian, Vec<u8>>(&mut cur).unwrap()
-        })
+            LoadCommand::parse::<LittleEndian, Vec<u8>>(&header, &mut cur).unwrap()
+        }};
     }
 
     #[test]
@@ -1514,10 +1701,7 @@ pub mod tests {
     fn test_parse_uuid_command() {
         if let (LoadCommand::Uuid(ref uuid), cmdsize) = parse_command!(LC_UUID_DATA) {
             assert_eq!(cmdsize, 24);
-            assert_eq!(
-                uuid.hyphenated().to_string(),
-                "92e3cf1f-20da-3373-a98c-851366d353bf"
-            );
+            assert_eq!(uuid.hyphenated().to_string(), "92e3cf1f-20da-3373-a98c-851366d353bf");
         } else {
             panic!();
         }
@@ -1525,14 +1709,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_min_version_command() {
-        if let (
-            LoadCommand::VersionMin {
-                target,
-                version,
-                sdk,
-            },
-            cmdsize,
-        ) = parse_command!(LC_VERSION_MIN_MACOSX_DATA)
+        if let (LoadCommand::VersionMin { target, version, sdk }, cmdsize) = parse_command!(LC_VERSION_MIN_MACOSX_DATA)
         {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
@@ -1555,14 +1732,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_main_command() {
-        if let (
-            LoadCommand::EntryPoint {
-                entryoff,
-                stacksize,
-            },
-            cmdsize,
-        ) = parse_command!(LC_MAIN_DATA)
-        {
+        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) = parse_command!(LC_MAIN_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(entryoff, 0x11400);
             assert_eq!(stacksize, 0);
@@ -1575,10 +1745,7 @@ pub mod tests {
     fn test_load_dylib_command() {
         if let (LoadCommand::LoadDyLib(ref dylib), cmdsize) = parse_command!(LC_LOAD_DYLIB_DATA) {
             assert_eq!(cmdsize, 56);
-            assert_eq!(
-                dylib.name,
-                LcString(24, String::from("/usr/lib/libSystem.B.dylib"))
-            );
+            assert_eq!(dylib.name, LcString(24, String::from("/usr/lib/libSystem.B.dylib")));
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
             assert_eq!(dylib.compatibility_version.to_string(), "1.0");

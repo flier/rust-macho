@@ -292,7 +292,7 @@ impl OFile {
         let mut commands = Vec::new();
 
         for _ in 0..header.ncmds as usize {
-            let (cmd, cmdsize) = LoadCommand::parse::<O, T>(buf)?;
+            let (cmd, cmdsize) = LoadCommand::parse::<O, T>(&header, buf)?;
 
             commands.push(MachCommand(cmd, cmdsize));
         }

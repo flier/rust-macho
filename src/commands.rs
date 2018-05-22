@@ -800,6 +800,43 @@ pub enum LoadCommand {
     /// following structure.
     SubFramework(LcString),
 
+    /// A dynamically linked shared library may be a sub_umbrella of an umbrella
+    /// framework.  If so it will be linked with "-sub_umbrella umbrella_name" where
+    /// Where "umbrella_name" is the name of the sub_umbrella framework.  When
+    /// staticly linking when -twolevel_namespace is in effect a twolevel namespace
+    /// umbrella framework will only cause its subframeworks and those frameworks
+    /// listed as sub_umbrella frameworks to be implicited linked in.  Any other
+    /// dependent dynamic libraries will not be linked it when -twolevel_namespace
+    /// is in effect.  The primary library recorded by the static linker when
+    /// resolving a symbol in these libraries will be the umbrella framework.
+    /// Zero or more sub_umbrella frameworks may be use by an umbrella framework.
+    /// The name of a sub_umbrella framework is recorded in the following structure.
+    SubUmbrella(LcString),
+
+    /// For dynamically linked shared libraries that are subframework of an umbrella
+    /// framework they can allow clients other than the umbrella framework or other
+    /// subframeworks in the same umbrella framework.  To do this the subframework
+    /// is built with "-allowable_client client_name" and an LC_SUB_CLIENT load
+    /// command is created for each -allowable_client flag.  The client_name is
+    /// usually a framework name.  It can also be a name used for bundles clients
+    /// where the bundle is built with "-client_name client_name".
+    SubClient(LcString),
+
+    /// A dynamically linked shared library may be a sub_library of another shared
+    /// library.  If so it will be linked with "-sub_library library_name" where
+    /// Where "library_name" is the name of the sub_library shared library.  When
+    /// staticly linking when -twolevel_namespace is in effect a twolevel namespace
+    /// shared library will only cause its subframeworks and those frameworks
+    /// listed as sub_umbrella frameworks and libraries listed as sub_libraries to
+    /// be implicited linked in.  Any other dependent dynamic libraries will not be
+    /// linked it when -twolevel_namespace is in effect.  The primary library
+    /// recorded by the static linker when resolving a symbol in these libraries
+    /// will be the umbrella framework (or dynamic library). Zero or more sub_library
+    /// shared libraries may be use by an umbrella framework or (or dynamic library).
+    /// The name of a sub_library framework is recorded in the following structure.
+    /// For example /usr/lib/libobjc_profile.A.dylib would be recorded as "libobjc".
+    SubLibrary(LcString),
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1067,6 +1104,9 @@ impl LoadCommand {
                 }
             }
             LC_SUB_FRAMEWORK => LoadCommand::SubFramework(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_UMBRELLA => LoadCommand::SubUmbrella(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_CLIENT => LoadCommand::SubClient(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_LIBRARY => LoadCommand::SubLibrary(Self::read_lcstr::<O, T>(buf)?),
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1178,6 +1218,9 @@ impl LoadCommand {
             LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
             LoadCommand::UnixThread { .. } => LC_UNIXTHREAD,
             LoadCommand::SubFramework(_) => LC_SUB_FRAMEWORK,
+            LoadCommand::SubUmbrella(_) => LC_SUB_UMBRELLA,
+            LoadCommand::SubClient(_) => LC_SUB_CLIENT,
+            LoadCommand::SubLibrary(_) => LC_SUB_LIBRARY,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

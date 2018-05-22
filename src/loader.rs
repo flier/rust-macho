@@ -271,6 +271,11 @@ impl OFile {
                 let mut ar_magic = [0; 8];
 
                 buf.seek(SeekFrom::Current(-4))?;
+
+                if buf.get_ref().as_ref().len() < ar_magic.len() {
+                    return Err(UnknownMagic(magic).into());
+                }
+
                 buf.read_exact(&mut ar_magic)?;
 
                 if ar_magic == ARMAG {

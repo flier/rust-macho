@@ -8,7 +8,7 @@ use libc;
 
 use commands::{LoadCommand, ReadStringExt};
 use consts::*;
-use errors::*;
+use errors::{MachError::*, Result};
 
 /// The architecture of mach header
 ///
@@ -200,7 +200,7 @@ impl ArHeader {
 
         for c in s.as_bytes() {
             if *c < b'0' || b'7' < *c {
-                bail!(MachError::ParseOctalError(String::from(s)));
+                return Err(ParseOctalError(String::from(s)).into());
             }
 
             v = v * 8 + (c - b'0') as usize;
@@ -276,7 +276,7 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!("unknown file format 0x{:x}", magic),))
+                    Err(UnknownMagic(magic).into())
                 }
             }
         }
@@ -339,7 +339,7 @@ impl OFile {
 
         for arch in archs {
             if (arch.offset as u64) < start {
-                bail!(MachError::BufferOverflow(arch.offset as usize))
+                return Err(BufferOverflow(arch.offset as usize).into());
             }
 
             let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
@@ -381,7 +381,7 @@ impl OFile {
 
                     let end = buf.position()
                         .checked_add(u64::from(toc_strsize))
-                        .ok_or_else(|| MachError::BufferOverflow(toc_strsize as usize))?;
+                        .ok_or_else(|| BufferOverflow(toc_strsize as usize))?;
 
                     buf.seek(SeekFrom::Start(end))?;
 
@@ -396,11 +396,10 @@ impl OFile {
                 } else {
                     let mut end = buf.position()
                         .checked_add(header.ar_size as u64)
-                        .ok_or_else(|| MachError::BufferOverflow(header.ar_size as usize))?;
+                        .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
 
                     if let Some(size) = header.extended_format_size() {
-                        end = end.checked_sub(size as u64)
-                            .ok_or_else(|| MachError::BufferOverflow(size))?;
+                        end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
                     }
 
                     let file = Self::parse(buf)?;
@@ -426,7 +425,7 @@ impl OFile {
                         }
                     }
 
-                    bail!(err)
+                    return Err(err);
                 }
             }
         }
@@ -441,17 +440,15 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
     fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
         let s = self.as_ref();
         let start = off as usize;
-        let end = off.checked_add(len).ok_or_else(|| MachError::BufferOverflow(len))? as usize;
+        let end = off.checked_add(len).ok_or_else(|| BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
-            bail!(MachError::BufferOverflow(start))
+            Err(BufferOverflow(start).into())
+        } else if end > s.len() {
+            Err(BufferOverflow(end).into())
+        } else {
+            Ok(&s[start..end])
         }
-
-        if end > s.len() {
-            bail!(MachError::BufferOverflow(end))
-        }
-
-        Ok(&s[start..end])
     }
 }
 

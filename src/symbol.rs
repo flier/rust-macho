@@ -1,12 +1,12 @@
-use std::str;
-use std::rc::Rc;
 use std::io::{Cursor, Seek, SeekFrom};
+use std::rc::Rc;
+use std::str;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use errors::*;
-use consts::*;
 use commands::{LoadCommand, Section};
+use consts::*;
+use errors::*;
 use loader::{MachCommand, OFile};
 
 /// the link-edit 4.3BSD "stab" style symbol
@@ -232,10 +232,7 @@ impl<'a> SymbolIter<'a> {
                     desc: desc,
                     symbol: self.load_str(value)?,
                 }),
-                _ => bail!(MachError::LoadError(format!(
-                    "unknown symbol type 0x{:x}",
-                    typ
-                ),)),
+                _ => Err(MachError::UnknownSymType(typ).into()),
             }
         }
     }
@@ -244,16 +241,10 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            bail!(MachError::LoadError(format!(
-                "string offset out of range [..{})",
-                self.strsize
-            ),))
+            Err(MachError::OutOfRange(off, self.strsize as usize).into())
         } else {
             let buf = *self.cur.get_ref();
-            if let Some(s) = buf[self.stroff as usize + off as usize..]
-                .split(|x| *x == 0)
-                .next()
-            {
+            if let Some(s) = buf[self.stroff as usize + off as usize..].split(|x| *x == 0).next() {
                 Ok(Some(str::from_utf8(s)?))
             } else {
                 Ok(None)

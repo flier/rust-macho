@@ -875,7 +875,7 @@ impl LoadCommand {
         let cmdsize = buf.read_u32::<O>()? as usize;
 
         if cmdsize < LOAD_COMMAND_HEADER_SIZE || begin as usize + cmdsize > buf.get_ref().as_ref().len() {
-            bail!(MachError::BufferOverflow(cmdsize))
+            return Err(MachError::BufferOverflow(cmdsize).into());
         }
 
         let cmd = match cmd {
@@ -1143,7 +1143,7 @@ impl LoadCommand {
         );
 
         if cmdsize < read {
-            bail!(MachError::BufferOverflow(cmdsize))
+            return Err(MachError::BufferOverflow(cmdsize).into());
         } else if cmdsize > read {
             // skip the reserved or padding bytes
             buf.consume(cmdsize - read);
@@ -1329,7 +1329,7 @@ where
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
-                bail!(MachError::NumberOverflow)
+                return Err(MachError::NumberOverflow.into());
             }
 
             v |= n << bits;

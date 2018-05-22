@@ -86,18 +86,7 @@ mod integration {
                     let mut cur = Cursor::new(payload);
                     let ofile = OFile::parse(&mut cur)?;
 
-                    if let OFile::MachFile { ref commands, .. } = ofile {
-                        for &MachCommand(ref cmd, cmdsize) in commands {
-                            if let LoadCommand::Command { cmd, ref payload } = cmd {
-                                warn!(
-                                    "unsolved command #{} with {} bytes:\n{}",
-                                    cmd,
-                                    cmdsize,
-                                    HexViewBuilder::new(payload).finish()
-                                );
-                            }
-                        }
-                    }
+                    verify_mach_file(&ofile);
 
                     trace!("loaded ofile, {:?}", path);
                 }
@@ -110,6 +99,28 @@ mod integration {
                 Ok(())
             }
             Err(err) => bail!(err),
+        }
+    }
+
+    fn verify_mach_file(ofile: &OFile) {
+        match ofile {
+            OFile::MachFile { ref commands, .. } => for &MachCommand(ref cmd, cmdsize) in commands {
+                if let LoadCommand::Command { cmd, ref payload } = cmd {
+                    warn!(
+                        "unsolved command #{} with {} bytes:\n{}",
+                        cmd,
+                        cmdsize,
+                        HexViewBuilder::new(payload).finish()
+                    );
+                }
+            },
+            OFile::FatFile { ref files, .. } => for (_arch, ofile) in files {
+                verify_mach_file(ofile)
+            },
+            OFile::ArFile { ref files } => for (_header, ofile) in files {
+                verify_mach_file(ofile)
+            },
+            OFile::SymDef { ref ranlibs } => trace!("skip symdef file"),
         }
     }
 

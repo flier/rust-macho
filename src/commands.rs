@@ -837,6 +837,9 @@ pub enum LoadCommand {
     /// For example /usr/lib/libobjc_profile.A.dylib would be recorded as "libobjc".
     SubLibrary(LcString),
 
+    /// The linker_option_command contains linker options embedded in object files.
+    LinkerOption(Vec<String>),
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1107,6 +1110,13 @@ impl LoadCommand {
             LC_SUB_UMBRELLA => LoadCommand::SubUmbrella(Self::read_lcstr::<O, T>(buf)?),
             LC_SUB_CLIENT => LoadCommand::SubClient(Self::read_lcstr::<O, T>(buf)?),
             LC_SUB_LIBRARY => LoadCommand::SubLibrary(Self::read_lcstr::<O, T>(buf)?),
+            LC_LINKER_OPTION => {
+                let count = buf.read_u32::<O>()?;
+
+                LoadCommand::LinkerOption((0..count)
+                    .map(|_| Self::read_utf8_str(buf))
+                    .collect::<Result<Vec<_>>>()?)
+            }
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1148,6 +1158,18 @@ impl LoadCommand {
         buf.consume(off - 12);
 
         Ok(LcString(off, buf.read_cstr()?))
+    }
+
+    fn read_utf8_str<T: AsRef<[u8]>>(cur: &mut Cursor<T>) -> Result<String> {
+        let mut buf = vec![];
+
+        cur.read_until(0, &mut buf)?;
+
+        if buf.last() == Some(&0) {
+            let _ = buf.pop();
+        }
+
+        Ok(String::from_utf8(buf)?)
     }
 
     fn read_fvmlib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<FvmLib> {
@@ -1221,6 +1243,7 @@ impl LoadCommand {
             LoadCommand::SubUmbrella(_) => LC_SUB_UMBRELLA,
             LoadCommand::SubClient(_) => LC_SUB_CLIENT,
             LoadCommand::SubLibrary(_) => LC_SUB_LIBRARY,
+            LoadCommand::LinkerOption(_) => LC_LINKER_OPTION,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

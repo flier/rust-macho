@@ -6,25 +6,27 @@ extern crate hexplay;
 extern crate memmap;
 #[cfg(test)]
 extern crate pretty_env_logger;
+extern crate walkdir;
 
 extern crate mach_object;
 
 #[cfg(all(target_os = "macos", feature = "integration_tests"))]
 mod integration {
     use std::collections::HashSet;
-    use std::fs::{self, DirEntry, File};
+    use std::fs::File;
     use std::io::{self, Cursor};
     use std::os::unix::fs::PermissionsExt;
-    use std::path::Path;
 
     use failure::Error;
     use hexplay::HexViewBuilder;
     use memmap::Mmap;
     use pretty_env_logger;
+    use walkdir::{DirEntry, WalkDir};
 
-    use mach_object::{LoadCommand, MachCommand, OFile};
+    use mach_object::{LoadCommand, MachCommand, MachError, OFile};
 
-    const SYSTEM_BINARY_PATH: &[&str] = &[
+    const SYSTEM_PATH: &[&str] = &[
+        // binary
         "/bin",
         "/sbin",
         "/usr/bin",
@@ -33,68 +35,56 @@ mod integration {
         "/usr/local/bin",
         "/usr/local/sbin",
         "/usr/local/libexec",
-    ];
-
-    const SYSTEM_LIBRARY_PATH: &[&str] = &["/usr/lib", "/usr/local/lib"];
-
-    const SYSTEM_FRAMEWORK_PATH: &[&str] = &[
+        // library
+        "/usr/lib",
+        "/usr/local/lib",
+        // framework
         "/System/Library/Frameworks",
         "/Library/Frameworks",
         "/usr/local/Frameworks",
+        // application
+        "/Applications",
+        "~/Applications",
     ];
 
-    const SYSTEM_APPLICATION_PATH: &[&str] = &["/Applications", "~/Applications"];
-
     fn load_mach_file(entry: &DirEntry) -> Result<(), Error> {
-        let file_type = entry.file_type().unwrap();
+        if entry.metadata()?.len() == 0 {
+            trace!("skip the empty file, {:?}", entry.path());
 
-        let path = if file_type.is_file() {
-            entry.path()
-        } else if file_type.is_symlink() {
-            let symlink = entry.path();
-            let dir = symlink.parent().unwrap();
+            return Ok(());
+        }
 
-            let path = dir.join(symlink.read_link().expect(&format!("read symlink: {:?}", entry)));
-
-            if !path.exists() {
-                trace!("skip the broken link: {:?} -> {:?}", entry.path(), symlink);
-
-                return Ok(());
-            }
-
-            if path.is_dir() {
-                trace!("skip the symbol linked directory, {:?} -> {:?}", entry.path(), path);
-
-                return Ok(());
-            }
-
-            path
-        } else {
-            warn!("unexpected file {:?}", entry);
-
-            unreachable!()
-        };
-
-        match File::open(path.clone()) {
+        match File::open(entry.path()) {
             Ok(file) => {
                 let mmap = unsafe { Mmap::map(&file) }?;
                 let payload = mmap.as_ref();
 
                 if payload.starts_with(b"#") {
-                    trace!("skip the scripts, {:?}", path);
+                    trace!("skip the scripts, {:?}", entry.path());
                 } else {
                     let mut cur = Cursor::new(payload);
-                    let ofile = OFile::parse(&mut cur)?;
+                    let ofile = match OFile::parse(&mut cur) {
+                        Ok(ofile) => ofile,
+                        Err(err) => {
+                            if let Some(&MachError::UnknownMagic(magic)) = err.cause().downcast_ref::<MachError>() {
+                                trace!("skip unknown file format: 0x{:08x}, {:?}", magic, entry.path());
+
+                                return Ok(());
+                            } else {
+                                bail!(err);
+                            }
+                        }
+                    };
 
                     verify_mach_file(&ofile);
 
-                    trace!("loaded ofile, {:?}", path);
+                    trace!("loaded ofile, {:?}", entry.path());
                 }
 
                 Ok(())
             }
             Err(ref err @ io::Error { .. }) if err.kind() == io::ErrorKind::PermissionDenied => {
-                trace!("ignore the permission denied, {:?}", path);
+                trace!("ignore the permission denied, {:?}", entry.path());
 
                 Ok(())
             }
@@ -120,7 +110,7 @@ mod integration {
             OFile::ArFile { ref files } => for (_header, ofile) in files {
                 verify_mach_file(ofile)
             },
-            OFile::SymDef { ref ranlibs } => trace!("skip symdef file"),
+            OFile::SymDef { .. } => trace!("skip symdef file"),
         }
     }
 
@@ -128,32 +118,22 @@ mod integration {
     fn test_system_binaries() {
         let _ = pretty_env_logger::try_init();
 
-        let mut files = HashSet::new();
+        let mut solved = HashSet::new();
 
-        for path in SYSTEM_BINARY_PATH.iter().chain(SYSTEM_LIBRARY_PATH.iter()) {
-            let path = Path::new(path);
+        for path in SYSTEM_PATH.iter() {
+            trace!("walk directory for binary: {:?}", path);
 
-            if path.exists() && path.is_dir() {
-                trace!("walk directory: {:?}", path);
+            for entry in WalkDir::new(path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+                if solved.contains(entry.path()) {
+                    trace!("skip duplicated file: {:?}", entry.path());
+                } else {
+                    let file_type = entry.file_type();
+                    let metadata = entry.metadata().unwrap();
 
-                for entry in fs::read_dir(path).unwrap() {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
+                    if (file_type.is_file() || file_type.is_symlink()) && (metadata.permissions().mode() & 0o111) != 0 {
+                        load_mach_file(&entry).expect(&format!("load binary file: {:?}", entry));
 
-                        if files.contains(&path) {
-                            trace!("skip duplicated file: {:?}", path);
-                        } else {
-                            let file_type = entry.file_type().unwrap();
-                            let metadata = entry.metadata().unwrap();
-
-                            if (file_type.is_file() || file_type.is_symlink())
-                                && (metadata.permissions().mode() & 0o111) != 0
-                            {
-                                load_mach_file(&entry).expect(&format!("load binary file: {:?}", entry));
-
-                                files.insert(path);
-                            }
-                        }
+                        solved.insert(entry.path().to_owned());
                     }
                 }
             }
@@ -166,45 +146,27 @@ mod integration {
 
         let mut files = HashSet::new();
 
-        for path in SYSTEM_LIBRARY_PATH {
-            let path = Path::new(path);
+        for path in SYSTEM_PATH.iter() {
+            trace!("walk directory for library: {:?}", path);
 
-            if path.exists() && path.is_dir() {
-                trace!("walk directory: {:?}", path);
+            for entry in WalkDir::new(path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+                if files.contains(entry.path()) {
+                    trace!("skip duplicated file: {:?}", entry.path());
+                } else {
+                    let file_type = entry.file_type();
 
-                for entry in fs::read_dir(path).unwrap() {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-
-                        if files.contains(&path) {
-                            trace!("skip duplicated file: {:?}", path);
-                        } else {
-                            let file_type = entry.file_type().unwrap();
-
-                            if file_type.is_file() || file_type.is_symlink() {
-                                match path.extension().and_then(|ext| ext.to_str()) {
-                                    Some("dylib") | Some("so") | Some("a") | Some("o") => {
-                                        load_mach_file(&entry).expect(&format!("load library file: {:?}", entry));
-                                    }
-                                    ext => trace!("skip file {:?} with extention: {:?}", path, ext),
-                                }
+                    if file_type.is_file() || file_type.is_symlink() {
+                        match entry.path().extension().and_then(|ext| ext.to_str()) {
+                            Some("dylib") | Some("so") | Some("a") | Some("o") => {
+                                load_mach_file(&entry).expect(&format!("load library file: {:?}", entry));
                             }
-
-                            files.insert(path);
+                            _ => {}
                         }
                     }
+
+                    files.insert(entry.path().to_owned());
                 }
             }
         }
-    }
-
-    #[test]
-    fn test_system_frameworks() {
-        let _ = pretty_env_logger::try_init();
-    }
-
-    #[test]
-    fn test_system_applications() {
-        let _ = pretty_env_logger::try_init();
     }
 }

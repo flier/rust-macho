@@ -790,6 +790,16 @@ pub enum LoadCommand {
         state: ThreadState,
     },
 
+    /// A dynamically linked shared library may be a subframework of an umbrella
+    /// framework.  If so it will be linked with "-umbrella umbrella_name" where
+    /// Where "umbrella_name" is the name of the umbrella framework. A subframework
+    /// can only be linked against by its umbrella framework or other subframeworks
+    /// that are part of the same umbrella framework.  Otherwise the static link
+    /// editor produces an error and states to link against the umbrella framework.
+    /// The name of the umbrella framework for subframeworks is recorded in the
+    /// following structure.
+    SubFramework(LcString),
+
     Command {
         /// type of load command
         cmd: u32,
@@ -899,9 +909,9 @@ impl LoadCommand {
                 buf.read_fixed_size_string(cmdsize - offset)?
             }),
 
-            LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_dylinker::<O, T>(buf)?),
-            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_dylinker::<O, T>(buf)?),
-            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(Self::read_dylinker::<O, T>(buf)?),
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_lcstr::<O, T>(buf)?),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_lcstr::<O, T>(buf)?),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(Self::read_lcstr::<O, T>(buf)?),
 
             LC_SYMTAB => LoadCommand::SymTab {
                 symoff: buf.read_u32::<O>()?,
@@ -1056,6 +1066,7 @@ impl LoadCommand {
                     },
                 }
             }
+            LC_SUB_FRAMEWORK => LoadCommand::SubFramework(Self::read_lcstr::<O, T>(buf)?),
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1091,7 +1102,7 @@ impl LoadCommand {
         Ok((cmd, cmdsize))
     }
 
-    fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
+    fn read_lcstr<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
         let off = buf.read_u32::<O>()? as usize;
 
         buf.consume(off - 12);
@@ -1166,6 +1177,7 @@ impl LoadCommand {
             LoadCommand::EntryPoint { .. } => LC_MAIN,
             LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
             LoadCommand::UnixThread { .. } => LC_UNIXTHREAD,
+            LoadCommand::SubFramework(_) => LC_SUB_FRAMEWORK,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

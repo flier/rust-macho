@@ -899,6 +899,26 @@ pub enum LoadCommand {
     /// The linker_option_command contains linker options embedded in object files.
     LinkerOption(Vec<String>),
 
+    /// The routines command contains the address of the dynamic shared library
+    /// initialization routine and an index into the module table for the module
+    /// that defines the routine.  Before any modules are used from the library the
+    /// dynamic linker fully binds the module that defines the initialization routine
+    /// and then calls it.  This gets called before any module initialization
+    /// routines (used for C++ static constructors) in the library.
+    Routines {
+        /// address of initialization routine
+        init_address: u32,
+        /// index into the module table that the init routine is defined in
+        init_module: u32,
+    },
+
+    Routines64 {
+        /// address of initialization routine
+        init_address: u64,
+        /// index into the module table that the init routine is defined in
+        init_module: u64,
+    },
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1223,6 +1243,14 @@ impl LoadCommand {
                     .map(|_| Self::read_utf8_str(buf))
                     .collect::<Result<Vec<_>>>()?)
             }
+            LC_ROUTINES => LoadCommand::Routines {
+                init_address: buf.read_u32::<O>()?,
+                init_module: buf.read_u32::<O>()?,
+            },
+            LC_ROUTINES_64 => LoadCommand::Routines64 {
+                init_address: buf.read_u64::<O>()?,
+                init_module: buf.read_u64::<O>()?,
+            },
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1350,6 +1378,8 @@ impl LoadCommand {
             LoadCommand::SubClient(_) => LC_SUB_CLIENT,
             LoadCommand::SubLibrary(_) => LC_SUB_LIBRARY,
             LoadCommand::LinkerOption(_) => LC_LINKER_OPTION,
+            LoadCommand::Routines { .. } => LC_ROUTINES,
+            LoadCommand::Routines64 { .. } => LC_ROUTINES_64,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

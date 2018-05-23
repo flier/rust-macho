@@ -1,10 +1,8 @@
 #[macro_use]
 extern crate log;
-#[macro_use]
 extern crate failure;
 extern crate hexplay;
 extern crate memmap;
-#[cfg(test)]
 extern crate pretty_env_logger;
 extern crate time;
 extern crate walkdir;
@@ -81,7 +79,7 @@ mod integration {
 
                                 return Ok(());
                             } else {
-                                bail!(err);
+                                return Err(err);
                             }
                         }
                     };

@@ -65,8 +65,12 @@ mod integration {
 
                 if payload.starts_with(b"#") {
                     trace!("skip the scripts, {:?}", entry.path());
+                } else if payload.starts_with(b"<") {
+                    trace!("skip the XML/HTML file, {:?}", entry.path());
                 } else if payload.starts_with(b"MZ") {
                     trace!("skip the PE file, {:?}", entry.path());
+                } else if payload.starts_with(b"PK") {
+                    trace!("skip the compressed file, {:?}", entry.path());
                 } else {
                     let mut cur = Cursor::new(payload);
                     let ofile = match OFile::parse(&mut cur) {
@@ -85,8 +89,8 @@ mod integration {
                     verify_mach_file(&ofile);
 
                     trace!(
-                        "loaded ofile in {} ms, {:?}",
-                        start_time.to(PreciseTime::now()).num_microseconds().unwrap_or_default() as f64 / 1000.0
+                        "loaded in {} ms, {:?}",
+                        start_time.to(PreciseTime::now()).num_microseconds().unwrap_or_default() as f64 / 1000.0,
                         entry.path(),
                     );
                 }
@@ -98,7 +102,7 @@ mod integration {
 
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => Err(err.into()),
         }
     }
 

@@ -940,6 +940,15 @@ pub enum LoadCommand {
         id: u32,
     },
 
+    /// The twolevel_hints_command contains the offset and number of hints in the
+    /// two-level namespace lookup hints table.
+    TwoLevelHints {
+        /// offset to the hint table
+        offset: u32,
+        /// number of hints in the hint table
+        nhints: u32,
+    },
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1282,6 +1291,10 @@ impl LoadCommand {
                 size: buf.read_u32::<O>()?,
                 id: buf.read_u32::<O>()?,
             },
+            LC_TWOLEVEL_HINTS => LoadCommand::TwoLevelHints {
+                offset: buf.read_u32::<O>()?,
+                nhints: buf.read_u32::<O>()?,
+            },
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1413,6 +1426,7 @@ impl LoadCommand {
             LoadCommand::Routines64 { .. } => LC_ROUTINES_64,
             LoadCommand::EncryptionInfo { .. } => LC_ENCRYPTION_INFO,
             LoadCommand::EncryptionInfo64 { .. } => LC_ENCRYPTION_INFO_64,
+            LoadCommand::TwoLevelHints { .. } => LC_TWOLEVEL_HINTS,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

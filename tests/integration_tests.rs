@@ -6,6 +6,7 @@ extern crate hexplay;
 extern crate memmap;
 #[cfg(test)]
 extern crate pretty_env_logger;
+extern crate time;
 extern crate walkdir;
 
 extern crate mach_object;
@@ -21,6 +22,7 @@ mod integration {
     use hexplay::HexViewBuilder;
     use memmap::Mmap;
     use pretty_env_logger;
+    use time::PreciseTime;
     use walkdir::{DirEntry, WalkDir};
 
     use mach_object::{LoadCommand, MachCommand, MachError, OFile};
@@ -56,11 +58,15 @@ mod integration {
 
         match File::open(entry.path()) {
             Ok(file) => {
+                let start_time = PreciseTime::now();
+
                 let mmap = unsafe { Mmap::map(&file) }?;
                 let payload = mmap.as_ref();
 
                 if payload.starts_with(b"#") {
                     trace!("skip the scripts, {:?}", entry.path());
+                } else if payload.starts_with(b"MZ") {
+                    trace!("skip the PE file, {:?}", entry.path());
                 } else {
                     let mut cur = Cursor::new(payload);
                     let ofile = match OFile::parse(&mut cur) {
@@ -78,7 +84,11 @@ mod integration {
 
                     verify_mach_file(&ofile);
 
-                    trace!("loaded ofile, {:?}", entry.path());
+                    trace!(
+                        "loaded ofile in {} ms, {:?}",
+                        start_time.to(PreciseTime::now()).num_microseconds().unwrap_or_default() as f64 / 1000.0
+                        entry.path(),
+                    );
                 }
 
                 Ok(())
@@ -88,7 +98,7 @@ mod integration {
 
                 Ok(())
             }
-            Err(err) => bail!(err),
+            Err(err) => Err(err),
         }
     }
 
@@ -110,62 +120,43 @@ mod integration {
             OFile::ArFile { ref files } => for (_header, ofile) in files {
                 verify_mach_file(ofile)
             },
-            OFile::SymDef { .. } => trace!("skip symdef file"),
+            OFile::SymDef { .. } => {}
         }
     }
 
     #[test]
-    fn test_system_binaries() {
+    fn test_system_files() {
         let _ = pretty_env_logger::try_init();
 
         let mut solved = HashSet::new();
 
         for path in SYSTEM_PATH.iter() {
-            trace!("walk directory for binary: {:?}", path);
+            trace!("walking directory: {:?}", path);
 
-            for entry in WalkDir::new(path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path)
+                .follow_links(true)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| !entry.file_type().is_dir())
+            {
                 if solved.contains(entry.path()) {
-                    trace!("skip duplicated file: {:?}", entry.path());
-                } else {
-                    let file_type = entry.file_type();
-                    let metadata = entry.metadata().unwrap();
-
-                    if (file_type.is_file() || file_type.is_symlink()) && (metadata.permissions().mode() & 0o111) != 0 {
-                        load_mach_file(&entry).expect(&format!("load binary file: {:?}", entry));
-
-                        solved.insert(entry.path().to_owned());
-                    }
+                    continue;
                 }
-            }
-        }
-    }
 
-    #[test]
-    fn test_system_libraries() {
-        let _ = pretty_env_logger::try_init();
-
-        let mut files = HashSet::new();
-
-        for path in SYSTEM_PATH.iter() {
-            trace!("walk directory for library: {:?}", path);
-
-            for entry in WalkDir::new(path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
-                if files.contains(entry.path()) {
-                    trace!("skip duplicated file: {:?}", entry.path());
+                let need_parse = if (entry.metadata().unwrap().permissions().mode() & 0o111) != 0 {
+                    true
                 } else {
-                    let file_type = entry.file_type();
-
-                    if file_type.is_file() || file_type.is_symlink() {
-                        match entry.path().extension().and_then(|ext| ext.to_str()) {
-                            Some("dylib") | Some("so") | Some("a") | Some("o") => {
-                                load_mach_file(&entry).expect(&format!("load library file: {:?}", entry));
-                            }
-                            _ => {}
-                        }
+                    match entry.path().extension().and_then(|ext| ext.to_str()) {
+                        Some("dylib") | Some("so") | Some("a") | Some("o") => true,
+                        _ => false,
                     }
+                };
 
-                    files.insert(entry.path().to_owned());
+                if need_parse {
+                    load_mach_file(&entry).expect(&format!("load binary file: {:?}", entry));
                 }
+
+                solved.insert(entry.path().to_owned());
             }
         }
     }

@@ -919,6 +919,27 @@ pub enum LoadCommand {
         init_module: u64,
     },
 
+    /// The encryption_info_command contains the file offset and size of an of an encrypted segment.
+    EncryptionInfo {
+        /// file offset of encrypted range
+        offset: u32,
+        /// file size of encrypted range
+        size: u32,
+        /// which enryption system,
+        /// 0 means not-encrypted yet
+        id: u32,
+    },
+
+    EncryptionInfo64 {
+        /// file offset of encrypted range
+        offset: u32,
+        /// file size of encrypted range
+        size: u32,
+        /// which enryption system,
+        /// 0 means not-encrypted yet
+        id: u32,
+    },
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1251,6 +1272,16 @@ impl LoadCommand {
                 init_address: buf.read_u64::<O>()?,
                 init_module: buf.read_u64::<O>()?,
             },
+            LC_ENCRYPTION_INFO => LoadCommand::EncryptionInfo {
+                offset: buf.read_u32::<O>()?,
+                size: buf.read_u32::<O>()?,
+                id: buf.read_u32::<O>()?,
+            },
+            LC_ENCRYPTION_INFO_64 => LoadCommand::EncryptionInfo64 {
+                offset: buf.read_u32::<O>()?,
+                size: buf.read_u32::<O>()?,
+                id: buf.read_u32::<O>()?,
+            },
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1380,6 +1411,8 @@ impl LoadCommand {
             LoadCommand::LinkerOption(_) => LC_LINKER_OPTION,
             LoadCommand::Routines { .. } => LC_ROUTINES,
             LoadCommand::Routines64 { .. } => LC_ROUTINES_64,
+            LoadCommand::EncryptionInfo { .. } => LC_ENCRYPTION_INFO,
+            LoadCommand::EncryptionInfo64 { .. } => LC_ENCRYPTION_INFO_64,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }

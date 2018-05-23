@@ -1,6 +1,6 @@
+use std::collections::VecDeque;
 use std::fmt;
 use std::slice;
-use std::collections::VecDeque;
 
 use consts::*;
 use errors::{MachError, Result};
@@ -53,27 +53,14 @@ impl Default for BindSymbolFlags {
 pub enum BindOpCode {
     Done,
     SetDyLibrary(isize),
-    SetSymbol {
-        name: String,
-        flags: BindSymbolFlags,
-    },
+    SetSymbol { name: String, flags: BindSymbolFlags },
     SetSymbolType(BindSymbolType),
     SetAddend(usize),
-    SetSegmentOffset {
-        segment_index: u8,
-        segment_offset: usize,
-    },
-    AddAddress {
-        offset: isize,
-    },
+    SetSegmentOffset { segment_index: u8, segment_offset: usize },
+    AddAddress { offset: isize },
     Bind,
-    BindAndAddAddress {
-        offset: isize,
-    },
-    BindAndSkipping {
-        times: usize,
-        skip: usize,
-    },
+    BindAndAddAddress { offset: isize },
+    BindAndSkipping { times: usize, skip: usize },
 }
 
 /// An iterator over the `BindOpCode`
@@ -107,12 +94,12 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         None
                     }
                 },
-                (BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM, flags) => self.iter.read_cstr().ok().map(|name| {
-                    BindOpCode::SetSymbol {
+                (BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM, flags) => {
+                    self.iter.read_cstr().ok().map(|name| BindOpCode::SetSymbol {
                         name,
                         flags: BindSymbolFlags::from_bits_truncate(flags),
-                    }
-                }),
+                    })
+                }
                 (BIND_OPCODE_SET_TYPE_IMM, bind_type) => match bind_type {
                     BIND_TYPE_POINTER => Some(BindOpCode::SetSymbolType(BindSymbolType::Pointer)),
                     BIND_TYPE_TEXT_ABSOLUTE32 => Some(BindOpCode::SetSymbolType(BindSymbolType::TextAbsolute32)),
@@ -130,18 +117,15 @@ impl<'a> Iterator for BindOpCodes<'a> {
                         segment_offset,
                     },
                 ),
-                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter
-                    .read_uleb128()
-                    .ok()
-                    .map(|offset| BindOpCode::AddAddress {
-                        offset: offset as isize,
-                    }),
-                (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
-                (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
-                    BindOpCode::AddAddress {
-                        offset: offset as isize,
-                    }
+                (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| BindOpCode::AddAddress {
+                    offset: offset as isize,
                 }),
+                (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
+                (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => {
+                    self.iter.read_uleb128().ok().map(|offset| BindOpCode::AddAddress {
+                        offset: offset as isize,
+                    })
+                }
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED, count) => Some(BindOpCode::AddAddress {
                     offset: self.ptr_size as isize * count as isize,
                 }),
@@ -155,10 +139,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
                     }
                 }
                 (opcode, immediate) => {
-                    warn!(
-                        "unknown bind opcode: {:x}, immediate = {}",
-                        opcode, immediate
-                    );
+                    warn!("unknown bind opcode: {:x}, immediate = {}", opcode, immediate);
 
                     None
                 }
@@ -444,23 +425,11 @@ impl<'a> Iterator for LazyBind<'a> {
 pub enum RebaseOpCode {
     Done,
     SetSymbolType(BindSymbolType),
-    SetSegmentOffset {
-        segment_index: u8,
-        segment_offset: usize,
-    },
-    AddAddress {
-        offset: isize,
-    },
-    Rebase {
-        times: usize,
-    },
-    RebaseAndAddAddress {
-        offset: isize,
-    },
-    RebaseAndSkipping {
-        times: usize,
-        skip: usize,
-    },
+    SetSegmentOffset { segment_index: u8, segment_offset: usize },
+    AddAddress { offset: isize },
+    Rebase { times: usize },
+    RebaseAndAddAddress { offset: isize },
+    RebaseAndSkipping { times: usize, skip: usize },
 }
 
 /// An iterator over the `RebaseOpCode` of a rebase infomation block.
@@ -473,8 +442,9 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
     type Item = RebaseOpCode;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().and_then(
-            |b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
+        self.iter
+            .next()
+            .and_then(|b| match (b & REBASE_OPCODE_MASK, b & REBASE_IMMEDIATE_MASK) {
                 (REBASE_OPCODE_DONE, _) => Some(RebaseOpCode::Done),
                 (REBASE_OPCODE_SET_TYPE_IMM, rebase_type) => match rebase_type {
                     REBASE_TYPE_POINTER => Some(RebaseOpCode::SetSymbolType(BindSymbolType::Pointer)),
@@ -492,17 +462,15 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                         segment_offset,
                     },
                 ),
-                (REBASE_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
-                    RebaseOpCode::AddAddress {
+                (REBASE_OPCODE_ADD_ADDR_ULEB, _) => {
+                    self.iter.read_uleb128().ok().map(|offset| RebaseOpCode::AddAddress {
                         offset: offset as isize,
-                    }
-                }),
+                    })
+                }
                 (REBASE_OPCODE_ADD_ADDR_IMM_SCALED, count) => Some(RebaseOpCode::AddAddress {
                     offset: self.ptr_size as isize * count as isize,
                 }),
-                (REBASE_OPCODE_DO_REBASE_IMM_TIMES, times) => Some(RebaseOpCode::Rebase {
-                    times: times as usize,
-                }),
+                (REBASE_OPCODE_DO_REBASE_IMM_TIMES, times) => Some(RebaseOpCode::Rebase { times: times as usize }),
                 (REBASE_OPCODE_DO_REBASE_ULEB_TIMES, _) => self.iter
                     .read_uleb128()
                     .ok()
@@ -522,15 +490,11 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                     }
                 }
                 (opcode, immediate) => {
-                    warn!(
-                        "unknown rebase opcode: 0x{:02x}, immediate: {}",
-                        opcode, immediate
-                    );
+                    warn!("unknown rebase opcode: 0x{:02x}, immediate: {}", opcode, immediate);
 
                     None
                 }
-            },
-        )
+            })
     }
 }
 
@@ -627,7 +591,7 @@ pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
-                bail!(MachError::NumberOverflow)
+                return Err(MachError::NumberOverflow.into());
             }
 
             v |= n << bits;

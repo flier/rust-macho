@@ -121,9 +121,9 @@ pub const CPU_SUBTYPE_MC68030_ONLY: cpu_subtype_t = 3;
 //
 
 macro_rules! CPU_SUBTYPE_INTEL {
-    ($f:expr, $m:expr) => ({
+    ($f:expr, $m:expr) => {{
         ($f) + (($m) << 4)
-    })
+    }};
 }
 
 pub const CPU_SUBTYPE_I386_ALL: cpu_subtype_t = CPU_SUBTYPE_INTEL!(3, 0);
@@ -583,6 +583,10 @@ pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2E;
 pub const LC_VERSION_MIN_TVOS: u32 = 0x2F;
 /// build for Watch min OS version
 pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
+/// arbitrary data included within a Mach-O file
+pub const LC_NOTE: u32 = 0x31;
+/// build for platform min OS version
+pub const LC_BUILD_VERSION: u32 = 0x32;
 
 bitflags! {
     /// Constants for the flags field of the segment_command

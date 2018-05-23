@@ -1,6 +1,6 @@
 [package]
 name = "mach_object"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["Flier Lu <flier.lu@gmail.com>"]
 description = "Mach-O File Format Parser for Rust"
 documentation = "http://flier.github.io/rust-macho/"
@@ -11,6 +11,7 @@ license = "Apache-2.0"
 [features]
 default = ["display"]
 display = []
+integration_tests = []
 
 [dependencies]
 log = "0.4"
@@ -22,13 +23,15 @@ time = "0.1"
 bitflags = "1.0"
 lazy_static = "1.0"
 
-clippy = { version = "0.0.186", optional = true }
+clippy = {version = "^0", optional = true}
 
 [dev-dependencies]
 pretty_env_logger = "0.2"
 diff = "0.1"
 getopts = "0.2"
 memmap = "0.6"
+hexplay = "0.2"
+walkdir = "2.0"
 
 [lib]
 name = "mach_object"

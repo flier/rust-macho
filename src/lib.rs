@@ -10,7 +10,7 @@
 //! use std::fs::File;
 //! use mach_object::{OFile, CPU_TYPE_X86_64, MachCommand, LoadCommand};
 //!
-//! let mut f = File::open("test/helloworld").unwrap();
+//! let mut f = File::open("tests/helloworld").unwrap();
 //! let mut buf = Vec::new();
 //! let size = f.read_to_end(&mut buf).unwrap();
 //! let mut cur = Cursor::new(&buf[..size]);
@@ -50,21 +50,21 @@ extern crate diff;
 #[cfg(test)]
 extern crate pretty_env_logger;
 
-mod consts;
-mod errors;
 mod commands;
-mod opcode;
-mod export;
-mod loader;
-mod symbol;
+mod consts;
 #[cfg(feature = "display")]
 mod display;
+mod errors;
+mod export;
+mod loader;
+mod opcode;
+mod symbol;
 
-pub use consts::*;
 pub use commands::*;
+pub use consts::*;
 pub use errors::MachError;
+pub use export::{ExportKind, ExportSymbol, ExportTrie, ExportType};
 pub use loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
-pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
 pub use opcode::{Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol,
                  Rebase, RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol};
-pub use export::{ExportKind, ExportSymbol, ExportTrie, ExportType};
+pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};

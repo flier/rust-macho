@@ -2,9 +2,9 @@ use std::io::Cursor;
 
 use byteorder::ReadBytesExt;
 
-use errors::{MachError, Result};
 use commands::CursorExt;
 use consts::*;
+use errors::{MachError, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExportKind {
@@ -86,7 +86,7 @@ impl Exported {
             .into_iter()
             .map(|(name, offset)| {
                 if offset > payload.len() {
-                    bail!(MachError::BufferOverflow(offset))
+                    return Err(MachError::BufferOverflow(offset).into());
                 }
 
                 let mut cur = Cursor::new(payload);
@@ -135,9 +135,7 @@ impl ExportSymbol {
             ExportType::Reexport { .. } => None,
             ExportType::Regular { address }
             | ExportType::Weak { address }
-            | ExportType::Stub {
-                offset: address, ..
-            } => Some(address),
+            | ExportType::Stub { offset: address, .. } => Some(address),
         }
     }
 }

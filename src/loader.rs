@@ -1,14 +1,14 @@
 #![allow(non_camel_case_types)]
 use std::convert::From;
-use std::mem::size_of;
 use std::io::{BufRead, Cursor, ErrorKind, Read, Seek, SeekFrom};
+use std::mem::size_of;
 
-use libc;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, ReadBytesExt};
+use libc;
 
-use consts::*;
-use errors::*;
 use commands::{LoadCommand, ReadStringExt};
+use consts::*;
+use errors::{MachError::*, Result};
 
 /// The architecture of mach header
 ///
@@ -200,13 +200,17 @@ impl ArHeader {
 
         for c in s.as_bytes() {
             if *c < b'0' || b'7' < *c {
-                bail!(MachError::ParseOctalError(String::from(s)));
+                return Err(ParseOctalError(String::from(s)).into());
             }
 
             v = v * 8 + (c - b'0') as usize;
         }
 
         Ok(v)
+    }
+
+    pub fn name(&self) -> &str {
+        self.ar_member_name.as_ref().unwrap_or(&self.ar_name).as_str()
     }
 }
 
@@ -267,12 +271,17 @@ impl OFile {
                 let mut ar_magic = [0; 8];
 
                 buf.seek(SeekFrom::Current(-4))?;
+
+                if buf.get_ref().as_ref().len() < ar_magic.len() {
+                    return Err(UnknownMagic(magic).into());
+                }
+
                 buf.read_exact(&mut ar_magic)?;
 
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    bail!(MachError::LoadError(format!("unknown file format 0x{:x}", magic),))
+                    Err(UnknownMagic(magic).into())
                 }
             }
         }
@@ -288,7 +297,7 @@ impl OFile {
         let mut commands = Vec::new();
 
         for _ in 0..header.ncmds as usize {
-            let (cmd, cmdsize) = LoadCommand::parse::<O, T>(buf)?;
+            let (cmd, cmdsize) = LoadCommand::parse::<O, T>(&header, buf)?;
 
             commands.push(MachCommand(cmd, cmdsize));
         }
@@ -335,7 +344,7 @@ impl OFile {
 
         for arch in archs {
             if (arch.offset as u64) < start {
-                bail!(MachError::BufferOverflow(arch.offset as usize))
+                return Err(BufferOverflow(arch.offset as usize).into());
             }
 
             let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
@@ -362,57 +371,54 @@ impl OFile {
             debug!("0x{:08x}\tparsing ar header", buf.position());
 
             match ArHeader::parse(buf) {
-                Ok(ref mut header) => if let Some(ref member_name) = header.ar_member_name {
-                    if member_name == SYMDEF || member_name == SYMDEF_SORTED {
-                        let ranlib_len = buf.read_u32::<O>()? as usize;
-                        let mut ranlibs = Vec::new();
+                Ok(ref mut header) => if header.name() == SYMDEF || header.name() == SYMDEF_SORTED {
+                    let ranlib_len = buf.read_u32::<O>()? as usize;
+                    let mut ranlibs = Vec::new();
 
-                        for _ in 0..(ranlib_len / size_of::<RanLib>()) {
-                            ranlibs.push(RanLib {
-                                ran_strx: buf.read_u32::<O>()?,
-                                ran_off: buf.read_u32::<O>()?,
-                            })
-                        }
-
-                        let toc_strsize = buf.read_u32::<O>()?;
-
-                        let end = buf.position()
-                            .checked_add(u64::from(toc_strsize))
-                            .ok_or_else(|| MachError::BufferOverflow(toc_strsize as usize))?;
-
-                        buf.seek(SeekFrom::Start(end))?;
-
-                        debug!(
-                            "parsed {} with {} ranlibs and {} bytes string",
-                            member_name,
-                            ranlibs.len(),
-                            toc_strsize
-                        );
-
-                        files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
-                    } else {
-                        let mut end = buf.position()
-                            .checked_add(header.ar_size as u64)
-                            .ok_or_else(|| MachError::BufferOverflow(header.ar_size as usize))?;
-
-                        if let Some(size) = header.extended_format_size() {
-                            end = end.checked_sub(size as u64)
-                                .ok_or_else(|| MachError::BufferOverflow(size))?;
-                        }
-
-                        let file = Self::parse(buf)?;
-
-                        debug!(
-                            "0x{:08x}\tseek to 0x{:08x}, skip {} bytes",
-                            buf.position(),
-                            end,
-                            end - buf.position()
-                        );
-
-                        buf.seek(SeekFrom::Start(end))?;
-
-                        files.push((header.clone(), file));
+                    for _ in 0..(ranlib_len / size_of::<RanLib>()) {
+                        ranlibs.push(RanLib {
+                            ran_strx: buf.read_u32::<O>()?,
+                            ran_off: buf.read_u32::<O>()?,
+                        })
                     }
+
+                    let toc_strsize = buf.read_u32::<O>()?;
+
+                    let end = buf.position()
+                        .checked_add(u64::from(toc_strsize))
+                        .ok_or_else(|| BufferOverflow(toc_strsize as usize))?;
+
+                    buf.seek(SeekFrom::Start(end))?;
+
+                    debug!(
+                        "parsed {} with {} ranlibs and {} bytes string",
+                        header.name(),
+                        ranlibs.len(),
+                        toc_strsize
+                    );
+
+                    files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
+                } else {
+                    let mut end = buf.position()
+                        .checked_add(header.ar_size as u64)
+                        .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
+
+                    if let Some(size) = header.extended_format_size() {
+                        end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
+                    }
+
+                    let file = Self::parse(buf)?;
+
+                    debug!(
+                        "0x{:08x}\tseek to 0x{:08x}, skip {} bytes",
+                        buf.position(),
+                        end,
+                        end - buf.position()
+                    );
+
+                    buf.seek(SeekFrom::Start(end))?;
+
+                    files.push((header.clone(), file));
                 },
                 Err(err) => {
                     match err.downcast_ref::<::std::io::Error>() {
@@ -424,7 +430,7 @@ impl OFile {
                         }
                     }
 
-                    bail!(err)
+                    return Err(err);
                 }
             }
         }
@@ -439,17 +445,15 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
     fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
         let s = self.as_ref();
         let start = off as usize;
-        let end = off.checked_add(len).ok_or_else(|| MachError::BufferOverflow(len))? as usize;
+        let end = off.checked_add(len).ok_or_else(|| BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
-            bail!(MachError::BufferOverflow(start))
+            Err(BufferOverflow(start).into())
+        } else if end > s.len() {
+            Err(BufferOverflow(end).into())
+        } else {
+            Ok(&s[start..end])
         }
-
-        if end > s.len() {
-            bail!(MachError::BufferOverflow(end))
-        }
-
-        Ok(&s[start..end])
     }
 }
 

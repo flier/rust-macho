@@ -1,13 +1,16 @@
+#![allow(non_camel_case_types)]
+
 use std::fmt;
-use std::rc::Rc;
 use std::io::{BufRead, Cursor, Read};
 use std::ops::Deref;
+use std::rc::Rc;
 
-use uuid::Uuid;
 use byteorder::{ByteOrder, ReadBytesExt};
+use uuid::Uuid;
 
 use consts::*;
 use errors::*;
+use loader::MachHeader;
 
 /// The encoded version.
 ///
@@ -246,6 +249,136 @@ pub struct LinkEditData {
     pub size: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum X86ThreadFlavor {
+    x86_THREAD_STATE32 = 1,
+    x86_FLOAT_STATE32 = 2,
+    x86_EXCEPTION_STATE32 = 3,
+    x86_THREAD_STATE64 = 4,
+    x86_FLOAT_STATE64 = 5,
+    x86_EXCEPTION_STATE64 = 6,
+    x86_THREAD_STATE = 7,
+    x86_FLOAT_STATE = 8,
+    x86_EXCEPTION_STATE = 9,
+    x86_DEBUG_STATE32 = 10,
+    x86_DEBUG_STATE64 = 11,
+    x86_DEBUG_STATE = 12,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ARMThreadFlavors {
+    ARM_THREAD_STATE = 1,
+    ARM_VFP_STATE = 2,
+    ARM_EXCEPTION_STATE = 3,
+    ARM_DEBUG_STATE = 4,
+    ARN_THREAD_STATE_NONE = 5,
+    ARM_THREAD_STATE64 = 6,
+    ARM_EXCEPTION_STATE64 = 7,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PPCThreadFlavors {
+    PPC_THREAD_STATE = 1,
+    PPC_FLOAT_STATE = 2,
+    PPC_EXCEPTION_STATE = 3,
+    PPC_VECTOR_STATE = 4,
+    PPC_THREAD_STATE64 = 5,
+    PPC_EXCEPTION_STATE64 = 6,
+    PPC_THREAD_STATE_NONE = 7,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThreadState {
+    I386 {
+        __eax: u32,
+        __ebx: u32,
+        __ecx: u32,
+        __edx: u32,
+        __edi: u32,
+        __esi: u32,
+        __ebp: u32,
+        __esp: u32,
+        __ss: u32,
+        __eflags: u32,
+        __eip: u32,
+        __cs: u32,
+        __ds: u32,
+        __es: u32,
+        __fs: u32,
+        __gs: u32,
+    },
+    X86_64 {
+        __rax: u64,
+        __rbx: u64,
+        __rcx: u64,
+        __rdx: u64,
+        __rdi: u64,
+        __rsi: u64,
+        __rbp: u64,
+        __rsp: u64,
+        __r8: u64,
+        __r9: u64,
+        __r10: u64,
+        __r11: u64,
+        __r12: u64,
+        __r13: u64,
+        __r14: u64,
+        __r15: u64,
+        __rip: u64,
+        __rflags: u64,
+        __cs: u64,
+        __fs: u64,
+        __gs: u64,
+    },
+    Arm {
+        /// General purpose register r0-r12
+        __r: [u32; 13],
+        /// Stack pointer r13
+        __sp: u32,
+        /// Link register r14
+        __lr: u32,
+        /// Program counter r15
+        __pc: u32,
+        /// Current program status register
+        __cpsr: u32,
+    },
+    Arm64 {
+        /// General purpose registers x0-x28
+        __x: [u64; 29],
+        /// Frame pointer x29
+        __fp: u64,
+        /// Link register x30
+        __lr: u64,
+        /// Stack pointer x31
+        __sp: u64,
+        /// Program counter
+        __pc: u64,
+        /// Current program status register
+        __cpsr: u32,
+        /// Same size for 32-bit or 64-bit clients
+        __pad: u32,
+    },
+    PowerPC {
+        __srr: [u32; 2],
+        __r: [u32; 32],
+        __ct: u32,
+        __xer: u32,
+        __lr: u32,
+        __ctr: u32,
+        __mq: u32,
+        __vrsave: u32,
+    },
+    PowerPC64 {
+        __srr: [u64; 2],
+        __r: [u64; 32],
+        __cr: u32,
+        __xer: u64,
+        __lr: u64,
+        __ctr: u64,
+        __vrsave: u32,
+    },
+}
+
 /// The load commands directly follow the mach header.
 ///
 #[derive(Debug, Clone)]
@@ -342,6 +475,8 @@ pub enum LoadCommand {
     LoadUpwardDylib(DyLib),
     /// delay load of dylib until first use
     LazyLoadDylib(DyLib),
+    /// add a runtime search path for shared libraries
+    Rpath(String),
 
     // A program that uses a dynamic linker contains a dylinker_command to identify
     // the name of the dynamic linker (LC_LOAD_DYLINKER).  And a dynamic linker
@@ -691,6 +826,79 @@ pub enum LoadCommand {
     /// the version of the sources used to build the binary.
     ///
     SourceVersion(SourceVersionTag),
+
+    /// Thread commands contain machine-specific data structures suitable for
+    /// use in the thread state primitives.  The machine specific data structures
+    /// follow the struct thread_command as follows.
+    /// Each flavor of machine specific data structure is preceded by an unsigned
+    /// long constant for the flavor of that data structure, an
+    /// that is the count of longs of the size of the state data structure and then
+    /// the state data structure follows.  This triple may be repeated for many
+    /// flavors.  The constants for the flavors, counts and state data structure
+    /// definitions are expected to be in the header file <machine/thread_status.h>.
+    /// These machine specific data structures sizes must be multiples of
+    /// 4 bytes  The cmdsize reflects the total size of the thread_command
+    /// and all of the sizes of the constants for the flavors, counts and state
+    /// data structures.
+    UnixThread {
+        /// flavor of thread state
+        flavor: u32,
+        /// count of longs in thread state
+        count: u32,
+        /// thread state for this flavor
+        state: ThreadState,
+    },
+
+    /// A dynamically linked shared library may be a subframework of an umbrella
+    /// framework.  If so it will be linked with "-umbrella umbrella_name" where
+    /// Where "umbrella_name" is the name of the umbrella framework. A subframework
+    /// can only be linked against by its umbrella framework or other subframeworks
+    /// that are part of the same umbrella framework.  Otherwise the static link
+    /// editor produces an error and states to link against the umbrella framework.
+    /// The name of the umbrella framework for subframeworks is recorded in the
+    /// following structure.
+    SubFramework(LcString),
+
+    /// A dynamically linked shared library may be a sub_umbrella of an umbrella
+    /// framework.  If so it will be linked with "-sub_umbrella umbrella_name" where
+    /// Where "umbrella_name" is the name of the sub_umbrella framework.  When
+    /// staticly linking when -twolevel_namespace is in effect a twolevel namespace
+    /// umbrella framework will only cause its subframeworks and those frameworks
+    /// listed as sub_umbrella frameworks to be implicited linked in.  Any other
+    /// dependent dynamic libraries will not be linked it when -twolevel_namespace
+    /// is in effect.  The primary library recorded by the static linker when
+    /// resolving a symbol in these libraries will be the umbrella framework.
+    /// Zero or more sub_umbrella frameworks may be use by an umbrella framework.
+    /// The name of a sub_umbrella framework is recorded in the following structure.
+    SubUmbrella(LcString),
+
+    /// For dynamically linked shared libraries that are subframework of an umbrella
+    /// framework they can allow clients other than the umbrella framework or other
+    /// subframeworks in the same umbrella framework.  To do this the subframework
+    /// is built with "-allowable_client client_name" and an LC_SUB_CLIENT load
+    /// command is created for each -allowable_client flag.  The client_name is
+    /// usually a framework name.  It can also be a name used for bundles clients
+    /// where the bundle is built with "-client_name client_name".
+    SubClient(LcString),
+
+    /// A dynamically linked shared library may be a sub_library of another shared
+    /// library.  If so it will be linked with "-sub_library library_name" where
+    /// Where "library_name" is the name of the sub_library shared library.  When
+    /// staticly linking when -twolevel_namespace is in effect a twolevel namespace
+    /// shared library will only cause its subframeworks and those frameworks
+    /// listed as sub_umbrella frameworks and libraries listed as sub_libraries to
+    /// be implicited linked in.  Any other dependent dynamic libraries will not be
+    /// linked it when -twolevel_namespace is in effect.  The primary library
+    /// recorded by the static linker when resolving a symbol in these libraries
+    /// will be the umbrella framework (or dynamic library). Zero or more sub_library
+    /// shared libraries may be use by an umbrella framework or (or dynamic library).
+    /// The name of a sub_library framework is recorded in the following structure.
+    /// For example /usr/lib/libobjc_profile.A.dylib would be recorded as "libobjc".
+    SubLibrary(LcString),
+
+    /// The linker_option_command contains linker options embedded in object files.
+    LinkerOption(Vec<String>),
+
     Command {
         /// type of load command
         cmd: u32,
@@ -708,9 +916,7 @@ pub trait ReadStringExt: Read {
 
         self.read_exact(&mut buf)?;
 
-        Ok(String::from_utf8(
-            buf.split(|&b| b == 0).next().unwrap().to_vec(),
-        )?)
+        Ok(String::from_utf8(buf.split(|&b| b == 0).next().unwrap().to_vec())?)
     }
 }
 
@@ -719,13 +925,16 @@ impl<R: Read + ?Sized> ReadStringExt for R {}
 const LOAD_COMMAND_HEADER_SIZE: usize = 8; // cmd + cmdsize
 
 impl LoadCommand {
-    pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<(LoadCommand, usize)> {
+    pub fn parse<O: ByteOrder, T: AsRef<[u8]>>(
+        header: &MachHeader,
+        buf: &mut Cursor<T>,
+    ) -> Result<(LoadCommand, usize)> {
         let begin = buf.position();
         let cmd = buf.read_u32::<O>()?;
         let cmdsize = buf.read_u32::<O>()? as usize;
 
         if cmdsize < LOAD_COMMAND_HEADER_SIZE || begin as usize + cmdsize > buf.get_ref().as_ref().len() {
-            bail!(MachError::BufferOverflow(cmdsize))
+            return Err(MachError::BufferOverflow(cmdsize).into());
         }
 
         let cmd = match cmd {
@@ -794,10 +1003,14 @@ impl LoadCommand {
             LC_REEXPORT_DYLIB => LoadCommand::ReexportDyLib(Self::read_dylib::<O, T>(buf)?),
             LC_LOAD_UPWARD_DYLIB => LoadCommand::LoadUpwardDylib(Self::read_dylib::<O, T>(buf)?),
             LC_LAZY_LOAD_DYLIB => LoadCommand::LazyLoadDylib(Self::read_dylib::<O, T>(buf)?),
+            LC_RPATH => LoadCommand::Rpath({
+                let offset = buf.read_u32::<O>()? as usize;
+                buf.read_fixed_size_string(cmdsize - offset)?
+            }),
 
-            LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_dylinker::<O, T>(buf)?),
-            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_dylinker::<O, T>(buf)?),
-            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(Self::read_dylinker::<O, T>(buf)?),
+            LC_ID_DYLINKER => LoadCommand::IdDyLinker(Self::read_lcstr::<O, T>(buf)?),
+            LC_LOAD_DYLINKER => LoadCommand::LoadDyLinker(Self::read_lcstr::<O, T>(buf)?),
+            LC_DYLD_ENVIRONMENT => LoadCommand::DyLdEnv(Self::read_lcstr::<O, T>(buf)?),
 
             LC_SYMTAB => LoadCommand::SymTab {
                 symoff: buf.read_u32::<O>()?,
@@ -863,6 +1076,153 @@ impl LoadCommand {
                 stacksize: buf.read_u64::<O>()?,
             },
             LC_SOURCE_VERSION => LoadCommand::SourceVersion(SourceVersionTag(buf.read_u64::<O>()?)),
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_I386 => LoadCommand::UnixThread {
+                flavor: buf.read_u32::<O>()?,
+                count: buf.read_u32::<O>()?,
+                state: ThreadState::I386 {
+                    __eax: buf.read_u32::<O>()?,
+                    __ebx: buf.read_u32::<O>()?,
+                    __ecx: buf.read_u32::<O>()?,
+                    __edx: buf.read_u32::<O>()?,
+                    __edi: buf.read_u32::<O>()?,
+                    __esi: buf.read_u32::<O>()?,
+                    __ebp: buf.read_u32::<O>()?,
+                    __esp: buf.read_u32::<O>()?,
+                    __ss: buf.read_u32::<O>()?,
+                    __eflags: buf.read_u32::<O>()?,
+                    __eip: buf.read_u32::<O>()?,
+                    __cs: buf.read_u32::<O>()?,
+                    __ds: buf.read_u32::<O>()?,
+                    __es: buf.read_u32::<O>()?,
+                    __fs: buf.read_u32::<O>()?,
+                    __gs: buf.read_u32::<O>()?,
+                },
+            },
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_X86_64 => LoadCommand::UnixThread {
+                flavor: buf.read_u32::<O>()?,
+                count: buf.read_u32::<O>()?,
+                state: ThreadState::X86_64 {
+                    __rax: buf.read_u64::<O>()?,
+                    __rbx: buf.read_u64::<O>()?,
+                    __rcx: buf.read_u64::<O>()?,
+                    __rdx: buf.read_u64::<O>()?,
+                    __rdi: buf.read_u64::<O>()?,
+                    __rsi: buf.read_u64::<O>()?,
+                    __rbp: buf.read_u64::<O>()?,
+                    __rsp: buf.read_u64::<O>()?,
+                    __r8: buf.read_u64::<O>()?,
+                    __r9: buf.read_u64::<O>()?,
+                    __r10: buf.read_u64::<O>()?,
+                    __r11: buf.read_u64::<O>()?,
+                    __r12: buf.read_u64::<O>()?,
+                    __r13: buf.read_u64::<O>()?,
+                    __r14: buf.read_u64::<O>()?,
+                    __r15: buf.read_u64::<O>()?,
+                    __rip: buf.read_u64::<O>()?,
+                    __rflags: buf.read_u64::<O>()?,
+                    __cs: buf.read_u64::<O>()?,
+                    __fs: buf.read_u64::<O>()?,
+                    __gs: buf.read_u64::<O>()?,
+                },
+            },
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_ARM => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __r = [0u32; 13];
+
+                buf.read_u32_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::Arm {
+                        __r,
+                        __sp: buf.read_u32::<O>()?,
+                        __lr: buf.read_u32::<O>()?,
+                        __pc: buf.read_u32::<O>()?,
+                        __cpsr: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_ARM64 => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __x = [0u64; 29];
+
+                buf.read_u64_into::<O>(&mut __x)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::Arm64 {
+                        __x,
+                        __fp: buf.read_u64::<O>()?,
+                        __lr: buf.read_u64::<O>()?,
+                        __sp: buf.read_u64::<O>()?,
+                        __pc: buf.read_u64::<O>()?,
+                        __cpsr: buf.read_u32::<O>()?,
+                        __pad: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_POWERPC => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __srr = [0u32; 2];
+                let mut __r = [0u32; 32];
+
+                buf.read_u32_into::<O>(&mut __srr)?;
+                buf.read_u32_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::PowerPC {
+                        __srr,
+                        __r,
+                        __ct: buf.read_u32::<O>()?,
+                        __xer: buf.read_u32::<O>()?,
+                        __lr: buf.read_u32::<O>()?,
+                        __ctr: buf.read_u32::<O>()?,
+                        __mq: buf.read_u32::<O>()?,
+                        __vrsave: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_UNIXTHREAD if header.cputype == CPU_TYPE_POWERPC64 => {
+                let flavor = buf.read_u32::<O>()?;
+                let count = buf.read_u32::<O>()?;
+                let mut __srr = [0u64; 2];
+                let mut __r = [0u64; 32];
+
+                buf.read_u64_into::<O>(&mut __srr)?;
+                buf.read_u64_into::<O>(&mut __r)?;
+
+                LoadCommand::UnixThread {
+                    flavor,
+                    count,
+                    state: ThreadState::PowerPC64 {
+                        __srr,
+                        __r,
+                        __cr: buf.read_u32::<O>()?,
+                        __xer: buf.read_u64::<O>()?,
+                        __lr: buf.read_u64::<O>()?,
+                        __ctr: buf.read_u64::<O>()?,
+                        __vrsave: buf.read_u32::<O>()?,
+                    },
+                }
+            }
+            LC_SUB_FRAMEWORK => LoadCommand::SubFramework(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_UMBRELLA => LoadCommand::SubUmbrella(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_CLIENT => LoadCommand::SubClient(Self::read_lcstr::<O, T>(buf)?),
+            LC_SUB_LIBRARY => LoadCommand::SubLibrary(Self::read_lcstr::<O, T>(buf)?),
+            LC_LINKER_OPTION => {
+                let count = buf.read_u32::<O>()?;
+
+                LoadCommand::LinkerOption((0..count)
+                    .map(|_| Self::read_utf8_str(buf))
+                    .collect::<Result<Vec<_>>>()?)
+            }
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -889,7 +1249,7 @@ impl LoadCommand {
         );
 
         if cmdsize < read {
-            bail!(MachError::BufferOverflow(cmdsize))
+            return Err(MachError::BufferOverflow(cmdsize).into());
         } else if cmdsize > read {
             // skip the reserved or padding bytes
             buf.consume(cmdsize - read);
@@ -898,12 +1258,24 @@ impl LoadCommand {
         Ok((cmd, cmdsize))
     }
 
-    fn read_dylinker<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
+    fn read_lcstr<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<LcString> {
         let off = buf.read_u32::<O>()? as usize;
 
         buf.consume(off - 12);
 
         Ok(LcString(off, buf.read_cstr()?))
+    }
+
+    fn read_utf8_str<T: AsRef<[u8]>>(cur: &mut Cursor<T>) -> Result<String> {
+        let mut buf = vec![];
+
+        cur.read_until(0, &mut buf)?;
+
+        if buf.last() == Some(&0) {
+            let _ = buf.pop();
+        }
+
+        Ok(String::from_utf8(buf)?)
     }
 
     fn read_fvmlib<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<FvmLib> {
@@ -955,6 +1327,7 @@ impl LoadCommand {
             LoadCommand::ReexportDyLib(_) => LC_REEXPORT_DYLIB,
             LoadCommand::LoadUpwardDylib(_) => LC_LOAD_UPWARD_DYLIB,
             LoadCommand::LazyLoadDylib(_) => LC_LAZY_LOAD_DYLIB,
+            LoadCommand::Rpath(_) => LC_RPATH,
             LoadCommand::IdDyLinker(_) => LC_ID_DYLINKER,
             LoadCommand::LoadDyLinker(_) => LC_LOAD_DYLINKER,
             LoadCommand::DyLdEnv(_) => LC_DYLD_ENVIRONMENT,
@@ -971,6 +1344,12 @@ impl LoadCommand {
             LoadCommand::DyldInfo { .. } => LC_DYLD_INFO_ONLY,
             LoadCommand::EntryPoint { .. } => LC_MAIN,
             LoadCommand::SourceVersion(_) => LC_SOURCE_VERSION,
+            LoadCommand::UnixThread { .. } => LC_UNIXTHREAD,
+            LoadCommand::SubFramework(_) => LC_SUB_FRAMEWORK,
+            LoadCommand::SubUmbrella(_) => LC_SUB_UMBRELLA,
+            LoadCommand::SubClient(_) => LC_SUB_CLIENT,
+            LoadCommand::SubLibrary(_) => LC_SUB_LIBRARY,
+            LoadCommand::LinkerOption(_) => LC_LINKER_OPTION,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }
@@ -1028,6 +1407,10 @@ impl LoadCommand {
             LC_ENCRYPTION_INFO_64 => "LC_ENCRYPTION_INFO_64",
             LC_LINKER_OPTION => "LC_LINKER_OPTION",
             LC_LINKER_OPTIMIZATION_HINT => "LC_LINKER_OPTIMIZATION_HINT",
+            LC_VERSION_MIN_TVOS => "LC_VERSION_MIN_TVOS",
+            LC_VERSION_MIN_WATCHOS => "LC_VERSION_MIN_WATCHOS",
+            LC_NOTE => "LC_NOTE",
+            LC_BUILD_VERSION => "LC_BUILD_VERSION",
             _ => "LC_COMMAND",
         }
     }
@@ -1052,7 +1435,7 @@ where
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
-                bail!(MachError::NumberOverflow)
+                return Err(MachError::NumberOverflow.into());
             }
 
             v |= n << bits;
@@ -1071,9 +1454,7 @@ where
 
         self.read_until(0, &mut v)?;
 
-        Ok(String::from_utf8(
-            v.split(|&b| b == 0).next().unwrap().to_vec(),
-        )?)
+        Ok(String::from_utf8(v.split(|&b| b == 0).next().unwrap().to_vec())?)
     }
 }
 
@@ -1220,15 +1601,16 @@ pub mod tests {
     include!("testdata.rs");
 
     macro_rules! parse_command {
-        ($buf:expr) => ({
+        ($buf:expr) => {{
+            let header = MachHeader::default();
             let mut buf = Vec::new();
 
             buf.extend_from_slice(&$buf[..]);
 
             let mut cur = Cursor::new(buf);
 
-            LoadCommand::parse::<LittleEndian, Vec<u8>>(&mut cur).unwrap()
-        })
+            LoadCommand::parse::<LittleEndian, Vec<u8>>(&header, &mut cur).unwrap()
+        }};
     }
 
     #[test]
@@ -1507,10 +1889,7 @@ pub mod tests {
     fn test_parse_uuid_command() {
         if let (LoadCommand::Uuid(ref uuid), cmdsize) = parse_command!(LC_UUID_DATA) {
             assert_eq!(cmdsize, 24);
-            assert_eq!(
-                uuid.hyphenated().to_string(),
-                "92e3cf1f-20da-3373-a98c-851366d353bf"
-            );
+            assert_eq!(uuid.hyphenated().to_string(), "92e3cf1f-20da-3373-a98c-851366d353bf");
         } else {
             panic!();
         }
@@ -1518,14 +1897,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_min_version_command() {
-        if let (
-            LoadCommand::VersionMin {
-                target,
-                version,
-                sdk,
-            },
-            cmdsize,
-        ) = parse_command!(LC_VERSION_MIN_MACOSX_DATA)
+        if let (LoadCommand::VersionMin { target, version, sdk }, cmdsize) = parse_command!(LC_VERSION_MIN_MACOSX_DATA)
         {
             assert_eq!(cmdsize, 16);
             assert_eq!(target, BuildTarget::MacOsX);
@@ -1548,14 +1920,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_main_command() {
-        if let (
-            LoadCommand::EntryPoint {
-                entryoff,
-                stacksize,
-            },
-            cmdsize,
-        ) = parse_command!(LC_MAIN_DATA)
-        {
+        if let (LoadCommand::EntryPoint { entryoff, stacksize }, cmdsize) = parse_command!(LC_MAIN_DATA) {
             assert_eq!(cmdsize, 24);
             assert_eq!(entryoff, 0x11400);
             assert_eq!(stacksize, 0);
@@ -1568,10 +1933,7 @@ pub mod tests {
     fn test_load_dylib_command() {
         if let (LoadCommand::LoadDyLib(ref dylib), cmdsize) = parse_command!(LC_LOAD_DYLIB_DATA) {
             assert_eq!(cmdsize, 56);
-            assert_eq!(
-                dylib.name,
-                LcString(24, String::from("/usr/lib/libSystem.B.dylib"))
-            );
+            assert_eq!(dylib.name, LcString(24, String::from("/usr/lib/libSystem.B.dylib")));
             assert_eq!(dylib.timestamp, 2);
             assert_eq!(dylib.current_version.to_string(), "1226.10.1");
             assert_eq!(dylib.compatibility_version.to_string(), "1.0");
@@ -1598,6 +1960,14 @@ pub mod tests {
             assert_eq!(size, 0);
         } else {
             panic!();
+        }
+    }
+
+    #[test]
+    fn test_parse_rpath_command() {
+        if let (LoadCommand::Rpath(path), cmdsize) = parse_command!(LC_RPATH_DATA) {
+            assert_eq!(cmdsize, 64);
+            assert_eq!(path, "@executable_path/../../Library/PrivateFrameworks");
         }
     }
 }

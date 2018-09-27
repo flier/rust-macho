@@ -1093,7 +1093,7 @@ impl LoadCommand {
 
                 buf.read_exact(&mut uuid[..])?;
 
-                LoadCommand::Uuid(Uuid::from_bytes(&uuid[..]).map_err(MachError::from)?)
+                LoadCommand::Uuid(Uuid::from_slice(&uuid).map_err(MachError::from)?)
             }
             LC_CODE_SIGNATURE => LoadCommand::CodeSignature(Self::read_linkedit_data::<O, T>(buf)?),
             LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(Self::read_linkedit_data::<O, T>(buf)?),
@@ -1269,9 +1269,11 @@ impl LoadCommand {
             LC_LINKER_OPTION => {
                 let count = buf.read_u32::<O>()?;
 
-                LoadCommand::LinkerOption((0..count)
-                    .map(|_| Self::read_utf8_str(buf))
-                    .collect::<Result<Vec<_>>>()?)
+                LoadCommand::LinkerOption(
+                    (0..count)
+                        .map(|_| Self::read_utf8_str(buf))
+                        .collect::<Result<Vec<_>>>()?,
+                )
             }
             LC_ROUTINES => LoadCommand::Routines {
                 init_address: buf.read_u32::<O>()?,
@@ -1966,7 +1968,10 @@ pub mod tests {
     fn test_parse_uuid_command() {
         if let (LoadCommand::Uuid(ref uuid), cmdsize) = parse_command!(LC_UUID_DATA) {
             assert_eq!(cmdsize, 24);
-            assert_eq!(uuid.hyphenated().to_string(), "92e3cf1f-20da-3373-a98c-851366d353bf");
+            assert_eq!(
+                uuid.to_hyphenated_ref().to_string(),
+                "92e3cf1f-20da-3373-a98c-851366d353bf"
+            );
         } else {
             panic!();
         }

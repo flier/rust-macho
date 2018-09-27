@@ -388,7 +388,7 @@ impl MachCommand {
         if let LoadCommand::Uuid(ref uuid) = *cmd {
             write!(f, "     cmd {}\n", cmd.name())?;
             write!(f, " cmdsize {}\n", cmdsize)?;
-            write!(f, "    uuid {}\n", uuid.hyphenated().to_string().to_uppercase())?;
+            write!(f, "    uuid {}\n", uuid.to_hyphenated_ref().to_string().to_uppercase())?;
 
             Ok(())
         } else {

@@ -14,7 +14,9 @@ pub enum MachError {
     #[fail(display = "fail to convert a String from a UTF-8 byte vector, {}.", _0)]
     FromUtf8Error(#[cause] string::FromUtf8Error),
     #[fail(display = "fail to parse UUID, {}.", _0)]
-    UuidParseError(::uuid::ParseError),
+    UuidParseError(::uuid::parser::ParseError),
+    #[fail(display = "fail to parse UUID, {}.", _0)]
+    UuidBytesError(::uuid::BytesError),
     #[fail(display = "fail to do I/O operations, {}.", _0)]
     IoError(#[cause] io::Error),
     #[fail(display = "fail to parse time, {}.", _0)]
@@ -47,9 +49,15 @@ impl From<string::FromUtf8Error> for MachError {
     }
 }
 
-impl From<uuid::ParseError> for MachError {
-    fn from(err: uuid::ParseError) -> Self {
+impl From<uuid::parser::ParseError> for MachError {
+    fn from(err: uuid::parser::ParseError) -> Self {
         MachError::UuidParseError(err)
+    }
+}
+
+impl From<uuid::BytesError> for MachError {
+    fn from(err: uuid::BytesError) -> Self {
+        MachError::UuidBytesError(err)
     }
 }
 

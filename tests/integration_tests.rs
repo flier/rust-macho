@@ -74,7 +74,7 @@ mod integration {
                     let ofile = match OFile::parse(&mut cur) {
                         Ok(ofile) => ofile,
                         Err(err) => {
-                            if let Some(&MachError::UnknownMagic(magic)) = err.cause().downcast_ref::<MachError>() {
+                            if let Some(&MachError::UnknownMagic(magic)) = err.as_fail().downcast_ref::<MachError>() {
                                 trace!("skip unknown file format: 0x{:08x}, {:?}", magic, entry.path());
 
                                 return Ok(());

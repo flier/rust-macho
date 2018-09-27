@@ -1,182 +1,197 @@
 extern crate byteorder;
 #[macro_use]
 extern crate failure;
-extern crate getopts;
 #[macro_use]
 extern crate log;
 extern crate mach_object;
 extern crate memmap;
 extern crate pretty_env_logger;
+#[macro_use]
+extern crate structopt;
 
-use std::mem;
-use std::ops::Range;
 use std::env;
 use std::fmt;
-use std::rc::Rc;
-use std::borrow::Cow;
-use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
-use std::path::Path;
 use std::fs::File;
+use std::io::{stdout, Cursor, Seek, SeekFrom, Write};
+use std::mem;
+use std::ops::Deref;
+use std::ops::Range;
+use std::path::{Path, PathBuf};
 use std::process::exit;
+use std::rc::Rc;
 
-use failure::Error;
-use getopts::Options;
 use byteorder::ReadBytesExt;
+use failure::Error;
 use memmap::Mmap;
+use structopt::StructOpt;
 
 use mach_object::*;
 
 const APP_VERSION: &'static str = "0.1.1";
 
-fn print_usage(program: &str, opts: Options) {
-    let brief = format!(
-        "Usage: {} [-arch arch_type] [options] [--version] <object file> ...",
-        program
-    );
+#[derive(Debug, StructOpt)]
+#[structopt(
+    name = "otool",
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
+)]
+struct Opt {
+    /// Specifies the architecture
+    #[structopt(long = "arch", parse(try_from_str = "parse_cpu_type"))]
+    cpu_type: Option<cpu_type_t>,
 
-    print!("{}", opts.usage(&brief));
+    /// Print verbosely (symbolically) when possible
+    #[structopt(short = "v")]
+    print_verbose: bool,
+
+    /// Print no leading addresses or headers
+    #[structopt(short = "X")]
+    print_headers: bool,
+
+    /// Print the fat headers
+    #[structopt(short = "f")]
+    print_fat_header: bool,
+
+    /// Print the archive headers
+    #[structopt(short = "a")]
+    print_archive_header: bool,
+
+    /// Print the mach header
+    #[structopt(short = "h")]
+    print_mach_header: bool,
+
+    /// Print the load commands
+    #[structopt(short = "l")]
+    print_load_commands: bool,
+
+    /// Print shared libraries used
+    #[structopt(short = "L")]
+    print_shared_lib: bool,
+
+    /// Print shared library id name
+    #[structopt(short = "D")]
+    print_shared_lib_just_id: bool,
+
+    /// Print the text section
+    #[structopt(short = "t")]
+    print_text_section: bool,
+
+    /// Print the data section
+    #[structopt(short = "d")]
+    print_data_section: bool,
+
+    /// Print the symbol table
+    #[structopt(short = "n")]
+    print_symbol_table: bool,
+
+    /// Print contents of section
+    #[structopt(
+        name = "segname[:sectname]",
+        short = "s",
+        parse(try_from_str = "parse_section")
+    )]
+    print_sections: Vec<(String, Option<String>)>,
+
+    /// Print the table of contents of a library
+    #[structopt(short = "S")]
+    print_lib_toc: bool,
+
+    /// Print the mach-o binding info
+    #[structopt(long = "bind")]
+    print_bind_info: bool,
+
+    /// Print the mach-o weak binding info
+    #[structopt(long = "weak")]
+    print_weak_bind_info: bool,
+
+    /// Print the mach-o lazy binding info
+    #[structopt(long = "lazy")]
+    print_lazy_bind_info: bool,
+
+    /// Print the mach-o rebasing info
+    #[structopt(long = "rebase")]
+    print_rebase_info: bool,
+
+    /// Print the mach-o exported symbols
+    #[structopt(long = "export")]
+    print_export_trie: bool,
+
+    /// Print the version of program
+    #[structopt(long = "version")]
+    print_version: bool,
+
+    /// The object files
+    #[structopt(parse(from_os_str))]
+    files: Vec<PathBuf>,
+}
+
+fn parse_cpu_type(arch: &str) -> Result<cpu_type_t, Error> {
+    get_arch_from_flag(arch)
+        .map(|&(cpu_type, _)| cpu_type)
+        .ok_or_else(|| format_err!("unknown architecture specification flag: arch {}", arch))
+}
+
+fn parse_section(s: &str) -> Result<(String, Option<String>), Error> {
+    let mut names = s.splitn(2, ':');
+    let segname = names.next().ok_or_else(|| format_err!("missing section name"))?;
+    let sectname = names.next().map(|s| s.to_owned());
+
+    Ok((segname.to_owned(), sectname))
 }
 
 fn main() {
     pretty_env_logger::init();
 
     let args: Vec<String> = env::args().collect();
-    let program = Path::new(args[0].as_str())
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let program = Path::new(args[0].as_str()).file_name().unwrap().to_str().unwrap();
 
-    let mut opts = Options::new();
+    let opt = Opt::from_args();
 
-    opts.optopt("", "arch", "Specifies the architecture", "arch_type");
-    opts.optflag("f", "", "print the fat headers");
-    opts.optflag("a", "", "print the archive headers");
-    opts.optflag("h", "", "print the mach header");
-    opts.optflag("l", "", "print the load commands");
-    opts.optflag("L", "", "print shared libraries used");
-    opts.optflag("D", "", "print shared library id name");
-    opts.optflag("t", "", "print the text section");
-    opts.optflag("d", "", "print the data section");
-    opts.optflag("n", "", "print the symbol table");
-    opts.optopt("s", "", "print contents of section", "<segname>:<sectname>");
-    opts.optflag("S", "", "print the table of contents of a library");
-    opts.optflag("X", "", "print no leading addresses or headers");
-    opts.optflag("", "bind", "print the mach-o binding info");
-    opts.optflag("", "weak-bind", "print the mach-o weak binding info");
-    opts.optflag("", "lazy-bind", "print the mach-o lazy binding info");
-    opts.optflag("", "rebase", "print the mach-o rebasing info");
-    opts.optflag("", "export", "print the mach-o exported symbols");
-    opts.optflag(
-        "",
-        "version",
-        format!("print the version of {}", program).as_str(),
-    );
-
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(_) => {
-            print_usage(&program, opts);
-
-            exit(-1);
-        }
-    };
-
-    if matches.opt_present("version") {
+    if opt.print_version {
         println!("{} version {}", program, APP_VERSION);
 
         exit(0);
     }
 
-    if matches.free.is_empty() {
+    if opt.files.is_empty() {
         println!("at least one file must be specified");
-
-        print_usage(&program, opts);
 
         exit(-1);
     }
 
-    let mut processor = FileProcessor {
-        w: stdout(),
-        cpu_type: 0,
-        print_headers: !matches.opt_present("X"),
-        print_fat_header: matches.opt_present("f"),
-        print_archive_header: matches.opt_present("a"),
-        print_mach_header: matches.opt_present("h"),
-        print_load_commands: matches.opt_present("l"),
-        print_shared_lib: matches.opt_present("L") || matches.opt_present("D"),
-        print_shared_lib_just_id: matches.opt_present("D") && !matches.opt_present("L"),
-        print_text_section: matches.opt_present("t"),
-        print_data_section: matches.opt_present("d"),
-        print_symbol_table: matches.opt_present("n"),
-        print_section: matches.opt_str("s").map(|s| {
-            let names: Vec<&str> = s.splitn(2, ':').collect();
+    let mut processor = FileProcessor { opt, w: stdout() };
 
-            if names.len() == 2 {
-                (String::from(names[0]), Some(String::from(names[1])))
-            } else {
-                (String::from(names[0]), None)
-            }
-        }),
-        print_lib_toc: matches.opt_present("S"),
-        print_bind_info: matches.opt_present("bind"),
-        print_weak_bind_info: matches.opt_present("weak-bind"),
-        print_lazy_bind_info: matches.opt_present("lazy-bind"),
-        print_rebase_info: matches.opt_present("rebase"),
-        print_export_trie: matches.opt_present("export"),
-    };
-
-    if let Some(flags) = matches.opt_str("arch") {
-        if let Some(&(cpu_type, _)) = get_arch_from_flag(flags.as_str()) {
-            processor.cpu_type = cpu_type;
-        } else {
-            eprintln!("unknown architecture specification flag: arch {}", flags);
-
-            exit(-1);
-        }
-    }
-
-    for filename in matches.free {
-        if let Err(err) = processor.process(filename.as_str()) {
-            eprintln!("fail to process file {}, {}", filename, err);
+    for filename in processor.files.clone() {
+        if let Err(err) = processor.process(&filename) {
+            eprintln!("fail to process file {:?}, {}", filename, err);
 
             exit(-1);
         }
     }
 }
 
-struct FileProcessor<T: Write> {
+struct FileProcessor<T> {
+    opt: Opt,
     w: T,
-    cpu_type: cpu_type_t,
-    print_headers: bool,
-    print_fat_header: bool,
-    print_archive_header: bool,
-    print_mach_header: bool,
-    print_load_commands: bool,
-    print_shared_lib: bool,
-    print_shared_lib_just_id: bool,
-    print_text_section: bool,
-    print_data_section: bool,
-    print_symbol_table: bool,
-    print_section: Option<(String, Option<String>)>,
-    print_lib_toc: bool,
-    print_bind_info: bool,
-    print_weak_bind_info: bool,
-    print_lazy_bind_info: bool,
-    print_rebase_info: bool,
-    print_export_trie: bool,
+}
+
+impl<T> Deref for FileProcessor<T> {
+    type Target = Opt;
+
+    fn deref(&self) -> &Self::Target {
+        &self.opt
+    }
 }
 
 struct FileProcessContext<'a> {
-    filename: Cow<'a, str>,
+    filename: &'a Path,
     payload: &'a [u8],
     cur: Cursor<&'a [u8]>,
 }
 
 impl<'a> FileProcessContext<'a> {
-    pub fn new(filename: &'a str, payload: &'a [u8]) -> FileProcessContext<'a> {
+    pub fn new(filename: &'a Path, payload: &'a [u8]) -> FileProcessContext<'a> {
         FileProcessContext {
-            filename: filename.into(),
+            filename,
             payload,
             cur: Cursor::new(payload),
         }
@@ -204,7 +219,8 @@ impl<'a> FileProcessContext<'a> {
 }
 
 impl<T: Write> FileProcessor<T> {
-    fn process(&mut self, filename: &str) -> Result<(), Error> {
+    fn process<P: AsRef<Path>>(&mut self, filename: P) -> Result<(), Error> {
+        let filename = filename.as_ref();
         let file = File::open(filename)?;
         let mmap = unsafe { Mmap::map(&file) }?;
         let payload = mmap.as_ref();
@@ -212,7 +228,7 @@ impl<T: Write> FileProcessor<T> {
         let file = OFile::parse(&mut cur)?;
         let mut ctxt = FileProcessContext::new(filename, payload);
 
-        debug!("process file {} with {} bytes", filename, mmap.len());
+        debug!("process file {:?} with {} bytes", filename, mmap.len());
 
         self.process_ofile(&file, &mut ctxt)?;
 
@@ -242,7 +258,10 @@ impl<T: Write> FileProcessor<T> {
     }
 
     fn print_mach_file(&self) -> bool {
-        self.print_mach_header | self.print_load_commands | self.print_text_section | self.print_data_section
+        self.print_mach_header
+            | self.print_load_commands
+            | self.print_text_section
+            | self.print_data_section
             | self.print_shared_lib
     }
 
@@ -252,25 +271,23 @@ impl<T: Write> FileProcessor<T> {
         commands: &[MachCommand],
         ctxt: &mut FileProcessContext,
     ) -> Result<(), Error> {
-        if self.cpu_type != 0 && self.cpu_type != CPU_TYPE_ANY && self.cpu_type != header.cputype {
-            return Ok(());
+        if let Some(cpu_type) = self.cpu_type {
+            if cpu_type != CPU_TYPE_ANY && cpu_type != header.cputype {
+                return Ok(());
+            }
         }
 
         if self.print_headers && self.print_mach_file() {
-            if self.cpu_type != 0 {
+            if self.cpu_type.is_some() {
                 writeln!(
                     self.w,
-                    "{} (architecture {}):",
+                    "{:?} (architecture {}):",
                     ctxt.filename,
-                    get_arch_name_from_types(header.cputype, header.cpusubtype).unwrap_or(
-                        format!(
-                            "cputype {} cpusubtype {}",
-                            header.cputype, header.cpusubtype
-                        ).as_str()
-                    )
+                    get_arch_name_from_types(header.cputype, header.cpusubtype)
+                        .unwrap_or(format!("cputype {} cpusubtype {}", header.cputype, header.cpusubtype).as_str())
                 )?;
             } else {
-                writeln!(self.w, "{}:", ctxt.filename)?;
+                writeln!(self.w, "{:?}:", ctxt.filename)?;
             }
         }
 
@@ -301,20 +318,20 @@ impl<T: Write> FileProcessor<T> {
             match *cmd {
                 LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
                     for ref sect in sections {
-                        let name = Some((sect.segname.clone(), Some(sect.sectname.clone())));
+                        let print_section = self.print_sections.iter().any(|(ref segname, ref sectname)| {
+                            segname.as_str() == sect.segname
+                                && (sectname
+                                    .as_ref()
+                                    .map_or(true, |sectname| sectname.as_str() == sect.sectname))
+                        });
+                        let print_text_section =
+                            self.print_text_section && (sect.segname == SEG_TEXT && sect.sectname == SECT_TEXT);
+                        let print_data_section =
+                            self.print_data_section && (sect.segname == SEG_DATA && sect.sectname == SECT_DATA);
 
-                        if name == self.print_section || Some((sect.segname.clone(), None)) == self.print_section
-                            || (self.print_text_section
-                                && name == Some((String::from(SEG_TEXT), Some(String::from(SECT_TEXT)))))
-                            || (self.print_data_section
-                                && name == Some((String::from(SEG_DATA), Some(String::from(SECT_DATA)))))
-                        {
+                        if print_section || print_text_section || print_data_section {
                             if self.print_headers {
-                                writeln!(
-                                    self.w,
-                                    "payloads of ({},{}) section",
-                                    sect.segname, sect.sectname
-                                )?;
+                                writeln!(self.w, "payloads of ({},{}) section", sect.segname, sect.sectname)?;
                             }
 
                             ctxt.cur.seek(SeekFrom::Start(sect.offset as u64))?;
@@ -329,11 +346,7 @@ impl<T: Write> FileProcessor<T> {
                 LoadCommand::IdFvmLib(ref fvmlib) | LoadCommand::LoadFvmLib(ref fvmlib)
                     if self.print_shared_lib && !self.print_shared_lib_just_id =>
                 {
-                    writeln!(
-                        self.w,
-                        "\t{} (minor version {})",
-                        fvmlib.name, fvmlib.minor_version
-                    )?;
+                    writeln!(self.w, "\t{} (minor version {})", fvmlib.name, fvmlib.minor_version)?;
                 }
 
                 LoadCommand::IdDyLib(ref dylib)
@@ -374,8 +387,7 @@ impl<T: Write> FileProcessor<T> {
                     export_size,
                 } => {
                     if self.print_bind_info {
-                        let payload = ctxt.payload
-                            .checked_slice(bind_off as usize, bind_size as usize)?;
+                        let payload = ctxt.payload.checked_slice(bind_off as usize, bind_size as usize)?;
 
                         writeln!(self.w, "Bind table:")?;
                         writeln!(
@@ -389,14 +401,12 @@ impl<T: Write> FileProcessor<T> {
                     }
 
                     if self.print_weak_bind_info {
-                        let payload = ctxt.payload
+                        let payload = ctxt
+                            .payload
                             .checked_slice(weak_bind_off as usize, weak_bind_size as usize)?;
 
                         writeln!(self.w, "Weak bind table:")?;
-                        writeln!(
-                            self.w,
-                            "segment section          address       type     addend symbol"
-                        )?;
+                        writeln!(self.w, "segment section          address       type     addend symbol")?;
 
                         for symbol in WeakBind::parse(payload, ptr_size) {
                             writeln!(self.w, "{}", WeakBindSymbolFmt(symbol, &commands))?;
@@ -404,7 +414,8 @@ impl<T: Write> FileProcessor<T> {
                     }
 
                     if self.print_lazy_bind_info {
-                        let payload = ctxt.payload
+                        let payload = ctxt
+                            .payload
                             .checked_slice(lazy_bind_off as usize, lazy_bind_size as usize)?;
 
                         writeln!(self.w, "Lazy bind table:")?;
@@ -415,8 +426,7 @@ impl<T: Write> FileProcessor<T> {
                     }
 
                     if self.print_rebase_info {
-                        let payload = ctxt.payload
-                            .checked_slice(rebase_off as usize, rebase_size as usize)?;
+                        let payload = ctxt.payload.checked_slice(rebase_off as usize, rebase_size as usize)?;
 
                         writeln!(self.w, "Rebase table:")?;
                         writeln!(self.w, "segment  section            address     type")?;
@@ -427,14 +437,11 @@ impl<T: Write> FileProcessor<T> {
                     }
 
                     if self.print_export_trie {
-                        let payload = ctxt.payload
-                            .checked_slice(export_off as usize, export_size as usize)?;
+                        let payload = ctxt.payload.checked_slice(export_off as usize, export_size as usize)?;
 
                         writeln!(self.w, "Exports trie:")?;
 
-                        let mut symbols = ExportTrie::parse(payload)?
-                            .symbols()
-                            .collect::<Vec<ExportSymbol>>();
+                        let mut symbols = ExportTrie::parse(payload)?.symbols().collect::<Vec<ExportSymbol>>();
 
                         symbols.sort_by(|lhs, rhs| lhs.address().cmp(&rhs.address()));
 
@@ -468,9 +475,7 @@ impl<T: Write> FileProcessor<T> {
 
         for &(ref arch, ref file) in files {
             let start = arch.offset as usize;
-            let end = arch.offset
-                .checked_add(arch.size)
-                .ok_or(MachError::NumberOverflow)? as usize;
+            let end = arch.offset.checked_add(arch.size).ok_or(MachError::NumberOverflow)? as usize;
 
             if start >= ctxt.payload.len() {
                 bail!("file offset overflow, {}", start)
@@ -490,7 +495,7 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_ar_file(&mut self, files: &Vec<(ArHeader, OFile)>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_headers && (self.print_lib_toc || self.print_mach_file()) {
-            writeln!(self.w, "Archive :{}", ctxt.filename)?;
+            writeln!(self.w, "Archive :{:?}", ctxt.filename)?;
         }
 
         if self.print_archive_header {
@@ -500,14 +505,16 @@ impl<T: Write> FileProcessor<T> {
         }
 
         for &(ref header, ref file) in files {
+            let filename = if let Some(ref name) = header.ar_member_name {
+                ctxt.filename.join(name)
+            } else {
+                ctxt.filename.to_owned()
+            };
+
             self.process_ofile(
                 file,
                 &mut FileProcessContext {
-                    filename: if let Some(ref name) = header.ar_member_name {
-                        format!("{}({})", ctxt.filename, name).into()
-                    } else {
-                        ctxt.filename.clone()
-                    },
+                    filename: &filename,
                     payload: ctxt.payload,
                     cur: ctxt.cur.clone(),
                 },
@@ -519,7 +526,7 @@ impl<T: Write> FileProcessor<T> {
 
     fn process_symdef(&mut self, ranlibs: &Vec<RanLib>, ctxt: &mut FileProcessContext) -> Result<(), Error> {
         if self.print_lib_toc {
-            writeln!(self.w, "Table of contents from: {}", ctxt.filename)?;
+            writeln!(self.w, "Table of contents from: {:?}", ctxt.filename)?;
             writeln!(
                 self.w,
                 "size of ranlib structures: {} (number {})",
@@ -664,9 +671,7 @@ impl<'a> fmt::Display for ExportSymbolFmt<'a> {
             }
             ExportType::Regular { address }
             | ExportType::Weak { address }
-            | ExportType::Stub {
-                offset: address, ..
-            } => {
+            | ExportType::Stub { offset: address, .. } => {
                 write!(f, "0x{:08X}  ", address)?;
             }
         }
@@ -737,11 +742,7 @@ fn segmnet_info(commands: &[LoadCommand], segment_index: usize) -> Option<(&str,
             vmsize,
             ref sections,
             ..
-        } => Some((
-            segname.as_str(),
-            (vmaddr..vmaddr + vmsize),
-            sections.as_slice(),
-        )),
+        } => Some((segname.as_str(), (vmaddr..vmaddr + vmsize), sections.as_slice())),
         _ => None,
     })
 }
@@ -765,8 +766,7 @@ fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
             | &LoadCommand::LoadUpwardDylib(ref dylib)
             | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
             _ => None,
-        })
-        .nth(ordinal - 1)
+        }).nth(ordinal - 1)
         .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
         .and_then(|filename| filename.to_str())
 }

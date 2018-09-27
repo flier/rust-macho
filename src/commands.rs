@@ -2162,22 +2162,15 @@ pub mod tests {
 
     #[test]
     fn test_build_version_command() {
-        if let (
-            LoadCommand::BuildVersion(BuildVersion {
-                platform,
-                minos,
-                sdk,
-                build_tools,
-            }),
-            cmdsize,
-        ) = parse_command!(LC_BUILD_VERSION)
-        {
+        let (cmd, cmdsize) = parse_command!(LC_BUILD_VERSION);
+
+        if let LoadCommand::BuildVersion(ref version) = cmd {
             assert_eq!(cmdsize, 32);
-            assert_eq!(platform, 8);
-            assert_eq!(minos.to_string(), "12.0");
-            assert_eq!(sdk.to_string(), "12.0");
+            assert_eq!(version.platform(), Platform::Other(8));
+            assert_eq!(version.minos.to_string(), "12.0");
+            assert_eq!(version.sdk.to_string(), "12.0");
             assert_eq!(
-                build_tools,
+                version.build_tools,
                 vec![BuildTool {
                     tool: 3,
                     version: "409.10.0".parse().unwrap()
@@ -2186,5 +2179,17 @@ pub mod tests {
         } else {
             panic!()
         }
+
+        assert_eq!(
+            MachCommand(cmd, cmdsize).to_string(),
+            "      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform Other(8)
+    minos 12.0
+      sdk 12.0
+    tools
+          LD 409.10
+"
+        );
     }
 }

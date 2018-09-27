@@ -143,6 +143,12 @@ pub struct FatArch {
     pub align: u32,
 }
 
+impl FatArch {
+    pub fn name(&self) -> Option<&str> {
+        get_arch_name_from_types(self.cputype, self.cpusubtype)
+    }
+}
+
 /// the archive file header
 #[derive(Debug, Default, Clone)]
 pub struct ArHeader {

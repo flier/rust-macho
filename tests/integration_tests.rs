@@ -15,6 +15,7 @@ mod integration {
     use std::fs::File;
     use std::io::{self, Cursor};
     use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
 
     use failure::Error;
     use hexplay::HexViewBuilder;
@@ -84,7 +85,7 @@ mod integration {
                         }
                     };
 
-                    verify_mach_file(&ofile);
+                    verify_mach_file(entry.path(), &ofile);
 
                     trace!(
                         "loaded in {} ms, {:?}",
@@ -104,23 +105,24 @@ mod integration {
         }
     }
 
-    fn verify_mach_file(ofile: &OFile) {
+    fn verify_mach_file(path: &Path, ofile: &OFile) {
         match ofile {
             OFile::MachFile { ref commands, .. } => for &MachCommand(ref cmd, cmdsize) in commands {
                 if let LoadCommand::Command { cmd, ref payload } = cmd {
                     warn!(
-                        "unsolved command #{} with {} bytes:\n{}",
+                        "unsolved command #{} with {} bytes in {:?}:\n{}",
                         cmd,
                         cmdsize,
+                        path,
                         HexViewBuilder::new(payload).finish()
                     );
                 }
             },
-            OFile::FatFile { ref files, .. } => for (_arch, ofile) in files {
-                verify_mach_file(ofile)
+            OFile::FatFile { ref files, .. } => for (arch, ofile) in files {
+                verify_mach_file(&path.join(arch.name().unwrap_or_default()), ofile)
             },
-            OFile::ArFile { ref files } => for (_header, ofile) in files {
-                verify_mach_file(ofile)
+            OFile::ArFile { ref files } => for (header, ofile) in files {
+                verify_mach_file(&path.join(&header.ar_name), ofile)
             },
             OFile::SymDef { .. } => {}
         }

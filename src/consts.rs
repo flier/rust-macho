@@ -1045,3 +1045,15 @@ pub const N_SYMBOL_RESOLVER: u16 = 0x0100;
 /// symbol is pinned to the previous content.
 ///
 pub const N_ALT_ENTRY: u16 = 0x0200;
+
+/* Known values for the platform field above. */
+pub const PLATFORM_MACOS: u32 = 1;
+pub const PLATFORM_IOS: u32 = 2;
+pub const PLATFORM_TVOS: u32 = 3;
+pub const PLATFORM_WATCHOS: u32 = 4;
+pub const PLATFORM_BRIDGEOS: u32 = 5;
+
+/* Known values for the tool field above. */
+pub const TOOL_CLANG: u32 = 1;
+pub const TOOL_SWIFT: u32 = 2;
+pub const TOOL_LD: u32 = 3;

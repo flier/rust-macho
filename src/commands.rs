@@ -4,8 +4,10 @@ use std::fmt;
 use std::io::{BufRead, Cursor, Read};
 use std::ops::Deref;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use byteorder::{ByteOrder, ReadBytesExt};
+use failure::Error;
 use uuid::Uuid;
 
 use consts::*;
@@ -36,6 +38,29 @@ impl VersionTag {
 impl Into<u32> for VersionTag {
     fn into(self) -> u32 {
         self.0
+    }
+}
+
+impl FromStr for VersionTag {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let mut parts = s.split(".");
+
+        let major = match parts.next() {
+            Some(s) if !s.is_empty() => s.parse()?,
+            _ => 0,
+        };
+        let minor = match parts.next() {
+            Some(s) if !s.is_empty() => s.parse()?,
+            _ => 0,
+        };
+        let release = match parts.next() {
+            Some(s) if !s.is_empty() => s.parse()?,
+            _ => 0,
+        };
+
+        Ok(VersionTag((major << 16) + (minor << 8) + release))
     }
 }
 
@@ -377,6 +402,68 @@ pub enum ThreadState {
         __ctr: u64,
         __vrsave: u32,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Platform {
+    macOS,
+    iOS,
+    tvOS,
+    watchOS,
+    bridgeOS,
+    Other(u32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Tool {
+    Clang,
+    Swift,
+    LD,
+    Other(u32),
+}
+
+/// The build_version_command contains the min OS version on which this
+/// binary was built to run for its platform.  The list of known platforms and
+/// tool values following it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BuildVersion {
+    pub platform: u32,
+    /// X.Y.Z is encoded in nibbles xxxx.yy.zz
+    pub minos: VersionTag,
+    /// X.Y.Z is encoded in nibbles xxxx.yy.zz
+    pub sdk: VersionTag,
+    /// build tools
+    pub build_tools: Vec<BuildTool>,
+}
+
+impl BuildVersion {
+    pub fn platform(&self) -> Platform {
+        match self.platform {
+            PLATFORM_MACOS => Platform::macOS,
+            PLATFORM_IOS => Platform::iOS,
+            PLATFORM_TVOS => Platform::tvOS,
+            PLATFORM_WATCHOS => Platform::watchOS,
+            PLATFORM_BRIDGEOS => Platform::bridgeOS,
+            n => Platform::Other(n),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BuildTool {
+    pub tool: u32,
+    pub version: VersionTag,
+}
+
+impl BuildTool {
+    pub fn tool(&self) -> Tool {
+        match self.tool {
+            TOOL_CLANG => Tool::Clang,
+            TOOL_SWIFT => Tool::Swift,
+            TOOL_LD => Tool::LD,
+            n => Tool::Other(n),
+        }
+    }
 }
 
 /// The load commands directly follow the mach header.
@@ -949,6 +1036,11 @@ pub enum LoadCommand {
         nhints: u32,
     },
 
+    /// The build_version_command contains the min OS version on which this
+    /// binary was built to run for its platform.  The list of known platforms and
+    /// tool values following it.
+    BuildVersion(BuildVersion),
+
     Command {
         /// type of load command
         cmd: u32,
@@ -1297,6 +1389,18 @@ impl LoadCommand {
                 offset: buf.read_u32::<O>()?,
                 nhints: buf.read_u32::<O>()?,
             },
+            LC_BUILD_VERSION => LoadCommand::BuildVersion(BuildVersion {
+                platform: buf.read_u32::<O>()?,
+                minos: VersionTag(buf.read_u32::<O>()?),
+                sdk: VersionTag(buf.read_u32::<O>()?),
+                build_tools: (0..buf.read_u32::<O>()?)
+                    .map(|_| {
+                        let tool = buf.read_u32::<O>()?;
+                        let version = VersionTag(buf.read_u32::<O>()?);
+
+                        Ok(BuildTool { tool, version })
+                    }).collect::<Result<Vec<_>>>()?,
+            }),
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];
 
@@ -1429,6 +1533,7 @@ impl LoadCommand {
             LoadCommand::EncryptionInfo { .. } => LC_ENCRYPTION_INFO,
             LoadCommand::EncryptionInfo64 { .. } => LC_ENCRYPTION_INFO_64,
             LoadCommand::TwoLevelHints { .. } => LC_TWOLEVEL_HINTS,
+            LoadCommand::BuildVersion { .. } => LC_BUILD_VERSION,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }
@@ -2050,6 +2155,36 @@ pub mod tests {
         if let (LoadCommand::Rpath(path), cmdsize) = parse_command!(LC_RPATH_DATA) {
             assert_eq!(cmdsize, 64);
             assert_eq!(path, "@executable_path/../../Library/PrivateFrameworks");
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn test_build_version_command() {
+        if let (
+            LoadCommand::BuildVersion(BuildVersion {
+                platform,
+                minos,
+                sdk,
+                build_tools,
+            }),
+            cmdsize,
+        ) = parse_command!(LC_BUILD_VERSION)
+        {
+            assert_eq!(cmdsize, 32);
+            assert_eq!(platform, 8);
+            assert_eq!(minos.to_string(), "12.0");
+            assert_eq!(sdk.to_string(), "12.0");
+            assert_eq!(
+                build_tools,
+                vec![BuildTool {
+                    tool: 3,
+                    version: "409.10.0".parse().unwrap()
+                }]
+            );
+        } else {
+            panic!()
         }
     }
 }

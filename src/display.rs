@@ -353,6 +353,20 @@ impl MachCommand {
         }
     }
 
+    fn print_rpath_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        if let LoadCommand::Rpath(ref path) = *cmd {
+            writeln!(f, "      cmd {}", cmd.name())?;
+            writeln!(f, "  cmdsize {}", cmdsize)?;
+            writeln!(f, "     path {}", path)?;
+
+            Ok(())
+        } else {
+            unreachable!();
+        }
+    }
+
     fn print_version_min_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let MachCommand(ref cmd, cmdsize) = *self;
 
@@ -433,6 +447,28 @@ impl MachCommand {
             }
         }
     }
+
+    fn print_build_version(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let MachCommand(ref cmd, cmdsize) = *self;
+
+        match *cmd {
+            LoadCommand::BuildVersion(ref version) => {
+                writeln!(f, "      cmd {}", cmd.name())?;
+                writeln!(f, "  cmdsize {}", cmdsize)?;
+                writeln!(f, " platform {:?}", version.platform())?;
+                writeln!(f, "    minos {}", version.minos)?;
+                writeln!(f, "      sdk {}", version.sdk)?;
+                writeln!(f, "    tools");
+
+                for tool in &version.build_tools {
+                    writeln!(f, "          {:?} {}", tool.tool(), tool.version)?;
+                }
+
+                Ok(())
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl fmt::Display for MachCommand {
@@ -452,6 +488,7 @@ impl fmt::Display for MachCommand {
             | LoadCommand::ReexportDyLib(_)
             | LoadCommand::LoadUpwardDylib(_)
             | LoadCommand::LazyLoadDylib(_) => self.print_dylib_command(f),
+            LoadCommand::Rpath(_) => self.print_rpath_command(f),
             LoadCommand::VersionMin { .. } => self.print_version_min_command(f),
             LoadCommand::SourceVersion(_) => self.print_source_version_command(f),
             LoadCommand::Uuid(_) => self.print_uuid_command(f),
@@ -462,8 +499,12 @@ impl fmt::Display for MachCommand {
             | LoadCommand::DataInCode(_)
             | LoadCommand::DylibCodeSignDrs(_)
             | LoadCommand::LinkerOptimizationHint(_) => self.print_linkedit_data_command(f),
+            LoadCommand::BuildVersion { .. } => self.print_build_version(f),
+            _ => {
+                warn!("ignore command: {:?}", self);
 
-            _ => Ok(()),
+                Ok(())
+            }
         }
     }
 }

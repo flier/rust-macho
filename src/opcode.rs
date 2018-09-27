@@ -80,7 +80,8 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 (BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, library_ordinal) => {
                     Some(BindOpCode::SetDyLibrary(library_ordinal as isize))
                 }
-                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self.iter
+                (BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB, _) => self
+                    .iter
                     .read_uleb128()
                     .ok()
                     .map(|library_ordinal| BindOpCode::SetDyLibrary(library_ordinal as isize)),
@@ -111,12 +112,15 @@ impl<'a> Iterator for BindOpCodes<'a> {
                     }
                 },
                 (BIND_OPCODE_SET_ADDEND_SLEB, _) => self.iter.read_uleb128().ok().map(BindOpCode::SetAddend),
-                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
-                    |segment_offset| BindOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    },
-                ),
+                (BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
+                    self.iter
+                        .read_uleb128()
+                        .ok()
+                        .map(|segment_offset| BindOpCode::SetSegmentOffset {
+                            segment_index,
+                            segment_offset,
+                        })
+                }
                 (BIND_OPCODE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| BindOpCode::AddAddress {
                     offset: offset as isize,
                 }),
@@ -456,12 +460,15 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                         None
                     }
                 },
-                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => self.iter.read_uleb128().ok().map(
-                    |segment_offset| RebaseOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    },
-                ),
+                (REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB, segment_index) => {
+                    self.iter
+                        .read_uleb128()
+                        .ok()
+                        .map(|segment_offset| RebaseOpCode::SetSegmentOffset {
+                            segment_index,
+                            segment_offset,
+                        })
+                }
                 (REBASE_OPCODE_ADD_ADDR_ULEB, _) => {
                     self.iter.read_uleb128().ok().map(|offset| RebaseOpCode::AddAddress {
                         offset: offset as isize,
@@ -471,15 +478,19 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
                     offset: self.ptr_size as isize * count as isize,
                 }),
                 (REBASE_OPCODE_DO_REBASE_IMM_TIMES, times) => Some(RebaseOpCode::Rebase { times: times as usize }),
-                (REBASE_OPCODE_DO_REBASE_ULEB_TIMES, _) => self.iter
+                (REBASE_OPCODE_DO_REBASE_ULEB_TIMES, _) => self
+                    .iter
                     .read_uleb128()
                     .ok()
                     .map(|times| RebaseOpCode::Rebase { times }),
-                (REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB, _) => self.iter.read_uleb128().ok().map(|offset| {
-                    RebaseOpCode::RebaseAndAddAddress {
-                        offset: offset as isize,
-                    }
-                }),
+                (REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB, _) => {
+                    self.iter
+                        .read_uleb128()
+                        .ok()
+                        .map(|offset| RebaseOpCode::RebaseAndAddAddress {
+                            offset: offset as isize,
+                        })
+                }
                 (REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB, _) => {
                     if let (Ok(times), Ok(skip)) = (self.iter.read_uleb128(), self.iter.read_uleb128()) {
                         Some(RebaseOpCode::RebaseAndSkipping { times, skip })
@@ -587,7 +598,7 @@ pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
         let mut v = 0;
         let mut bits = 0;
 
-        while let Some(b) = self.next() {
+        for &b in self {
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
@@ -608,7 +619,7 @@ pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
     fn read_cstr(&mut self) -> Result<String> {
         let mut v = vec![];
 
-        while let Some(&b) = self.next() {
+        for &b in self {
             if b == 0 {
                 break;
             } else {
@@ -620,8 +631,4 @@ pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
     }
 }
 
-impl<'a, T> IteratorExt<'a> for T
-where
-    T: Iterator<Item = &'a u8>,
-{
-}
+impl<'a, T> IteratorExt<'a> for T where T: Iterator<Item = &'a u8> {}

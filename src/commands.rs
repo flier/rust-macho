@@ -1005,15 +1005,15 @@ impl LoadCommand {
                 }
 
                 LoadCommand::Segment {
-                    segname: segname,
-                    vmaddr: vmaddr,
-                    vmsize: vmsize,
-                    fileoff: fileoff,
-                    filesize: filesize,
-                    maxprot: maxprot,
-                    initprot: initprot,
+                    segname,
+                    vmaddr,
+                    vmsize,
+                    fileoff,
+                    filesize,
+                    maxprot,
+                    initprot,
                     flags: SegmentFlags::from_bits_truncate(flags),
-                    sections: sections,
+                    sections,
                 }
             }
             LC_SEGMENT_64 => {
@@ -1033,15 +1033,15 @@ impl LoadCommand {
                 }
 
                 LoadCommand::Segment64 {
-                    segname: segname,
-                    vmaddr: vmaddr,
-                    vmsize: vmsize,
-                    fileoff: fileoff,
-                    filesize: filesize,
-                    maxprot: maxprot,
-                    initprot: initprot,
+                    segname,
+                    vmaddr,
+                    vmsize,
+                    fileoff,
+                    filesize,
+                    maxprot,
+                    initprot,
                     flags: SegmentFlags::from_bits_truncate(flags),
-                    sections: sections,
+                    sections,
                 }
             }
             LC_IDFVMLIB => LoadCommand::IdFvmLib(Self::read_fvmlib::<O, T>(buf)?),
@@ -1361,8 +1361,8 @@ impl LoadCommand {
 
         Ok(FvmLib {
             name: LcString(off, buf.read_cstr()?),
-            minor_version: minor_version,
-            header_addr: header_addr,
+            minor_version,
+            header_addr,
         })
     }
 
@@ -1376,7 +1376,7 @@ impl LoadCommand {
 
         Ok(DyLib {
             name: LcString(off, buf.read_cstr()?),
-            timestamp: timestamp,
+            timestamp,
             current_version: VersionTag(current_version),
             compatibility_version: VersionTag(compatibility_version),
         })

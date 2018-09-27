@@ -190,7 +190,7 @@ impl<'a> SymbolIter<'a> {
                 } else {
                     self.sections.get((sect - 1) as usize).cloned()
                 },
-                desc: desc,
+                desc,
                 addr: value,
             })
         } else {
@@ -201,35 +201,35 @@ impl<'a> SymbolIter<'a> {
             match typ {
                 N_UNDF => Ok(Symbol::Undefined {
                     name: self.load_str(strx)?,
-                    external: external,
-                    desc: desc,
+                    external,
+                    desc,
                 }),
                 N_ABS => Ok(Symbol::Absolute {
                     name: self.load_str(strx)?,
-                    external: external,
-                    desc: desc,
+                    external,
+                    desc,
                     entry: value,
                 }),
                 N_SECT => Ok(Symbol::Defined {
                     name: self.load_str(strx)?,
-                    external: external,
+                    external,
                     section: if sect == NO_SECT {
                         None
                     } else {
                         self.sections.get((sect - 1) as usize).cloned()
                     },
-                    desc: desc,
+                    desc,
                     entry: value,
                 }),
                 N_PBUD => Ok(Symbol::Prebound {
                     name: self.load_str(strx)?,
-                    external: external,
-                    desc: desc,
+                    external,
+                    desc,
                 }),
                 N_INDR => Ok(Symbol::Indirect {
                     name: self.load_str(strx)?,
-                    external: external,
-                    desc: desc,
+                    external,
+                    desc,
                     symbol: self.load_str(value)?,
                 }),
                 _ => Err(MachError::UnknownSymType(typ).into()),
@@ -293,8 +293,7 @@ impl<'a> SymbolReader<'a> for OFile {
                         Some(sections)
                     }
                     _ => None,
-                })
-                .flat_map(|sections| sections.clone())
+                }).flat_map(|sections| sections.clone())
                 .collect();
 
             for cmd in commands {
@@ -309,11 +308,11 @@ impl<'a> SymbolReader<'a> for OFile {
                 {
                     if cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
                         return Some(SymbolIter {
-                            cur: cur,
-                            sections: sections,
-                            nsyms: nsyms,
-                            stroff: stroff,
-                            strsize: strsize,
+                            cur,
+                            sections,
+                            nsyms,
+                            stroff,
+                            strsize,
                             is_bigend: header.is_bigend(),
                             is_64bit: header.is_64bit(),
                         });

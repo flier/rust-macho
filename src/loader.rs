@@ -304,10 +304,7 @@ impl OFile {
 
         debug!("parsed {} load commands", commands.len());
 
-        Ok(OFile::MachFile {
-            header: header,
-            commands: commands,
-        })
+        Ok(OFile::MachFile { header, commands })
     }
 
     fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
@@ -343,7 +340,7 @@ impl OFile {
         let mut files = Vec::new();
 
         for arch in archs {
-            if (arch.offset as u64) < start {
+            if u64::from(arch.offset) < start {
                 return Err(BufferOverflow(arch.offset as usize).into());
             }
 
@@ -358,10 +355,7 @@ impl OFile {
             files.push((arch, file));
         }
 
-        Ok(OFile::FatFile {
-            magic: magic,
-            files: files,
-        })
+        Ok(OFile::FatFile { magic, files })
     }
 
     fn parse_ar_file<O: ByteOrder, T: AsRef<[u8]>>(buf: &mut Cursor<T>) -> Result<OFile> {
@@ -384,7 +378,8 @@ impl OFile {
 
                     let toc_strsize = buf.read_u32::<O>()?;
 
-                    let end = buf.position()
+                    let end = buf
+                        .position()
                         .checked_add(u64::from(toc_strsize))
                         .ok_or_else(|| BufferOverflow(toc_strsize as usize))?;
 
@@ -397,9 +392,10 @@ impl OFile {
                         toc_strsize
                     );
 
-                    files.push((header.clone(), OFile::SymDef { ranlibs: ranlibs }))
+                    files.push((header.clone(), OFile::SymDef { ranlibs }))
                 } else {
-                    let mut end = buf.position()
+                    let mut end = buf
+                        .position()
                         .checked_add(header.ar_size as u64)
                         .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
 
@@ -437,7 +433,7 @@ impl OFile {
 
         debug!("found {} ar header/files", files.len());
 
-        Ok(OFile::ArFile { files: files })
+        Ok(OFile::ArFile { files })
     }
 }
 
@@ -457,11 +453,7 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
     }
 }
 
-impl<T, S> CheckedSlice<T> for S
-where
-    S: AsRef<[T]>,
-{
-}
+impl<T, S> CheckedSlice<T> for S where S: AsRef<[T]> {}
 
 #[cfg(test)]
 pub mod tests {
@@ -479,40 +471,13 @@ pub mod tests {
     **/
     const MACH_HEADER_32_DATA: &[u8] = &[
         // magic
-        0xFE,
-        0xED,
-        0xFA,
-        0xCE,
-        // cputype
-        0x00,
-        0x00,
-        0x00,
-        0x12,
-        // cpusubtype
-        0x00,
-        0x00,
-        0x00,
-        0x0A,
-        // filetype
-        0x00,
-        0x00,
-        0x00,
-        0x02,
-        // ncmds
-        0x00,
-        0x00,
-        0x00,
-        0x0E,
-        // sizeofcmds
-        0x00,
-        0x00,
-        0x06,
-        0x40,
-        // flags
-        0x00,
-        0x00,
-        0x00,
-        0x85,
+        0xFE, 0xED, 0xFA, 0xCE, // cputype
+        0x00, 0x00, 0x00, 0x12, // cpusubtype
+        0x00, 0x00, 0x00, 0x0A, // filetype
+        0x00, 0x00, 0x00, 0x02, // ncmds
+        0x00, 0x00, 0x00, 0x0E, // sizeofcmds
+        0x00, 0x00, 0x06, 0x40, // flags
+        0x00, 0x00, 0x00, 0x85,
     ];
 
     /**
@@ -522,45 +487,14 @@ pub mod tests {
     **/
     const MACH_HEADER_64_DATA: &[u8] = &[
         // magic
-        0xcf,
-        0xfa,
-        0xed,
-        0xfe,
-        // cputype
-        0x7,
-        0x0,
-        0x0,
-        0x1,
-        // cpusubtype
-        0x3,
-        0x0,
-        0x0,
-        0x80,
-        // filetype
-        0x2,
-        0x0,
-        0x0,
-        0x0,
-        // ncmds
-        0xf,
-        0x0,
-        0x0,
-        0x0,
-        // sizeofcmds
-        0x20,
-        0x8,
-        0x0,
-        0x0,
-        // flags
-        0x85,
-        0x80,
-        0xa1,
-        0x0,
-        // reserved
-        0x0,
-        0x0,
-        0x0,
-        0x0,
+        0xcf, 0xfa, 0xed, 0xfe, // cputype
+        0x7, 0x0, 0x0, 0x1, // cpusubtype
+        0x3, 0x0, 0x0, 0x80, // filetype
+        0x2, 0x0, 0x0, 0x0, // ncmds
+        0xf, 0x0, 0x0, 0x0, // sizeofcmds
+        0x20, 0x8, 0x0, 0x0, // flags
+        0x85, 0x80, 0xa1, 0x0, // reserved
+        0x0, 0x0, 0x0, 0x0,
     ];
 
     #[test]

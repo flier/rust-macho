@@ -122,6 +122,10 @@ impl MachHeader {
     pub fn is_bigend(&self) -> bool {
         self.magic == MH_CIGAM || self.magic == MH_CIGAM_64
     }
+
+    pub fn flags(&self) -> MachHeaderFlags {
+        MachHeaderFlags::from_bits_truncate(self.flags)
+    }
 }
 
 /// Wrap load command with size in the Mach-O file

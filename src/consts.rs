@@ -400,74 +400,79 @@ pub const MH_DSYM: u32 = 0xa;
 pub const MH_KEXT_BUNDLE: u32 = 0xb;
 
 // Constants for the flags field of the mach_header
-//
-
-/// the object file has no undefined references
-pub const MH_NOUNDEFS: u32 = 0x1;
-/// the object file is the output of an incremental link
-/// against a base file and can't be link edited again
-pub const MH_INCRLINK: u32 = 0x2;
-// the object file is input for the dynamic linker and can't be staticly link edited again
-pub const MH_DYLDLINK: u32 = 0x4;
-// the object file's undefined references are bound by the dynamic linker when loaded.
-pub const MH_BINDATLOAD: u32 = 0x8;
-/// the file has its dynamic undefined references prebound.
-pub const MH_PREBOUND: u32 = 0x10;
-/// the file has its read-only and read-write segments split
-pub const MH_SPLIT_SEGS: u32 = 0x20;
-/// the shared library init routine is to be run lazily
-/// via catching memory faults to its writeable segments (obsolete)
-pub const MH_LAZY_INIT: u32 = 0x40;
-/// the image is using two-level name space bindings
-pub const MH_TWOLEVEL: u32 = 0x80;
-/// the executable is forcing all images to use flat name space bindings
-pub const MH_FORCE_FLAT: u32 = 0x100;
-/// this umbrella guarantees no multiple defintions of symbols
-/// in its sub-images so the two-level namespace hints can always be used.
-pub const MH_NOMULTIDEFS: u32 = 0x200;
-/// do not have dyld notify the prebinding agent about this executable
-pub const MH_NOFIXPREBINDING: u32 = 0x400;
-/// the binary is not prebound but can have its prebinding redone.
-/// only used when `MH_PREBOUND` is not set.
-pub const MH_PREBINDABLE: u32 = 0x800;
-/// indicates that this binary binds to all two-level namespace modules of its dependent libraries.
-/// only used when `MH_PREBINDABLE` and `MH_TWOLEVEL` are both set.
-pub const MH_ALLMODSBOUND: u32 = 0x1000;
-/// safe to divide up the sections into sub-sections via symbols for dead code stripping
-pub const MH_SUBSECTIONS_VIA_SYMBOLS: u32 = 0x2000;
-/// the binary has been canonicalized via the unprebind operation
-pub const MH_CANONICAL: u32 = 0x4000;
-/// the final linked image contains external weak symbols
-pub const MH_WEAK_DEFINES: u32 = 0x8000;
-/// the final linked image uses weak symbols
-pub const MH_BINDS_TO_WEAK: u32 = 0x0001_0000;
-/// When this bit is set, all stacks in the task will be given stack execution privilege.
-/// Only used in `MH_EXECUTE` filetypes.
-pub const MH_ALLOW_STACK_EXECUTION: u32 = 0x0002_0000;
-/// When this bit is set, the binary declares it is safe
-/// for use in processes with uid zero
-pub const MH_ROOT_SAFE: u32 = 0x0004_0000;
-/// When this bit is set, the binary declares it is safe
-/// for use in processes when issetugid() is true
-pub const MH_SETUID_SAFE: u32 = 0x0008_0000;
-/// When this bit is set on a dylib, the static linker does not need to examine dependent dylibs
-/// to see if any are re-exported
-pub const MH_NO_REEXPORTED_DYLIBS: u32 = 0x0010_0000;
-/// When this bit is set, the OS will load the main executable at a random address.
-/// Only used in `MH_EXECUTE` filetypes.
-pub const MH_PIE: u32 = 0x0020_0000;
-/// Only for use on dylibs.  When linking against a dylib that has this bit set,
-/// the static linker will automatically not create a `LC_LOAD_DYLIB` load command
-/// to the dylib if no symbols are being referenced from the dylib.
-pub const MH_DEAD_STRIPPABLE_DYLIB: u32 = 0x0040_0000;
-/// Contains a section of type `S_THREAD_LOCAL_VARIABLES`
-pub const MH_HAS_TLV_DESCRIPTORS: u32 = 0x0080_0000;
-/// When this bit is set, the OS will run the main executable
-/// with a non-executable heap even on platforms (e.g. i386)
-/// that don't require it. Only used in `MH_EXECUTE` filetypes.
-pub const MH_NO_HEAP_EXECUTION: u32 = 0x0100_0000;
-/// The code was linked for use in an application extension.
-pub const MH_APP_EXTENSION_SAFE: u32 = 0x0200_0000;
+bitflags! {
+    pub struct MachHeaderFlags: u32 {
+        /// the object file has no undefined references
+        const MH_NOUNDEFS = 0x1;
+        /// the object file is the output of an incremental link
+        /// against a base file and can't be link edited again
+        const MH_INCRLINK = 0x2;
+        // the object file is input for the dynamic linker and can't be staticly link edited again
+        const MH_DYLDLINK = 0x4;
+        // the object file's undefined references are bound by the dynamic linker when loaded.
+        const MH_BINDATLOAD = 0x8;
+        /// the file has its dynamic undefined references prebound.
+        const MH_PREBOUND = 0x10;
+        /// the file has its read-only and read-write segments split
+        const MH_SPLIT_SEGS = 0x20;
+        /// the shared library init routine is to be run lazily
+        /// via catching memory faults to its writeable segments (obsolete)
+        const MH_LAZY_INIT = 0x40;
+        /// the image is using two-level name space bindings
+        const MH_TWOLEVEL = 0x80;
+        /// the executable is forcing all images to use flat name space bindings
+        const MH_FORCE_FLAT = 0x100;
+        /// this umbrella guarantees no multiple defintions of symbols
+        /// in its sub-images so the two-level namespace hints can always be used.
+        const MH_NOMULTIDEFS = 0x200;
+        /// do not have dyld notify the prebinding agent about this executable
+        const MH_NOFIXPREBINDING = 0x400;
+        /// the binary is not prebound but can have its prebinding redone.
+        /// only used when `MH_PREBOUND` is not set.
+        const MH_PREBINDABLE = 0x800;
+        /// indicates that this binary binds to all two-level namespace modules of its dependent libraries.
+        /// only used when `MH_PREBINDABLE` and `MH_TWOLEVEL` are both set.
+        const MH_ALLMODSBOUND = 0x1000;
+        /// safe to divide up the sections into sub-sections via symbols for dead code stripping
+        const MH_SUBSECTIONS_VIA_SYMBOLS = 0x2000;
+        /// the binary has been canonicalized via the unprebind operation
+        const MH_CANONICAL = 0x4000;
+        /// the final linked image contains external weak symbols
+        const MH_WEAK_DEFINES = 0x8000;
+        /// the final linked image uses weak symbols
+        const MH_BINDS_TO_WEAK = 0x0001_0000;
+        /// When this bit is set, all stacks in the task will be given stack execution privilege.
+        /// Only used in `MH_EXECUTE` filetypes.
+        const MH_ALLOW_STACK_EXECUTION = 0x0002_0000;
+        /// When this bit is set, the binary declares it is safe
+        /// for use in processes with uid zero
+        const MH_ROOT_SAFE = 0x0004_0000;
+        /// When this bit is set, the binary declares it is safe
+        /// for use in processes when issetugid() is true
+        const MH_SETUID_SAFE = 0x0008_0000;
+        /// When this bit is set on a dylib, the static linker does not need to examine dependent dylibs
+        /// to see if any are re-exported
+        const MH_NO_REEXPORTED_DYLIBS = 0x0010_0000;
+        /// When this bit is set, the OS will load the main executable at a random address.
+        /// Only used in `MH_EXECUTE` filetypes.
+        const MH_PIE = 0x0020_0000;
+        /// Only for use on dylibs.  When linking against a dylib that has this bit set,
+        /// the static linker will automatically not create a `LC_LOAD_DYLIB` load command
+        /// to the dylib if no symbols are being referenced from the dylib.
+        const MH_DEAD_STRIPPABLE_DYLIB = 0x0040_0000;
+        /// Contains a section of type `S_THREAD_LOCAL_VARIABLES`
+        const MH_HAS_TLV_DESCRIPTORS = 0x0080_0000;
+        /// When this bit is set, the OS will run the main executable
+        /// with a non-executable heap even on platforms (e.g. i386)
+        /// that don't require it. Only used in `MH_EXECUTE` filetypes.
+        const MH_NO_HEAP_EXECUTION = 0x0100_0000;
+        /// The code was linked for use in an application extension.
+        const MH_APP_EXTENSION_SAFE = 0x0200_0000;
+        /// The external symbols listed in the nlist symbol table
+        /// do not include all the symbols listed in the dyld info.
+        const MH_NLIST_OUTOFSYNC_WITH_DYLDINFO = 0x0400_0000;
+    }
+}
 
 // After MacOS X 10.1 when a new load command is added that is required to be
 // understood by the dynamic linker for the image to execute properly the
@@ -682,6 +687,8 @@ pub const S_THREAD_LOCAL_VARIABLES: u32 = 0x13;
 pub const S_THREAD_LOCAL_VARIABLE_POINTERS: u32 = 0x14;
 /// functions to call to initialize TLV values
 pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS: u32 = 0x15;
+/// 32-bit offsets to initializers
+pub const S_INIT_FUNC_OFFSETS: u32 = 0x16;
 
 bitflags! {
     /// Constants for the section attributes part of the flags field of a section structure.

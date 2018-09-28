@@ -15,6 +15,9 @@ use errors::{MachError::*, Result};
 pub trait MachArch {
     /// parse mach header
     fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader>;
+
+    /// parse fat arch
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch>;
 }
 
 /// The 32-bit mach header
@@ -37,7 +40,7 @@ type mode_t = libc::mode_t;
 
 impl MachArch for Arch32 {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader> {
-        let header = MachHeader {
+        Ok(MachHeader {
             magic,
             cputype: buf.read_i32::<O>()?,
             cpusubtype: buf.read_i32::<O>()?,
@@ -45,9 +48,17 @@ impl MachArch for Arch32 {
             ncmds: buf.read_u32::<O>()?,
             sizeofcmds: buf.read_u32::<O>()?,
             flags: buf.read_u32::<O>()?,
-        };
+        })
+    }
 
-        Ok(header)
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch> {
+        Ok(FatArch {
+            cputype: buf.read_u32::<O>()? as cpu_type_t,
+            cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+            offset: buf.read_u32::<O>()? as u64,
+            size: buf.read_u32::<O>()? as u64,
+            align: buf.read_u32::<O>()?,
+        })
     }
 }
 
@@ -63,9 +74,23 @@ impl MachArch for Arch64 {
             flags: buf.read_u32::<O>()?,
         };
 
-        buf.consume(4);
+        buf.consume(4); // skip reserved
 
         Ok(header)
+    }
+
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch> {
+        let arch = FatArch {
+            cputype: buf.read_u32::<O>()? as cpu_type_t,
+            cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+            offset: buf.read_u64::<O>()?,
+            size: buf.read_u64::<O>()?,
+            align: buf.read_u32::<O>()?,
+        };
+
+        buf.consume(4); // skip reserved
+
+        Ok(arch)
     }
 }
 
@@ -136,9 +161,9 @@ pub struct FatArch {
     /// machine specifier (int)
     pub cpusubtype: cpu_subtype_t,
     /// file offset to this object file
-    pub offset: u32,
+    pub offset: u64,
     /// size of this object file
-    pub size: u32,
+    pub size: u64,
     /// alignment as a power of 2
     pub align: u32,
 }
@@ -271,8 +296,10 @@ impl OFile {
             MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian, T>(magic, buf),
             MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian, T>(magic, buf),
             MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian, T>(magic, buf),
-            FAT_MAGIC => Self::parse_fat_file::<LittleEndian, T>(magic, buf),
-            FAT_CIGAM => Self::parse_fat_file::<BigEndian, T>(magic, buf),
+            FAT_MAGIC => Self::parse_fat_file::<Arch32, LittleEndian, T>(magic, buf),
+            FAT_CIGAM => Self::parse_fat_file::<Arch32, BigEndian, T>(magic, buf),
+            FAT_MAGIC_64 => Self::parse_fat_file::<Arch64, LittleEndian, T>(magic, buf),
+            FAT_CIGAM_64 => Self::parse_fat_file::<Arch64, BigEndian, T>(magic, buf),
             _ => {
                 let mut ar_magic = [0; 8];
 
@@ -313,7 +340,7 @@ impl OFile {
         Ok(OFile::MachFile { header, commands })
     }
 
-    fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
+    fn parse_fat_file<A: MachArch, O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
         debug!("0x{:08x}\tparsing fat file header", buf.position());
 
         let nfat_arch = buf.read_u32::<O>()?;
@@ -328,13 +355,7 @@ impl OFile {
         let mut archs = Vec::new();
 
         for i in 0..nfat_arch {
-            let arch = FatArch {
-                cputype: buf.read_u32::<O>()? as cpu_type_t,
-                cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
-                offset: buf.read_u32::<O>()?,
-                size: buf.read_u32::<O>()?,
-                align: buf.read_u32::<O>()?,
-            };
+            let arch = A::parse_fat_arch::<Cursor<T>, O>(buf)?;
 
             debug!("0x{:08}\tfat header arch#{}, arch={:?}", buf.position(), i, arch);
 
@@ -346,7 +367,7 @@ impl OFile {
         let mut files = Vec::new();
 
         for arch in archs {
-            if u64::from(arch.offset) < start {
+            if arch.offset < start {
                 return Err(BufferOverflow(arch.offset as usize).into());
             }
 

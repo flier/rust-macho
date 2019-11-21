@@ -54,7 +54,9 @@ fn load_mach_file(entry: &DirEntry) -> Result<(), Error> {
             let mmap = unsafe { Mmap::map(&file) }?;
             let payload = mmap.as_ref();
 
-            if payload.starts_with(b"#") {
+            if payload.len() < 8 {
+                trace!("skip too small file, {:?}", entry.path());
+            } else if payload.starts_with(b"#") {
                 trace!("skip the scripts, {:?}", entry.path());
             } else if payload.starts_with(b"<") {
                 trace!("skip the XML/HTML file, {:?}", entry.path());

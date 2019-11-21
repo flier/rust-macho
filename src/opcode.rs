@@ -2,8 +2,8 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::slice;
 
-use consts::*;
-use errors::{MachError, Result};
+use crate::consts::*;
+use crate::errors::{MachError, Result};
 
 /// Bind or rebase symbol type
 #[repr(u8)]

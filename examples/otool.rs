@@ -1,13 +1,7 @@
-extern crate byteorder;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate log;
-extern crate mach_object;
-extern crate memmap;
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate structopt;
 
 use std::env;
 use std::fmt;

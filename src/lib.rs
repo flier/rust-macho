@@ -31,21 +31,12 @@
 //!
 #[macro_use]
 extern crate bitflags;
-extern crate byteorder;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate lazy_static;
-extern crate libc;
 #[macro_use]
 extern crate log;
-extern crate time;
-extern crate uuid;
-
-#[cfg(test)]
-extern crate diff;
-#[cfg(test)]
-extern crate pretty_env_logger;
 
 mod commands;
 mod consts;
@@ -57,13 +48,13 @@ mod loader;
 mod opcode;
 mod symbol;
 
-pub use commands::*;
-pub use consts::*;
-pub use errors::MachError;
-pub use export::{ExportKind, ExportSymbol, ExportTrie, ExportType};
-pub use loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
-pub use opcode::{
+pub use crate::commands::*;
+pub use crate::consts::*;
+pub use crate::errors::MachError;
+pub use crate::export::{ExportKind, ExportSymbol, ExportTrie, ExportType};
+pub use crate::loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
+pub use crate::opcode::{
     Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol, Rebase,
     RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol,
 };
-pub use symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
+pub use crate::symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};

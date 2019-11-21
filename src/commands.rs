@@ -10,9 +10,9 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use failure::Error;
 use uuid::Uuid;
 
-use consts::*;
-use errors::*;
-use loader::MachHeader;
+use crate::consts::*;
+use crate::errors::*;
+use crate::loader::MachHeader;
 
 /// The encoded version.
 ///

@@ -4,10 +4,10 @@ use std::str;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use commands::{LoadCommand, Section};
-use consts::*;
-use errors::*;
-use loader::{MachCommand, OFile};
+use crate::commands::{LoadCommand, Section};
+use crate::consts::*;
+use crate::errors::*;
+use crate::loader::{MachCommand, OFile};
 
 /// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]

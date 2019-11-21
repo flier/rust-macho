@@ -2,9 +2,9 @@ use std::io::Cursor;
 
 use byteorder::ReadBytesExt;
 
-use commands::CursorExt;
-use consts::*;
-use errors::{MachError, Result};
+use crate::commands::CursorExt;
+use crate::consts::*;
+use crate::errors::{MachError, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExportKind {

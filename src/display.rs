@@ -1,11 +1,9 @@
 use std::fmt;
 
-use time;
-
-use commands::{LcString, LoadCommand, Section};
-use consts::*;
-use loader::{ArHeader, FatHeader, MachCommand, MachHeader};
-use symbol::Symbol;
+use crate::commands::{LcString, LoadCommand, Section};
+use crate::consts::*;
+use crate::loader::{ArHeader, FatHeader, MachCommand, MachHeader};
+use crate::symbol::Symbol;
 
 impl fmt::Display for MachHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -601,7 +599,7 @@ pub mod tests {
 
     use diff;
 
-    use loader::OFile;
+    use crate::loader::OFile;
 
     static HELLO_WORLD_BIN: &'static [u8] = include_bytes!("../tests/helloworld");
     static HELLO_WORLD_LC: &'static str = include_str!("../tests/helloworld.lc");

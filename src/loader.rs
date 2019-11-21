@@ -4,11 +4,10 @@ use std::io::{BufRead, Cursor, ErrorKind, Read, Seek, SeekFrom};
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, ReadBytesExt};
-use libc;
 
-use commands::{LoadCommand, ReadStringExt};
-use consts::*;
-use errors::{MachError::*, Result};
+use crate::commands::{LoadCommand, ReadStringExt};
+use crate::consts::*;
+use crate::errors::{MachError::*, Result};
 
 /// The architecture of mach header
 ///

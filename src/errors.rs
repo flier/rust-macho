@@ -4,8 +4,6 @@ use std::str;
 use std::string;
 
 use failure::Error;
-use time;
-use uuid;
 
 #[derive(Debug, Fail)]
 pub enum MachError {

@@ -126,11 +126,11 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 }),
                 (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => {
-                    self.iter.read_uleb128().ok().map(|offset| BindOpCode::AddAddress {
+                    self.iter.read_uleb128().ok().map(|offset| BindOpCode::BindAndAddAddress {
                         offset: offset as isize,
                     })
                 }
-                (BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED, count) => Some(BindOpCode::AddAddress {
+                (BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED, count) => Some(BindOpCode::BindAndAddAddress {
                     offset: self.ptr_size as isize * count as isize,
                 }),
                 (BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB, _) => {

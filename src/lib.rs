@@ -1,9 +1,3 @@
-#![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
-#![cfg_attr(
-    feature = "cargo-clippy",
-    allow(clippy::large_enum_variant, clippy::many_single_char_names)
-)]
-
 //! Mach-O File Format Parser for Rust
 //!
 //! # Examples

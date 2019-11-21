@@ -458,7 +458,7 @@ impl MachCommand {
                 writeln!(f, " platform {:?}", version.platform())?;
                 writeln!(f, "    minos {}", version.minos)?;
                 writeln!(f, "      sdk {}", version.sdk)?;
-                writeln!(f, "    tools");
+                writeln!(f, "    tools")?;
 
                 for tool in &version.build_tools {
                     writeln!(f, "          {:?} {}", tool.tool(), tool.version)?;
@@ -583,11 +583,13 @@ impl<'a> fmt::Display for Symbol<'a> {
                 if external { "I" } else { "i" },
                 name.unwrap_or("")
             ),
-            Symbol::Debug { ref name, addr, .. } => if addr == 0 {
-                write!(f, "                 d {}", name.unwrap_or(""))
-            } else {
-                write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
-            },
+            Symbol::Debug { ref name, addr, .. } => {
+                if addr == 0 {
+                    write!(f, "                 d {}", name.unwrap_or(""))
+                } else {
+                    write!(f, "{:016x} d {}", addr, name.unwrap_or(""))
+                }
+            }
         }
     }
 }

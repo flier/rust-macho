@@ -293,7 +293,8 @@ impl<'a> SymbolReader<'a> for OFile {
                         Some(sections)
                     }
                     _ => None,
-                }).flat_map(|sections| sections.clone())
+                })
+                .flat_map(|sections| sections.clone())
                 .collect();
 
             for cmd in commands {

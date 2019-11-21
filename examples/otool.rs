@@ -30,13 +30,10 @@ use mach_object::*;
 const APP_VERSION: &'static str = "0.1.1";
 
 #[derive(Debug, StructOpt)]
-#[structopt(
-    name = "otool",
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
-)]
+#[structopt(name = "otool", about = "object file displaying tool")]
 struct Opt {
     /// Specifies the architecture
-    #[structopt(long = "arch", parse(try_from_str = "parse_cpu_type"))]
+    #[structopt(long = "arch", parse(try_from_str = parse_cpu_type))]
     cpu_type: Option<cpu_type_t>,
 
     /// Print verbosely (symbolically) when possible
@@ -84,11 +81,7 @@ struct Opt {
     print_symbol_table: bool,
 
     /// Print contents of section
-    #[structopt(
-        name = "segname[:sectname]",
-        short = "s",
-        parse(try_from_str = "parse_section")
-    )]
+    #[structopt(name = "segname[:sectname]", short = "s", parse(try_from_str = parse_section))]
     print_sections: Vec<(String, Option<String>)>,
 
     /// Print the table of contents of a library
@@ -766,7 +759,8 @@ fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
             | &LoadCommand::LoadUpwardDylib(ref dylib)
             | &LoadCommand::LazyLoadDylib(ref dylib) => Some(dylib),
             _ => None,
-        }).nth(ordinal - 1)
+        })
+        .nth(ordinal - 1)
         .and_then(|dylib| Path::new(dylib.name.as_str()).file_name())
         .and_then(|filename| filename.to_str())
 }

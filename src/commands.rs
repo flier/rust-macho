@@ -1,4 +1,4 @@
-#![allow(non_camel_case_types)]
+#![allow(non_camel_case_types, clippy::many_single_char_names, clippy::large_enum_variant)]
 
 use std::fmt;
 use std::io::{BufRead, Cursor, Read};
@@ -45,7 +45,7 @@ impl FromStr for VersionTag {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let mut parts = s.split(".");
+        let mut parts = s.split('.');
 
         let major = match parts.next() {
             Some(s) if !s.is_empty() => s.parse()?,
@@ -1399,7 +1399,8 @@ impl LoadCommand {
                         let version = VersionTag(buf.read_u32::<O>()?);
 
                         Ok(BuildTool { tool, version })
-                    }).collect::<Result<Vec<_>>>()?,
+                    })
+                    .collect::<Result<Vec<_>>>()?,
             }),
             _ => {
                 let mut payload = vec![0; cmdsize as usize - LOAD_COMMAND_HEADER_SIZE];

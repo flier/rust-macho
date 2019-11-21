@@ -107,23 +107,29 @@ mod integration {
 
     fn verify_mach_file(path: &Path, ofile: &OFile) {
         match ofile {
-            OFile::MachFile { ref commands, .. } => for &MachCommand(ref cmd, cmdsize) in commands {
-                if let LoadCommand::Command { cmd, ref payload } = cmd {
-                    warn!(
-                        "unsolved command #{} with {} bytes in {:?}:\n{}",
-                        cmd,
-                        cmdsize,
-                        path,
-                        HexViewBuilder::new(payload).finish()
-                    );
+            OFile::MachFile { ref commands, .. } => {
+                for &MachCommand(ref cmd, cmdsize) in commands {
+                    if let LoadCommand::Command { cmd, ref payload } = cmd {
+                        warn!(
+                            "unsolved command #{} with {} bytes in {:?}:\n{}",
+                            cmd,
+                            cmdsize,
+                            path,
+                            HexViewBuilder::new(payload).finish()
+                        );
+                    }
                 }
-            },
-            OFile::FatFile { ref files, .. } => for (arch, ofile) in files {
-                verify_mach_file(&path.join(arch.name().unwrap_or_default()), ofile)
-            },
-            OFile::ArFile { ref files } => for (header, ofile) in files {
-                verify_mach_file(&path.join(&header.ar_name), ofile)
-            },
+            }
+            OFile::FatFile { ref files, .. } => {
+                for (arch, ofile) in files {
+                    verify_mach_file(&path.join(arch.name().unwrap_or_default()), ofile)
+                }
+            }
+            OFile::ArFile { ref files } => {
+                for (header, ofile) in files {
+                    verify_mach_file(&path.join(&header.ar_name), ofile)
+                }
+            }
             OFile::SymDef { .. } => {}
         }
     }

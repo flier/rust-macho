@@ -126,9 +126,12 @@ impl<'a> Iterator for BindOpCodes<'a> {
                 }),
                 (BIND_OPCODE_DO_BIND, _) => Some(BindOpCode::Bind),
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB, _) => {
-                    self.iter.read_uleb128().ok().map(|offset| BindOpCode::BindAndAddAddress {
-                        offset: offset as isize,
-                    })
+                    self.iter
+                        .read_uleb128()
+                        .ok()
+                        .map(|offset| BindOpCode::BindAndAddAddress {
+                            offset: offset as isize,
+                        })
                 }
                 (BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED, count) => Some(BindOpCode::BindAndAddAddress {
                     offset: self.ptr_size as isize * count as isize,
@@ -230,10 +233,12 @@ impl<'a> Iterator for Bind<'a> {
                         self.symbols.push_back(self.symbol.clone());
                         self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
-                    BindOpCode::BindAndSkipping { times, skip } => for _ in 0..times {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                    },
+                    BindOpCode::BindAndSkipping { times, skip } => {
+                        for _ in 0..times {
+                            self.symbols.push_back(self.symbol.clone());
+                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        }
+                    }
                 }
 
                 if !self.symbols.is_empty() {
@@ -321,10 +326,12 @@ impl<'a> Iterator for WeakBind<'a> {
                         self.symbols.push_back(self.symbol.clone());
                         self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
-                    BindOpCode::BindAndSkipping { times, skip } => for _ in 0..times {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                    },
+                    BindOpCode::BindAndSkipping { times, skip } => {
+                        for _ in 0..times {
+                            self.symbols.push_back(self.symbol.clone());
+                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        }
+                    }
                     _ => {
                         warn!("unexpected weak bind opcode: {:?}", opcode);
 
@@ -558,21 +565,25 @@ impl<'a> Iterator for Rebase<'a> {
                     RebaseOpCode::AddAddress { offset } => {
                         self.symbol.symbol_offset += offset;
                     }
-                    RebaseOpCode::Rebase { times } => for _ in 0..times {
-                        self.symbols.push_back(self.symbol.clone());
+                    RebaseOpCode::Rebase { times } => {
+                        for _ in 0..times {
+                            self.symbols.push_back(self.symbol.clone());
 
-                        self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
-                    },
+                            self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
+                        }
+                    }
                     RebaseOpCode::RebaseAndAddAddress { offset } => {
                         self.symbols.push_back(self.symbol.clone());
 
                         self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
                     }
-                    RebaseOpCode::RebaseAndSkipping { times, skip } => for _ in 0..times {
-                        self.symbols.push_back(self.symbol.clone());
+                    RebaseOpCode::RebaseAndSkipping { times, skip } => {
+                        for _ in 0..times {
+                            self.symbols.push_back(self.symbol.clone());
 
-                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                    },
+                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        }
+                    }
                 }
 
                 if !self.symbols.is_empty() {

@@ -236,6 +236,7 @@ pub const CPU_SUBTYPE_ARM_V8: cpu_subtype_t = 13;
 //
 pub const CPU_SUBTYPE_ARM64_ALL: cpu_subtype_t = 0;
 pub const CPU_SUBTYPE_ARM64_V8: cpu_subtype_t = 1;
+pub const CPU_SUBTYPE_ARM64_E: cpu_subtype_t = 2;
 
 fn get_arch_flags() -> &'static HashMap<&'static str, (cpu_type_t, cpu_subtype_t)> {
     lazy_static! {
@@ -302,6 +303,7 @@ fn get_arch_flags() -> &'static HashMap<&'static str, (cpu_type_t, cpu_subtype_t
             m.insert("armv7m", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7M ));
             m.insert("armv7em",( CPU_TYPE_ARM,    CPU_SUBTYPE_ARM_V7EM ));
             m.insert("arm64v8",(CPU_TYPE_ARM64,   CPU_SUBTYPE_ARM64_V8 ));
+            m.insert("arm64e", (CPU_TYPE_ARM64,   CPU_SUBTYPE_ARM64_E ));
 
             m
         };

@@ -57,4 +57,4 @@ pub use crate::opcode::{
     Bind, BindOpCode, BindOpCodes, BindSymbol, BindSymbolFlags, BindSymbolType, LazyBind, LazyBindSymbol, Rebase,
     RebaseOpCode, RebaseOpCodes, RebaseSymbol, WeakBind, WeakBindSymbol,
 };
-pub use crate::symbol::{Symbol, SymbolIter, SymbolReader, SymbolReference};
+pub use crate::symbol::{Symbol, SymbolIter, SymbolReference};

@@ -746,8 +746,7 @@ fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
     commands
         .iter()
         .flat_map(|cmd| match cmd {
-            &LoadCommand::IdDyLib(ref dylib)
-            | &LoadCommand::LoadDyLib(ref dylib)
+            &LoadCommand::LoadDyLib(ref dylib)
             | &LoadCommand::LoadWeakDyLib(ref dylib)
             | &LoadCommand::ReexportDyLib(ref dylib)
             | &LoadCommand::LoadUpwardDylib(ref dylib)

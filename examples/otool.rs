@@ -357,30 +357,32 @@ impl<T: Write> FileProcessor<T> {
                     stroff,
                     strsize,
                 } => {
-                    let sections = commands
-                        .iter()
-                        .filter_map(|cmd| match cmd {
-                            LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
-                                Some(sections)
-                            }
-                            _ => None,
-                        })
-                        .flat_map(|sections| sections.clone())
-                        .collect();
+                    if self.print_symbol_table {
+                        let sections = commands
+                            .iter()
+                            .filter_map(|cmd| match cmd {
+                                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
+                                    Some(sections)
+                                }
+                                _ => None,
+                            })
+                            .flat_map(|sections| sections.clone())
+                            .collect();
 
-                    if ctxt.cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
-                        let mut cur = ctxt.cur.clone();
-                        let symbols = SymbolIter::new(
-                            &mut cur,
-                            sections,
-                            nsyms,
-                            stroff,
-                            strsize,
-                            header.is_bigend(),
-                            header.is_64bit(),
-                        );
-                        for symbol in symbols {
-                            writeln!(self.w, "{}", symbol)?;
+                        if ctxt.cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
+                            let mut cur = ctxt.cur.clone();
+                            let symbols = SymbolIter::new(
+                                &mut cur,
+                                sections,
+                                nsyms,
+                                stroff,
+                                strsize,
+                                header.is_bigend(),
+                                header.is_64bit(),
+                            );
+                            for symbol in symbols {
+                                writeln!(self.w, "{}", symbol)?;
+                            }
                         }
                     }
                 }

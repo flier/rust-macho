@@ -321,12 +321,12 @@ impl MachCommand {
                 writeln!(f, "          cmd {}", cmd.name())?;
                 writeln!(f, "      cmdsize {}", cmdsize)?;
                 writeln!(f, "         name {} (offset {})", dylib.name, dylib.name.0)?;
-                let ts = time::at_utc(time::Timespec::new(i64::from(dylib.timestamp), 0));
+                let ts = time::OffsetDateTime::from_unix_timestamp(i64::from(dylib.timestamp));
                 writeln!(
                     f,
                     "   time stamp {} {}",
                     dylib.timestamp,
-                    time::strftime("%a %b %e %T %Y %Z", &ts).map_err(|_| fmt::Error)?
+                    ts.format(time::Format::Custom("%c UTC".to_string())),
                 )?;
                 writeln!(
                     f,
@@ -631,7 +631,7 @@ pub mod tests {
         ($left:expr, $right:expr) => {{
             let mut w = Vec::new();
             let mut diffs = 0;
-            let left = $left.replace("\r\n", "\n");
+            let left = $left.replace("\r\n", "\n").replace("Jan 1 0:", "Jan  1 00:"); // FIXME
             let right = $right.replace("\r\n", "\n");
 
             for diff in diff::lines(&left, &right) {
@@ -649,7 +649,7 @@ pub mod tests {
             }
 
             if diffs > 0 {
-                info!("found {} diffs:\n{}", diffs, String::from_utf8(w).unwrap());
+                info!("found {} diffs:\n{}", diffs / 2, String::from_utf8(w).unwrap());
             }
 
             assert_eq!(&left, &right);

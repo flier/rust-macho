@@ -1,13 +1,12 @@
-use std::io::{Cursor, Seek, SeekFrom};
+use std::io::{Cursor};
 use std::rc::Rc;
 use std::str;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use crate::commands::{LoadCommand, Section};
+use crate::commands::{Section};
 use crate::consts::*;
 use crate::errors::*;
-use crate::loader::{MachCommand, OFile};
 
 /// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]
@@ -163,6 +162,20 @@ pub struct SymbolIter<'a> {
 }
 
 impl<'a> SymbolIter<'a> {
+    pub fn new(
+        cur: &'a mut Cursor<&'a [u8]>,
+        sections: Vec<Rc<Section>>,
+        nsyms: u32,
+        stroff: u32,
+        strsize: u32,
+        is_bigend: bool,
+        is_64bit: bool,
+    ) -> Self {
+        Self {
+            cur, sections, nsyms, stroff, strsize, is_bigend, is_64bit
+        }
+    }
+
     fn parse(&mut self) -> Result<Symbol<'a>> {
         if self.is_bigend {
             self.parse_symbol::<BigEndian>()
@@ -262,63 +275,6 @@ impl<'a> Iterator for SymbolIter<'a> {
                 self.nsyms -= 1;
 
                 return Some(symbol);
-            }
-        }
-
-        None
-    }
-}
-
-/// Read symbols from a Mach-O file
-pub trait SymbolReader<'a> {
-    type Iter: Iterator<Item = Symbol<'a>>;
-
-    /// Read symbols from Mach-O file
-    fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter>;
-}
-
-impl<'a> SymbolReader<'a> for OFile {
-    type Iter = SymbolIter<'a>;
-
-    fn symbols(&self, cur: &'a mut Cursor<&'a [u8]>) -> Option<Self::Iter> {
-        if let OFile::MachFile {
-            ref header,
-            ref commands,
-        } = *self
-        {
-            let sections = commands
-                .iter()
-                .filter_map(|cmd| match cmd.0 {
-                    LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
-                        Some(sections)
-                    }
-                    _ => None,
-                })
-                .flat_map(|sections| sections.clone())
-                .collect();
-
-            for cmd in commands {
-                let &MachCommand(ref cmd, _) = cmd;
-
-                if let LoadCommand::SymTab {
-                    symoff,
-                    nsyms,
-                    stroff,
-                    strsize,
-                } = *cmd
-                {
-                    if cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
-                        return Some(SymbolIter {
-                            cur,
-                            sections,
-                            nsyms,
-                            stroff,
-                            strsize,
-                            is_bigend: header.is_bigend(),
-                            is_64bit: header.is_64bit(),
-                        });
-                    }
-                }
             }
         }
 

@@ -28,20 +28,20 @@ pub const CPU_TYPE_NS32332: cpu_type_t = 5;
 pub const CPU_TYPE_MC680X0: cpu_type_t = 6;
 pub const CPU_TYPE_X86: cpu_type_t = 7;
 pub const CPU_TYPE_I386: cpu_type_t = CPU_TYPE_X86;
-pub const CPU_TYPE_X86_64: cpu_type_t = (CPU_TYPE_X86 | CPU_ARCH_ABI64);
+pub const CPU_TYPE_X86_64: cpu_type_t = CPU_TYPE_X86 | CPU_ARCH_ABI64;
 pub const CPU_TYPE_MIPS: cpu_type_t = 8;
 pub const CPU_TYPE_NS32532: cpu_type_t = 9;
 pub const CPU_TYPE_MC98000: cpu_type_t = 10;
 pub const CPU_TYPE_HPPA: cpu_type_t = 11;
 pub const CPU_TYPE_ARM: cpu_type_t = 12;
-pub const CPU_TYPE_ARM64: cpu_type_t = (CPU_TYPE_ARM | CPU_ARCH_ABI64);
+pub const CPU_TYPE_ARM64: cpu_type_t = CPU_TYPE_ARM | CPU_ARCH_ABI64;
 pub const CPU_TYPE_MC88000: cpu_type_t = 13;
 pub const CPU_TYPE_SPARC: cpu_type_t = 14;
 pub const CPU_TYPE_I860: cpu_type_t = 15;
 pub const CPU_TYPE_ALPHA: cpu_type_t = 16;
 pub const CPU_TYPE_RS6000: cpu_type_t = 17;
 pub const CPU_TYPE_POWERPC: cpu_type_t = 18;
-pub const CPU_TYPE_POWERPC64: cpu_type_t = (CPU_TYPE_POWERPC | CPU_ARCH_ABI64);
+pub const CPU_TYPE_POWERPC64: cpu_type_t = CPU_TYPE_POWERPC | CPU_ARCH_ABI64;
 
 //  Machine subtypes (these are defined here, instead of in a machine
 //  dependent directory, so that any program can get all definitions
@@ -236,6 +236,7 @@ pub const CPU_SUBTYPE_ARM_V8: cpu_subtype_t = 13;
 //
 pub const CPU_SUBTYPE_ARM64_ALL: cpu_subtype_t = 0;
 pub const CPU_SUBTYPE_ARM64_V8: cpu_subtype_t = 1;
+pub const CPU_SUBTYPE_ARM64_E: cpu_subtype_t = 2;
 
 fn get_arch_flags() -> &'static HashMap<&'static str, (cpu_type_t, cpu_subtype_t)> {
     lazy_static! {
@@ -302,6 +303,7 @@ fn get_arch_flags() -> &'static HashMap<&'static str, (cpu_type_t, cpu_subtype_t
             m.insert("armv7m", (CPU_TYPE_ARM,     CPU_SUBTYPE_ARM_V7M ));
             m.insert("armv7em",( CPU_TYPE_ARM,    CPU_SUBTYPE_ARM_V7EM ));
             m.insert("arm64v8",(CPU_TYPE_ARM64,   CPU_SUBTYPE_ARM64_V8 ));
+            m.insert("arm64e", (CPU_TYPE_ARM64,   CPU_SUBTYPE_ARM64_E ));
 
             m
         };
@@ -532,7 +534,7 @@ pub const LC_PREBIND_CKSUM: u32 = 0x17;
 // load a dynamically linked shared library that is allowed to be missing
 // (all symbols are weak imported).
 //
-pub const LC_LOAD_WEAK_DYLIB: u32 = (0x18 | LC_REQ_DYLD);
+pub const LC_LOAD_WEAK_DYLIB: u32 = 0x18 | LC_REQ_DYLD;
 /// 64-bit segment of this file to be mapped
 pub const LC_SEGMENT_64: u32 = 0x19;
 /// 64-bit image routines
@@ -540,13 +542,13 @@ pub const LC_ROUTINES_64: u32 = 0x1a;
 /// the uuid
 pub const LC_UUID: u32 = 0x1b;
 /// runpath additions
-pub const LC_RPATH: u32 = (0x1c | LC_REQ_DYLD);
+pub const LC_RPATH: u32 = 0x1c | LC_REQ_DYLD;
 /// local of code signature
 pub const LC_CODE_SIGNATURE: u32 = 0x1d;
 /// local of info to split segments
 pub const LC_SEGMENT_SPLIT_INFO: u32 = 0x1e;
 /// load and re-export dylib
-pub const LC_REEXPORT_DYLIB: u32 = (0x1f | LC_REQ_DYLD);
+pub const LC_REEXPORT_DYLIB: u32 = 0x1f | LC_REQ_DYLD;
 /// delay load of dylib until first use
 pub const LC_LAZY_LOAD_DYLIB: u32 = 0x20;
 /// encrypted segment information
@@ -554,9 +556,9 @@ pub const LC_ENCRYPTION_INFO: u32 = 0x21;
 /// compressed dyld information
 pub const LC_DYLD_INFO: u32 = 0x22;
 /// compressed dyld information only
-pub const LC_DYLD_INFO_ONLY: u32 = (0x22 | LC_REQ_DYLD);
+pub const LC_DYLD_INFO_ONLY: u32 = 0x22 | LC_REQ_DYLD;
 /// load upward dylib
-pub const LC_LOAD_UPWARD_DYLIB: u32 = (0x23 | LC_REQ_DYLD);
+pub const LC_LOAD_UPWARD_DYLIB: u32 = 0x23 | LC_REQ_DYLD;
 /// build for `MacOSX` min OS version
 pub const LC_VERSION_MIN_MACOSX: u32 = 0x24;
 /// build for `iPhoneOS` min OS version
@@ -566,7 +568,7 @@ pub const LC_FUNCTION_STARTS: u32 = 0x26;
 /// string for dyld to treat like environment variable
 pub const LC_DYLD_ENVIRONMENT: u32 = 0x27;
 /// replacement for `LC_UNIXTHREAD`
-pub const LC_MAIN: u32 = (0x28 | LC_REQ_DYLD);
+pub const LC_MAIN: u32 = 0x28 | LC_REQ_DYLD;
 /// table of non-instructions in __text
 pub const LC_DATA_IN_CODE: u32 = 0x29;
 /// source version used to build binary

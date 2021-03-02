@@ -219,16 +219,6 @@ impl<T: Write> FileProcessor<T> {
 
         self.process_ofile(&file, &mut ctxt)?;
 
-        if self.print_symbol_table {
-            debug!("dumping symbol table");
-
-            if let Some(symbols) = file.symbols(&mut ctxt.cur) {
-                for symbol in symbols {
-                    writeln!(self.w, "{}", symbol)?;
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -358,6 +348,42 @@ impl<T: Write> FileProcessor<T> {
                             dylib.current_version.minor(),
                             dylib.current_version.release()
                         )?;
+                    }
+                }
+
+                LoadCommand::SymTab {
+                    symoff,
+                    nsyms,
+                    stroff,
+                    strsize,
+                } => {
+                    if self.print_symbol_table {
+                        let sections = commands
+                            .iter()
+                            .filter_map(|cmd| match cmd {
+                                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
+                                    Some(sections)
+                                }
+                                _ => None,
+                            })
+                            .flat_map(|sections| sections.clone())
+                            .collect();
+
+                        if ctxt.cur.seek(SeekFrom::Start(u64::from(symoff))).is_ok() {
+                            let mut cur = ctxt.cur.clone();
+                            let symbols = SymbolIter::new(
+                                &mut cur,
+                                sections,
+                                nsyms,
+                                stroff,
+                                strsize,
+                                header.is_bigend(),
+                                header.is_64bit(),
+                            );
+                            for symbol in symbols {
+                                writeln!(self.w, "{}", symbol)?;
+                            }
+                        }
                     }
                 }
 
@@ -746,8 +772,7 @@ fn dylib_name(commands: &[LoadCommand], ordinal: usize) -> Option<&str> {
     commands
         .iter()
         .flat_map(|cmd| match cmd {
-            &LoadCommand::IdDyLib(ref dylib)
-            | &LoadCommand::LoadDyLib(ref dylib)
+            &LoadCommand::LoadDyLib(ref dylib)
             | &LoadCommand::LoadWeakDyLib(ref dylib)
             | &LoadCommand::ReexportDyLib(ref dylib)
             | &LoadCommand::LoadUpwardDylib(ref dylib)

@@ -15,6 +15,7 @@ pub enum MachError {
     UuidError(::uuid::Error),
     #[fail(display = "fail to do I/O operations, {}.", _0)]
     IoError(#[cause] io::Error),
+    #[cfg(feature = "display")]
     #[fail(display = "fail to parse time, {}.", _0)]
     TimeParseError(#[cause] time::error::ComponentRange),
     #[fail(display = "fail to parse integer, {}.", _0)]
@@ -57,6 +58,7 @@ impl From<io::Error> for MachError {
     }
 }
 
+#[cfg(feature = "display")]
 impl From<time::error::ComponentRange> for MachError {
     fn from(err: time::error::ComponentRange) -> Self {
         MachError::TimeParseError(err)

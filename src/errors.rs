@@ -16,7 +16,7 @@ pub enum MachError {
     #[fail(display = "fail to do I/O operations, {}.", _0)]
     IoError(#[cause] io::Error),
     #[fail(display = "fail to parse time, {}.", _0)]
-    TimeParseError(#[cause] time::ParseError),
+    TimeParseError(#[cause] time::error::ComponentRange),
     #[fail(display = "fail to parse integer, {}.", _0)]
     ParseIntError(#[cause] num::ParseIntError),
     #[fail(display = "fail to parse octal, {}.", _0)]
@@ -57,8 +57,8 @@ impl From<io::Error> for MachError {
     }
 }
 
-impl From<time::ParseError> for MachError {
-    fn from(err: time::ParseError) -> Self {
+impl From<time::error::ComponentRange> for MachError {
+    fn from(err: time::error::ComponentRange) -> Self {
         MachError::TimeParseError(err)
     }
 }

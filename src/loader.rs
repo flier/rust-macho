@@ -7,7 +7,7 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, ReadBytesExt};
 
 use crate::commands::{LoadCommand, ReadStringExt};
 use crate::consts::*;
-use crate::errors::{MachError::*, Result};
+use crate::errors::{Error::*, Result};
 
 /// The architecture of mach header
 ///
@@ -423,15 +423,9 @@ impl OFile {
                         files.push((header.clone(), file));
                     }
                 }
+                Err(IoError(err)) if err.kind() == ErrorKind::UnexpectedEof => break,
                 Err(err) => {
-                    match err.downcast_ref::<::std::io::Error>() {
-                        Some(err) if err.kind() == ErrorKind::UnexpectedEof => {
-                            break;
-                        }
-                        _ => {
-                            warn!("parse ar file failed, {:?}", err);
-                        }
-                    }
+                    warn!("parse ar file failed, {:?}", err);
 
                     return Err(err);
                 }

@@ -1,7 +1,7 @@
 #[macro_use]
-extern crate failure;
-#[macro_use]
 extern crate log;
+#[macro_use]
+extern crate anyhow;
 
 use std::env;
 use std::fmt;
@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
 
+use anyhow::Error;
 use byteorder::ReadBytesExt;
-use failure::Error;
 use memmap::Mmap;
 use structopt::StructOpt;
 
@@ -114,12 +114,12 @@ struct Opt {
 fn parse_cpu_type(arch: &str) -> Result<cpu_type_t, Error> {
     get_arch_from_flag(arch)
         .map(|&(cpu_type, _)| cpu_type)
-        .ok_or_else(|| format_err!("unknown architecture specification flag: arch {}", arch))
+        .ok_or_else(|| anyhow!("unknown architecture specification flag: arch {}", arch))
 }
 
 fn parse_section(s: &str) -> Result<(String, Option<String>), Error> {
     let mut names = s.splitn(2, ':');
-    let segname = names.next().ok_or_else(|| format_err!("missing section name"))?;
+    let segname = names.next().ok_or_else(|| anyhow!("missing section name"))?;
     let sectname = names.next().map(|s| s.to_owned());
 
     Ok((segname.to_owned(), sectname))
@@ -361,9 +361,8 @@ impl<T: Write> FileProcessor<T> {
                         let sections = commands
                             .iter()
                             .filter_map(|cmd| match cmd {
-                                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
-                                    Some(sections)
-                                }
+                                LoadCommand::Segment { ref sections, .. }
+                                | LoadCommand::Segment64 { ref sections, .. } => Some(sections),
                                 _ => None,
                             })
                             .flat_map(|sections| sections.clone())

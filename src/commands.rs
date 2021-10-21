@@ -7,12 +7,16 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use byteorder::{ByteOrder, ReadBytesExt};
-use failure::Error;
 use uuid::Uuid;
 
-use crate::consts::*;
-use crate::errors::*;
-use crate::loader::MachHeader;
+use crate::{
+    consts::*,
+    errors::{
+        Error::{self, *},
+        Result,
+    },
+    loader::MachHeader,
+};
 
 /// The encoded version.
 ///
@@ -1076,7 +1080,7 @@ impl LoadCommand {
         let cmdsize = buf.read_u32::<O>()? as usize;
 
         if cmdsize < LOAD_COMMAND_HEADER_SIZE || begin as usize + cmdsize > buf.get_ref().as_ref().len() {
-            return Err(MachError::BufferOverflow(cmdsize).into());
+            return Err(BufferOverflow(cmdsize));
         }
 
         let cmd = match cmd {
@@ -1185,7 +1189,7 @@ impl LoadCommand {
 
                 buf.read_exact(&mut uuid[..])?;
 
-                LoadCommand::Uuid(Uuid::from_slice(&uuid).map_err(MachError::from)?)
+                LoadCommand::Uuid(Uuid::from_slice(&uuid)?)
             }
             LC_CODE_SIGNATURE => LoadCommand::CodeSignature(Self::read_linkedit_data::<O, T>(buf)?),
             LC_SEGMENT_SPLIT_INFO => LoadCommand::SegmentSplitInfo(Self::read_linkedit_data::<O, T>(buf)?),
@@ -1428,7 +1432,7 @@ impl LoadCommand {
         );
 
         if cmdsize < read {
-            return Err(MachError::BufferOverflow(cmdsize).into());
+            return Err(BufferOverflow(cmdsize));
         } else if cmdsize > read {
             // skip the reserved or padding bytes
             buf.consume(cmdsize - read);
@@ -1620,7 +1624,7 @@ where
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
-                return Err(MachError::NumberOverflow.into());
+                return Err(NumberOverflow);
             }
 
             v |= n << bits;

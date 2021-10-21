@@ -4,7 +4,7 @@ use byteorder::ReadBytesExt;
 
 use crate::commands::CursorExt;
 use crate::consts::*;
-use crate::errors::{MachError, Result};
+use crate::errors::{Error::*, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExportKind {
@@ -86,7 +86,7 @@ impl Exported {
             .into_iter()
             .map(|(name, offset)| {
                 if offset > payload.len() {
-                    return Err(MachError::BufferOverflow(offset).into());
+                    return Err(BufferOverflow(offset));
                 }
 
                 let mut cur = Cursor::new(payload);

@@ -1,12 +1,14 @@
-use std::io::{Cursor};
+use std::io::Cursor;
 use std::rc::Rc;
 use std::str;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use crate::commands::{Section};
-use crate::consts::*;
-use crate::errors::*;
+use crate::{
+    commands::Section,
+    consts::*,
+    errors::{Error::*, Result},
+};
 
 /// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]
@@ -172,7 +174,13 @@ impl<'a> SymbolIter<'a> {
         is_64bit: bool,
     ) -> Self {
         Self {
-            cur, sections, nsyms, stroff, strsize, is_bigend, is_64bit
+            cur,
+            sections,
+            nsyms,
+            stroff,
+            strsize,
+            is_bigend,
+            is_64bit,
         }
     }
 
@@ -245,7 +253,7 @@ impl<'a> SymbolIter<'a> {
                     desc,
                     symbol: self.load_str(value)?,
                 }),
-                _ => Err(MachError::UnknownSymType(typ).into()),
+                _ => Err(UnknownSymType(typ)),
             }
         }
     }
@@ -254,7 +262,7 @@ impl<'a> SymbolIter<'a> {
         if off == 0 {
             Ok(None)
         } else if off >= self.strsize as usize {
-            Err(MachError::OutOfRange(off, self.strsize as usize).into())
+            Err(OutOfRange(off, 0..self.strsize as usize))
         } else {
             let buf = *self.cur.get_ref();
             if let Some(s) = buf[self.stroff as usize + off as usize..].split(|x| *x == 0).next() {

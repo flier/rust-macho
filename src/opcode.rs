@@ -3,7 +3,7 @@ use std::fmt;
 use std::slice;
 
 use crate::consts::*;
-use crate::errors::{MachError, Result};
+use crate::errors::{Error::*, Result};
 
 /// Bind or rebase symbol type
 #[repr(u8)]
@@ -613,7 +613,7 @@ pub trait IteratorExt<'a>: Iterator<Item = &'a u8> {
             let n = usize::from(b & 0x7F);
 
             if bits > 63 {
-                return Err(MachError::NumberOverflow.into());
+                return Err(NumberOverflow);
             }
 
             v |= n << bits;

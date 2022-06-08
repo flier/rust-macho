@@ -9,7 +9,7 @@ use std::io::{self, Cursor};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use failure::Error;
+use anyhow::Error;
 use hexplay::HexViewBuilder;
 use memmap::Mmap;
 use pretty_env_logger;

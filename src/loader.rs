@@ -376,11 +376,16 @@ impl OFile {
                         .checked_add(header.ar_size as u64)
                         .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
 
+                    if let Some(size) = header.extended_format_size() {
+                        end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
+                    }
+
                     if header.name() == SYMDEF || header.name() == SYMDEF_SORTED {
                         let ranlib_len = buf.read_u32::<O>()? as usize;
-                        let mut ranlibs = Vec::with_capacity(ranlib_len / size_of::<RanLib>());
+                        let ranlib_num = ranlib_len / size_of::<RanLib>();
+                        let mut ranlibs = Vec::with_capacity(ranlib_num);
 
-                        for _ in 0..ranlibs.len() {
+                        for _ in 0..ranlib_num {
                             ranlibs.push(RanLib {
                                 ran_strx: buf.read_u32::<O>()?,
                                 ran_off: buf.read_u32::<O>()?,
@@ -398,10 +403,6 @@ impl OFile {
 
                         files.push((header.clone(), OFile::SymDef { ranlibs }))
                     } else {
-                        if let Some(size) = header.extended_format_size() {
-                            end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
-                        }
-
                         let file = Self::parse(buf)?;
 
                         debug!(

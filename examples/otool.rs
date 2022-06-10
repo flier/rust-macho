@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate anyhow;
 
 use std::env;
 use std::fmt;
@@ -12,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
 
-use anyhow::{Error, bail, anyhow};
+use anyhow::Error;
 use byteorder::ReadBytesExt;
 use memmap::Mmap;
 use structopt::StructOpt;
@@ -359,9 +361,8 @@ impl<T: Write> FileProcessor<T> {
                         let sections = commands
                             .iter()
                             .filter_map(|cmd| match cmd {
-                                LoadCommand::Segment { ref sections, .. } | LoadCommand::Segment64 { ref sections, .. } => {
-                                    Some(sections)
-                                }
+                                LoadCommand::Segment { ref sections, .. }
+                                | LoadCommand::Segment64 { ref sections, .. } => Some(sections),
                                 _ => None,
                             })
                             .flat_map(|sections| sections.clone())

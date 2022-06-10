@@ -1,41 +1,38 @@
 use std::io;
 use std::num;
+use std::ops::Range;
 use std::str;
 use std::string;
 
-use anyhow::Error;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum MachError {
-    #[error("fail to interpret a sequence of u8 as a string, {}.", _0)]
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
     Utf8Error(#[from] str::Utf8Error),
-    #[error("fail to convert a String from a UTF-8 byte vector, {}.", _0)]
+    #[error(transparent)]
     FromUtf8Error(#[from] string::FromUtf8Error),
-    #[error("fail to parse UUID, {}.", _0)]
-    UuidError(::uuid::Error),
-    #[error("fail to do I/O operations, {}.", _0)]
+    #[error(transparent)]
+    UuidError(#[from] uuid::Error),
+    #[error(transparent)]
     IoError(#[from] io::Error),
-    #[error("fail to parse integer, {}.", _0)]
+    #[cfg(feature = "display")]
+    #[error(transparent)]
+    TimeParseError(#[from] time::error::ComponentRange),
+    #[error(transparent)]
     ParseIntError(#[from] num::ParseIntError),
-    #[error("fail to parse octal, {}.", _0)]
+    #[error("fail to parse octal.")]
     ParseOctalError(String),
-    #[error("unknown file format, magic 0x{:08x}.", _0)]
+    #[error("unknown file format, magic 0x{0}.")]
     UnknownMagic(u32),
-    #[error("unknown symbol type, {}.", _0)]
+    #[error("unknown symbol type, {0}.")]
     UnknownSymType(u8),
-    #[error("offset {} out of range: [0..{}).", _0, _1)]
-    OutOfRange(usize, usize),
+    #[error("offset {0} out of range: {1:?}.")]
+    OutOfRange(usize, Range<usize>),
     #[error("number overflowing.")]
     NumberOverflow,
-    #[error("buffer overflowing, {}.", _0)]
+    #[error("buffer overflowing, {0}.")]
     BufferOverflow(usize),
-}
-
-impl From<uuid::Error> for MachError {
-    fn from(err: uuid::Error) -> Self {
-        MachError::UuidError(err)
-    }
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;

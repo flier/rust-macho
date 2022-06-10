@@ -48,7 +48,7 @@ mod symbol;
 
 pub use crate::commands::*;
 pub use crate::consts::*;
-pub use crate::errors::MachError;
+pub use crate::errors::Error as MachError;
 pub use crate::export::{ExportKind, ExportSymbol, ExportTrie, ExportType};
 pub use crate::loader::{ArHeader, CheckedSlice, FatArch, FatHeader, MachCommand, MachHeader, OFile, RanLib};
 pub use crate::opcode::{

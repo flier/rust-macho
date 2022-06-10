@@ -371,11 +371,16 @@ impl OFile {
 
             match ArHeader::parse(buf) {
                 Ok(ref mut header) => {
+                    let mut end = buf
+                        .position()
+                        .checked_add(header.ar_size as u64)
+                        .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
+
                     if header.name() == SYMDEF || header.name() == SYMDEF_SORTED {
                         let ranlib_len = buf.read_u32::<O>()? as usize;
-                        let mut ranlibs = Vec::new();
+                        let mut ranlibs = Vec::with_capacity(ranlib_len / size_of::<RanLib>());
 
-                        for _ in 0..(ranlib_len / size_of::<RanLib>()) {
+                        for _ in 0..ranlibs.len() {
                             ranlibs.push(RanLib {
                                 ran_strx: buf.read_u32::<O>()?,
                                 ran_off: buf.read_u32::<O>()?,
@@ -383,13 +388,6 @@ impl OFile {
                         }
 
                         let toc_strsize = buf.read_u32::<O>()?;
-
-                        let end = buf
-                            .position()
-                            .checked_add(u64::from(toc_strsize))
-                            .ok_or_else(|| BufferOverflow(toc_strsize as usize))?;
-
-                        buf.seek(SeekFrom::Start(end))?;
 
                         debug!(
                             "parsed {} with {} ranlibs and {} bytes string",
@@ -400,11 +398,6 @@ impl OFile {
 
                         files.push((header.clone(), OFile::SymDef { ranlibs }))
                     } else {
-                        let mut end = buf
-                            .position()
-                            .checked_add(header.ar_size as u64)
-                            .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
-
                         if let Some(size) = header.extended_format_size() {
                             end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
                         }
@@ -418,10 +411,10 @@ impl OFile {
                             end - buf.position()
                         );
 
-                        buf.seek(SeekFrom::Start(end))?;
-
                         files.push((header.clone(), file));
                     }
+
+                    buf.seek(SeekFrom::Start(end))?;
                 }
                 Err(IoError(err)) if err.kind() == ErrorKind::UnexpectedEof => break,
                 Err(err) => {

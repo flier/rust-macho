@@ -23,16 +23,12 @@ use mach_object::*;
 
 const APP_VERSION: &'static str = "0.1.1";
 
-#[derive(Debug, StructOpt)]
+#[derive(StructOpt)]
 #[structopt(name = "otool", about = "object file displaying tool")]
 struct Opt {
     /// Specifies the architecture
     #[structopt(long = "arch", parse(try_from_str = parse_cpu_type))]
     cpu_type: Option<cpu_type_t>,
-
-    /// Print verbosely (symbolically) when possible
-    #[structopt(short = "v")]
-    print_verbose: bool,
 
     /// Print no leading addresses or headers
     #[structopt(short = "X")]

@@ -590,6 +590,9 @@ pub const LC_NOTE: u32 = 0x31;
 /// build for platform min OS version
 pub const LC_BUILD_VERSION: u32 = 0x32;
 
+pub const LC_DYLD_EXPORTS_TRIE: u32 = 0x33 | LC_REQ_DYLD;
+pub const LC_DYLD_CHAINED_FIXUPS: u32 = 0x34 | LC_REQ_DYLD;
+
 bitflags! {
     /// Constants for the flags field of the segment_command
     pub struct SegmentFlags: u32 {

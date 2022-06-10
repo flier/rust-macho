@@ -780,6 +780,10 @@ pub enum LoadCommand {
     DylibCodeSignDrs(LinkEditData),
     /// optimization hints in MH_OBJECT files
     LinkerOptimizationHint(LinkEditData),
+    /// used with linkedit_data_command, payload is trie
+    DyldExportsTrie(LinkEditData),
+    /// used with linkedit_data_command
+    DyldChainedFixups(LinkEditData),
 
     /// The version_min_command contains the min OS version on which this
     /// binary was built to run.
@@ -1197,6 +1201,8 @@ impl LoadCommand {
             LC_DATA_IN_CODE => LoadCommand::DataInCode(Self::read_linkedit_data::<O, T>(buf)?),
             LC_DYLIB_CODE_SIGN_DRS => LoadCommand::DylibCodeSignDrs(Self::read_linkedit_data::<O, T>(buf)?),
             LC_LINKER_OPTIMIZATION_HINT => LoadCommand::LinkerOptimizationHint(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_DYLD_EXPORTS_TRIE => LoadCommand::DyldExportsTrie(Self::read_linkedit_data::<O, T>(buf)?),
+            LC_DYLD_CHAINED_FIXUPS => LoadCommand::DyldChainedFixups(Self::read_linkedit_data::<O, T>(buf)?),
 
             LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_WATCHOS | LC_VERSION_MIN_TVOS => {
                 LoadCommand::VersionMin {
@@ -1539,6 +1545,8 @@ impl LoadCommand {
             LoadCommand::EncryptionInfo64 { .. } => LC_ENCRYPTION_INFO_64,
             LoadCommand::TwoLevelHints { .. } => LC_TWOLEVEL_HINTS,
             LoadCommand::BuildVersion { .. } => LC_BUILD_VERSION,
+            LoadCommand::DyldExportsTrie { .. } => LC_DYLD_EXPORTS_TRIE,
+            LoadCommand::DyldChainedFixups { .. } => LC_DYLD_CHAINED_FIXUPS,
             LoadCommand::Command { cmd, .. } => cmd,
         }
     }
@@ -1600,6 +1608,8 @@ impl LoadCommand {
             LC_VERSION_MIN_WATCHOS => "LC_VERSION_MIN_WATCHOS",
             LC_NOTE => "LC_NOTE",
             LC_BUILD_VERSION => "LC_BUILD_VERSION",
+            LC_DYLD_EXPORTS_TRIE => "LC_DYLD_EXPORTS_TRIE",
+            LC_DYLD_CHAINED_FIXUPS => "LC_DYLD_CHAINED_FIXUPS",
             _ => "LC_COMMAND",
         }
     }

@@ -1,10 +1,10 @@
-use std::io::{Cursor};
+use std::io::Cursor;
 use std::rc::Rc;
 use std::str;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 
-use crate::commands::{Section};
+use crate::commands::Section;
 use crate::consts::*;
 use crate::errors::*;
 

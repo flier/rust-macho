@@ -6,8 +6,8 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use anyhow::Error;
 use byteorder::{ByteOrder, ReadBytesExt};
-use failure::Error;
 use uuid::Uuid;
 
 use crate::consts::*;

@@ -12,8 +12,7 @@ use std::path::Path;
 use anyhow::Error;
 use hexplay::HexViewBuilder;
 use memmap::Mmap;
-use pretty_env_logger;
-use time::PreciseTime;
+use time::Instant;
 use walkdir::{DirEntry, WalkDir};
 
 use mach_object::{LoadCommand, MachCommand, MachError, OFile};
@@ -49,7 +48,7 @@ fn load_mach_file(entry: &DirEntry) -> Result<(), Error> {
 
     match File::open(entry.path()) {
         Ok(file) => {
-            let start_time = PreciseTime::now();
+            let start_time = Instant::now();
 
             let mmap = unsafe { Mmap::map(&file) }?;
             let payload = mmap.as_ref();
@@ -69,23 +68,19 @@ fn load_mach_file(entry: &DirEntry) -> Result<(), Error> {
                 let ofile = match OFile::parse(&mut cur) {
                     Ok(ofile) => ofile,
                     Err(err) => {
-                        if let Some(&MachError::UnknownMagic(magic)) = err.as_fail().downcast_ref::<MachError>() {
+                        if let MachError::UnknownMagic(magic) = err {
                             trace!("skip unknown file format: 0x{:08x}, {:?}", magic, entry.path());
 
                             return Ok(());
                         } else {
-                            return Err(err);
+                            return Err(err.into());
                         }
                     }
                 };
 
                 verify_mach_file(entry.path(), &ofile);
 
-                info!(
-                    "loaded in {} ms, {:?}",
-                    start_time.to(PreciseTime::now()).num_microseconds().unwrap_or_default() as f64 / 1000.0,
-                    entry.path(),
-                );
+                info!("loaded in {}, {:?}", start_time.elapsed(), entry.path(),);
             }
 
             Ok(())

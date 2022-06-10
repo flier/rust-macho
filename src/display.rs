@@ -1,5 +1,7 @@
 use std::fmt;
 
+use time::macros::format_description;
+
 use crate::commands::{LcString, LoadCommand, Section};
 use crate::consts::*;
 use crate::loader::{ArHeader, FatHeader, MachCommand, MachHeader};
@@ -309,6 +311,10 @@ impl MachCommand {
     }
 
     fn print_dylib_command(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let time_format = format_description!(
+            "[weekday repr:short] [month repr:short] [day padding:space] [hour]:[minute]:[second] [year] UTC"
+        );
+
         let MachCommand(ref cmd, cmdsize) = *self;
 
         match *cmd {
@@ -321,12 +327,12 @@ impl MachCommand {
                 writeln!(f, "          cmd {}", cmd.name())?;
                 writeln!(f, "      cmdsize {}", cmdsize)?;
                 writeln!(f, "         name {} (offset {})", dylib.name, dylib.name.0)?;
-                let ts = time::OffsetDateTime::from_unix_timestamp(i64::from(dylib.timestamp));
+                let ts = time::OffsetDateTime::from_unix_timestamp(i64::from(dylib.timestamp)).unwrap();
                 writeln!(
                     f,
                     "   time stamp {} {}",
                     dylib.timestamp,
-                    ts.format(time::Format::Custom("%c UTC".to_string())),
+                    ts.format(&time_format).unwrap()
                 )?;
                 writeln!(
                     f,

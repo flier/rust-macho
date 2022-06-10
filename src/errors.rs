@@ -16,8 +16,6 @@ pub enum MachError {
     UuidError(::uuid::Error),
     #[error("fail to do I/O operations, {}.", _0)]
     IoError(#[from] io::Error),
-    #[error("fail to parse time, {}.", _0)]
-    TimeParseError(#[from] time::ParseError),
     #[error("fail to parse integer, {}.", _0)]
     ParseIntError(#[from] num::ParseIntError),
     #[error("fail to parse octal, {}.", _0)]
@@ -34,12 +32,10 @@ pub enum MachError {
     BufferOverflow(usize),
 }
 
-
 impl From<uuid::Error> for MachError {
     fn from(err: uuid::Error) -> Self {
         MachError::UuidError(err)
     }
 }
-
 
 pub type Result<T> = ::std::result::Result<T, Error>;

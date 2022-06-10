@@ -14,7 +14,7 @@ pub type off_t = u32;
 /// mask for architecture bits
 pub const CPU_ARCH_MASK: cpu_type_t = 0xff00_0000u32 as cpu_type_t;
 /// 64 bit ABI
-pub const CPU_ARCH_ABI64: cpu_type_t = 0x0100_0000 as cpu_type_t;
+pub const CPU_ARCH_ABI64: cpu_type_t = 0x0100_0000i32;
 
 //  Machine types known by all.
 //

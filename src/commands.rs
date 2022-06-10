@@ -39,9 +39,9 @@ impl VersionTag {
     }
 }
 
-impl Into<u32> for VersionTag {
-    fn into(self) -> u32 {
-        self.0
+impl From<VersionTag> for u32 {
+    fn from(v: VersionTag) -> Self {
+        v.0
     }
 }
 
@@ -85,20 +85,20 @@ impl fmt::Display for VersionTag {
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct SourceVersionTag(u64);
 
-impl Into<u64> for SourceVersionTag {
-    fn into(self) -> u64 {
-        self.0
+impl From<SourceVersionTag> for u64 {
+    fn from(v: SourceVersionTag) -> Self {
+        v.0
     }
 }
 
-impl Into<(u32, u32, u32, u32, u32)> for SourceVersionTag {
-    fn into(self) -> (u32, u32, u32, u32, u32) {
+impl From<SourceVersionTag> for (u32, u32, u32, u32, u32) {
+    fn from(v: SourceVersionTag) -> (u32, u32, u32, u32, u32) {
         (
-            ((self.0 >> 40) & 0xFFF) as u32,
-            ((self.0 >> 30) & 0x3FF) as u32,
-            ((self.0 >> 20) & 0x3FF) as u32,
-            ((self.0 >> 10) & 0x3FF) as u32,
-            (self.0 & 0x3FF) as u32,
+            ((v.0 >> 40) & 0xFFF) as u32,
+            ((v.0 >> 30) & 0x3FF) as u32,
+            ((v.0 >> 20) & 0x3FF) as u32,
+            ((v.0 >> 10) & 0x3FF) as u32,
+            (v.0 & 0x3FF) as u32,
         )
     }
 }
@@ -140,10 +140,9 @@ impl From<u32> for BuildTarget {
         }
     }
 }
-
-impl Into<u32> for BuildTarget {
-    fn into(self) -> u32 {
-        match self {
+impl From<BuildTarget> for u32 {
+    fn from(t: BuildTarget) -> u32 {
+        match t {
             BuildTarget::MacOsX => LC_VERSION_MIN_MACOSX,
             BuildTarget::IPhoneOs => LC_VERSION_MIN_IPHONEOS,
             BuildTarget::WatchOs => LC_VERSION_MIN_WATCHOS,
@@ -1439,7 +1438,9 @@ impl LoadCommand {
 
         if cmdsize < read {
             return Err(BufferOverflow(cmdsize));
-        } else if cmdsize > read {
+        }
+
+        if cmdsize > read {
             // skip the reserved or padding bytes
             buf.consume(cmdsize - read);
         }
@@ -1676,9 +1677,9 @@ impl SectionFlags {
     }
 }
 
-impl Into<u32> for SectionFlags {
-    fn into(self) -> u32 {
-        self.0
+impl From<SectionFlags> for u32 {
+    fn from(f: SectionFlags) -> u32 {
+        f.0
     }
 }
 

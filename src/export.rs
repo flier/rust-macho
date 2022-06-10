@@ -155,7 +155,7 @@ impl<'a> Iterator for ExportSymbols<'a> {
 
             if let Some((kind, ref symbol)) = node.symbol {
                 return Some(ExportSymbol {
-                    name: prefix.clone(),
+                    name: prefix,
                     kind,
                     symbol: symbol.clone(),
                 });

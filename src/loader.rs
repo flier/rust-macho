@@ -205,7 +205,7 @@ impl ArHeader {
 
         for c in s.as_bytes() {
             if *c < b'0' || b'7' < *c {
-                return Err(ParseOctalError(String::from(s)).into());
+                return Err(ParseOctalError(String::from(s)));
             }
 
             v = v * 8 + (c - b'0') as usize;
@@ -278,7 +278,7 @@ impl OFile {
                 buf.seek(SeekFrom::Current(-4))?;
 
                 if buf.get_ref().as_ref().len() < ar_magic.len() {
-                    return Err(UnknownMagic(magic).into());
+                    return Err(UnknownMagic(magic));
                 }
 
                 buf.read_exact(&mut ar_magic)?;
@@ -286,7 +286,7 @@ impl OFile {
                 if ar_magic == ARMAG {
                     Self::parse_ar_file::<NativeEndian, T>(buf)
                 } else {
-                    Err(UnknownMagic(magic).into())
+                    Err(UnknownMagic(magic))
                 }
             }
         }
@@ -346,7 +346,7 @@ impl OFile {
 
         for arch in archs {
             if u64::from(arch.offset) < start {
-                return Err(BufferOverflow(arch.offset as usize).into());
+                return Err(BufferOverflow(arch.offset as usize));
             }
 
             let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
@@ -374,10 +374,10 @@ impl OFile {
                     let mut end = buf
                         .position()
                         .checked_add(header.ar_size as u64)
-                        .ok_or_else(|| BufferOverflow(header.ar_size as usize))?;
+                        .ok_or(BufferOverflow(header.ar_size as usize))?;
 
                     if let Some(size) = header.extended_format_size() {
-                        end = end.checked_sub(size as u64).ok_or_else(|| BufferOverflow(size))?;
+                        end = end.checked_sub(size as u64).ok_or(BufferOverflow(size))?;
                     }
 
                     if header.name() == SYMDEF || header.name() == SYMDEF_SORTED {
@@ -436,12 +436,12 @@ pub trait CheckedSlice<T>: AsRef<[T]> {
     fn checked_slice(&self, off: usize, len: usize) -> Result<&[T]> {
         let s = self.as_ref();
         let start = off as usize;
-        let end = off.checked_add(len).ok_or_else(|| BufferOverflow(len))? as usize;
+        let end = off.checked_add(len).ok_or(BufferOverflow(len))? as usize;
 
         if start >= s.len() || start >= end {
-            Err(BufferOverflow(start).into())
+            Err(BufferOverflow(start))
         } else if end > s.len() {
-            Err(BufferOverflow(end).into())
+            Err(BufferOverflow(end))
         } else {
             Ok(&s[start..end])
         }

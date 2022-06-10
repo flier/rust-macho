@@ -11,7 +11,7 @@ version = "0.1.15"
 
 [features]
 default = ["display"]
-display = []
+display = ["time"]
 integration_tests = []
 
 [dependencies]
@@ -23,7 +23,7 @@ thiserror = "1"
 uuid = "0.8"
 bitflags = "1.0"
 lazy_static = "1.0"
-time = {version = "0.3", features = ["formatting", "macros"]}
+time = {version = "0.3", features = ["formatting", "macros"], optional = true}
 
 [dev-dependencies]
 diff = "0.1"

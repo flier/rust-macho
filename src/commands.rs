@@ -2161,6 +2161,7 @@ pub mod tests {
         }
     }
 
+    #[cfg(feature = "display")]
     #[test]
     fn test_build_version_command() {
         let (cmd, cmdsize) = parse_command!(LC_BUILD_VERSION);

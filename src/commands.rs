@@ -2088,10 +2088,7 @@ pub mod tests {
     fn test_parse_uuid_command() {
         if let (LoadCommand::Uuid(ref uuid), cmdsize) = parse_command!(LC_UUID_DATA) {
             assert_eq!(cmdsize, 24);
-            assert_eq!(
-                uuid.to_hyphenated_ref().to_string(),
-                "92e3cf1f-20da-3373-a98c-851366d353bf"
-            );
+            assert_eq!(uuid.to_string(), "92e3cf1f-20da-3373-a98c-851366d353bf");
         } else {
             panic!();
         }

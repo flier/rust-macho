@@ -9,18 +9,6 @@ use crate::commands::{LoadCommand, ReadStringExt};
 use crate::consts::*;
 use crate::errors::{Error::*, Result};
 
-/// The architecture of mach header
-///
-pub trait MachArch {
-    /// parse mach header
-    fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader>;
-}
-
-/// The 32-bit mach header
-pub enum Arch32 {}
-/// The 64-bit mach header
-pub enum Arch64 {}
-
 #[cfg(windows)]
 type uid_t = libc::uint32_t;
 #[cfg(windows)]
@@ -34,7 +22,19 @@ type gid_t = libc::gid_t;
 #[cfg(not(windows))]
 type mode_t = libc::mode_t;
 
-impl MachArch for Arch32 {
+/// The 32-bit mach/fat header
+pub enum Arch32 {}
+/// The 64-bit mach/fat header
+pub enum Arch64 {}
+
+/// The architecture of mach header
+///
+pub trait MachHeaderParser {
+    /// parse mach header
+    fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader>;
+}
+
+impl MachHeaderParser for Arch32 {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader> {
         let header = MachHeader {
             magic,
@@ -50,7 +50,7 @@ impl MachArch for Arch32 {
     }
 }
 
-impl MachArch for Arch64 {
+impl MachHeaderParser for Arch64 {
     fn parse_mach_header<T: BufRead, O: ByteOrder>(magic: u32, buf: &mut T) -> Result<MachHeader> {
         let header = MachHeader {
             magic,
@@ -122,6 +122,41 @@ pub struct FatHeader {
     pub magic: u32,
     /// number of structs that follow
     pub archs: Vec<FatArch>,
+}
+
+/// The architecture of mach header
+///
+pub trait FatArchParser {
+    /// parse fat arch
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch>;
+}
+
+impl FatArchParser for Arch32 {
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch> {
+        Ok(FatArch {
+            cputype: buf.read_u32::<O>()? as cpu_type_t,
+            cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+            offset: buf.read_u32::<O>()? as u64,
+            size: buf.read_u32::<O>()? as u64,
+            align: buf.read_u32::<O>()?,
+        })
+    }
+}
+
+impl FatArchParser for Arch64 {
+    fn parse_fat_arch<T: BufRead, O: ByteOrder>(buf: &mut T) -> Result<FatArch> {
+        Ok(FatArch {
+            cputype: buf.read_u32::<O>()? as cpu_type_t,
+            cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+            offset: buf.read_u64::<O>()?,
+            size: buf.read_u64::<O>()?,
+            align: {
+                let align = buf.read_u32::<O>()?;
+                let _reserved = buf.read_u32::<O>()?;
+                align
+            },
+        })
+    }
 }
 
 /// For each architecture in the file, specified by a pair of cputype and cpusubtype,
@@ -270,7 +305,8 @@ impl OFile {
             MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian, T>(magic, buf),
             MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian, T>(magic, buf),
             MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian, T>(magic, buf),
-            FAT_MAGIC | FAT_MAGIC64 | FAT_CIGAM | FAT_CIGAM64 => Self::parse_fat_file::<BigEndian, T>(magic, buf),
+            FAT_MAGIC | FAT_CIGAM => Self::parse_fat_file::<Arch32, BigEndian, T>(magic, buf),
+            FAT_MAGIC64 | FAT_CIGAM64 => Self::parse_fat_file::<Arch64, BigEndian, T>(magic, buf),
             _ => {
                 let mut ar_magic = [0; 8];
 
@@ -291,10 +327,13 @@ impl OFile {
         }
     }
 
-    fn parse_mach_file<A: MachArch, O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
+    fn parse_mach_file<P: MachHeaderParser, O: ByteOrder, T: AsRef<[u8]>>(
+        magic: u32,
+        buf: &mut Cursor<T>,
+    ) -> Result<OFile> {
         debug!("0x{:08x}\tparsing macho-o file header", buf.position());
 
-        let header = A::parse_mach_header::<Cursor<T>, O>(magic, buf)?;
+        let header = P::parse_mach_header::<_, O>(magic, buf)?;
 
         debug!("parsed mach-o file header: {:?}", header);
 
@@ -311,7 +350,10 @@ impl OFile {
         Ok(OFile::MachFile { header, commands })
     }
 
-    fn parse_fat_file<O: ByteOrder, T: AsRef<[u8]>>(magic: u32, buf: &mut Cursor<T>) -> Result<OFile> {
+    fn parse_fat_file<P: FatArchParser, O: ByteOrder, T: AsRef<[u8]>>(
+        magic: u32,
+        buf: &mut Cursor<T>,
+    ) -> Result<OFile> {
         debug!("0x{:08x}\tparsing fat file header", buf.position());
 
         let nfat_arch = buf.read_u32::<O>()?;
@@ -323,55 +365,36 @@ impl OFile {
             magic
         );
 
-        let mut archs = Vec::new();
+        let archs = (0..nfat_arch)
+            .map(|i| {
+                let arch = P::parse_fat_arch::<_, O>(buf)?;
 
-        for i in 0..nfat_arch {
-            let arch = if matches!(magic, FAT_MAGIC64 | FAT_CIGAM64) {
-                FatArch {
-                    cputype: buf.read_u32::<O>()? as cpu_type_t,
-                    cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
-                    offset: buf.read_u64::<O>()?,
-                    size: buf.read_u64::<O>()?,
-                    align: {
-                        let align = buf.read_u32::<O>()?;
-                        let _reserved = buf.read_u32::<O>()?;
-                        align
-                    },
-                }
-            } else {
-                FatArch {
-                    cputype: buf.read_u32::<O>()? as cpu_type_t,
-                    cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
-                    offset: buf.read_u32::<O>()? as u64,
-                    size: buf.read_u32::<O>()? as u64,
-                    align: buf.read_u32::<O>()?,
-                }
-            };
+                debug!("0x{:08}\tfat header arch#{}, arch={:?}", buf.position(), i, arch);
 
-            debug!("0x{:08}\tfat header arch#{}, arch={:?}", buf.position(), i, arch);
-
-            archs.push(arch);
-        }
+                Ok(arch)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         let start = buf.position();
         let payload = buf.get_ref().as_ref();
-        let mut files = Vec::new();
+        let files = archs
+            .into_iter()
+            .map(|arch| {
+                if u64::from(arch.offset) < start {
+                    Err(BufferOverflow(arch.offset as usize))
+                } else {
+                    let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
 
-        for arch in archs {
-            if u64::from(arch.offset) < start {
-                return Err(BufferOverflow(arch.offset as usize));
-            }
+                    debug!("0x{:08}\tparsing mach-o file, arch={:?}", arch.offset, arch);
 
-            let content = payload.checked_slice(arch.offset as usize, arch.size as usize)?;
+                    let mut cur = Cursor::new(content);
 
-            debug!("0x{:08}\tparsing mach-o file, arch={:?}", arch.offset, arch);
+                    let file = OFile::parse(&mut cur)?;
 
-            let mut cur = Cursor::new(content);
-
-            let file = OFile::parse(&mut cur)?;
-
-            files.push((arch, file));
-        }
+                    Ok((arch, file))
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(OFile::FatFile { magic, files })
     }
@@ -470,7 +493,7 @@ pub mod tests {
     use byteorder::{BigEndian, LittleEndian};
 
     use super::super::*;
-    use super::{Arch64, MachArch};
+    use super::{Arch64, MachHeaderParser};
 
     /**
     Mach header

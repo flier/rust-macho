@@ -135,9 +135,9 @@ pub struct FatArch {
     /// machine specifier (int)
     pub cpusubtype: cpu_subtype_t,
     /// file offset to this object file
-    pub offset: u32,
+    pub offset: u64,
     /// size of this object file
-    pub size: u32,
+    pub size: u64,
     /// alignment as a power of 2
     pub align: u32,
 }
@@ -270,8 +270,7 @@ impl OFile {
             MH_CIGAM => Self::parse_mach_file::<Arch32, BigEndian, T>(magic, buf),
             MH_MAGIC_64 => Self::parse_mach_file::<Arch64, LittleEndian, T>(magic, buf),
             MH_CIGAM_64 => Self::parse_mach_file::<Arch64, BigEndian, T>(magic, buf),
-            FAT_MAGIC => Self::parse_fat_file::<LittleEndian, T>(magic, buf),
-            FAT_CIGAM => Self::parse_fat_file::<BigEndian, T>(magic, buf),
+            FAT_MAGIC | FAT_MAGIC64 | FAT_CIGAM | FAT_CIGAM64 => Self::parse_fat_file::<BigEndian, T>(magic, buf),
             _ => {
                 let mut ar_magic = [0; 8];
 
@@ -327,12 +326,26 @@ impl OFile {
         let mut archs = Vec::new();
 
         for i in 0..nfat_arch {
-            let arch = FatArch {
-                cputype: buf.read_u32::<O>()? as cpu_type_t,
-                cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
-                offset: buf.read_u32::<O>()?,
-                size: buf.read_u32::<O>()?,
-                align: buf.read_u32::<O>()?,
+            let arch = if matches!(magic, FAT_MAGIC64 | FAT_CIGAM64) {
+                FatArch {
+                    cputype: buf.read_u32::<O>()? as cpu_type_t,
+                    cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+                    offset: buf.read_u64::<O>()?,
+                    size: buf.read_u64::<O>()?,
+                    align: {
+                        let align = buf.read_u32::<O>()?;
+                        let _reserved = buf.read_u32::<O>()?;
+                        align
+                    },
+                }
+            } else {
+                FatArch {
+                    cputype: buf.read_u32::<O>()? as cpu_type_t,
+                    cpusubtype: buf.read_u32::<O>()? as cpu_subtype_t,
+                    offset: buf.read_u32::<O>()? as u64,
+                    size: buf.read_u32::<O>()? as u64,
+                    align: buf.read_u32::<O>()?,
+                }
             };
 
             debug!("0x{:08}\tfat header arch#{}, arch={:?}", buf.position(), i, arch);

@@ -343,7 +343,9 @@ pub const MH_MAGIC_64: u32 = 0xfeed_facf;
 pub const MH_CIGAM_64: u32 = 0xcffa_edfe;
 
 pub const FAT_MAGIC: u32 = 0xcafe_babe;
+pub const FAT_MAGIC64: u32 = 0xcafe_babf;
 pub const FAT_CIGAM: u32 = 0xbeba_feca; /* NXSwapLong(FAT_MAGIC) */
+pub const FAT_CIGAM64: u32 = 0xbfba_feca; /* NXSwapLong(FAT_MAGIC) */
 
 pub const ARMAG: &[u8] = b"!<arch>\n";
 

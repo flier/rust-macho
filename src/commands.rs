@@ -23,6 +23,7 @@ use crate::{
 ///  X.Y.Z is encoded in nibbles xxxx.yy.zz
 ///
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct VersionTag(u32);
 
 impl VersionTag {
@@ -83,6 +84,7 @@ impl fmt::Display for VersionTag {
 /// A.B.C.D.E packed as a24.b10.c10.d10.e10
 ///
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SourceVersionTag(u64);
 
 impl From<SourceVersionTag> for u64 {
@@ -122,6 +124,7 @@ impl fmt::Display for SourceVersionTag {
 /// The min OS version on which this binary was built to run.
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BuildTarget {
     MacOsX,
     IPhoneOs,
@@ -160,6 +163,7 @@ impl From<BuildTarget> for u32 {
 /// of 4 bytes must be zero.
 ///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct LcString(pub usize, pub String);
 
 impl LcString {
@@ -193,6 +197,7 @@ impl Deref for LcString {
 /// The address of where the headers are loaded is in `header_addr`.
 /// (THIS IS OBSOLETE and no longer supported).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FvmLib {
     /// library's target pathname
     pub name: LcString,
@@ -211,6 +216,7 @@ pub struct FvmLib {
 /// built and copied into user so it can be use to determined if the library used
 /// at runtime is exactly the same as used to built the program.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct DyLib {
     /// library's path name
     pub name: LcString,
@@ -223,6 +229,7 @@ pub struct DyLib {
 }
 
 /// a table of contents entry
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct DyLibTocEntry {
     /// the defined external symbol (index into the symbol table)
     pub symbol_index: u32,
@@ -231,6 +238,7 @@ pub struct DyLibTocEntry {
 }
 
 /// a module table entry
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct DyLibModule {
     /// the module name (index into string table)
     pub module_name: u32,
@@ -270,6 +278,7 @@ pub struct DyLibModule {
 /// of data in the __LINKEDIT segment.
 ///
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct LinkEditData {
     /// file offset of data in __LINKEDIT segment
     pub off: u32,
@@ -278,6 +287,7 @@ pub struct LinkEditData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum X86ThreadFlavor {
     x86_THREAD_STATE32 = 1,
     x86_FLOAT_STATE32 = 2,
@@ -294,6 +304,7 @@ pub enum X86ThreadFlavor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ARMThreadFlavors {
     ARM_THREAD_STATE = 1,
     ARM_VFP_STATE = 2,
@@ -305,6 +316,7 @@ pub enum ARMThreadFlavors {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PPCThreadFlavors {
     PPC_THREAD_STATE = 1,
     PPC_FLOAT_STATE = 2,
@@ -316,6 +328,7 @@ pub enum PPCThreadFlavors {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ThreadState {
     I386 {
         __eax: u32,
@@ -408,6 +421,7 @@ pub enum ThreadState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Platform {
     macOS,
     iOS,
@@ -418,6 +432,7 @@ pub enum Platform {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Tool {
     Clang,
     Swift,
@@ -429,6 +444,7 @@ pub enum Tool {
 /// binary was built to run for its platform.  The list of known platforms and
 /// tool values following it.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BuildVersion {
     pub platform: u32,
     /// X.Y.Z is encoded in nibbles xxxx.yy.zz
@@ -453,6 +469,7 @@ impl BuildVersion {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BuildTool {
     pub tool: u32,
     pub version: VersionTag,
@@ -472,6 +489,7 @@ impl BuildTool {
 /// The load commands directly follow the mach header.
 ///
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum LoadCommand {
     /// The segment load command indicates that a part of this file is to be
     /// mapped into the task's address space.
@@ -1665,6 +1683,7 @@ where
 /// but the section attributes are not (it may have more than one attribute).
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SectionFlags(u32);
 
 impl SectionFlags {
@@ -1712,6 +1731,7 @@ impl From<SectionFlags> for u32 {
 ///
 ///
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Section {
     /// name of this section
     pub sectname: String,

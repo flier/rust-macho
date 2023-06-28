@@ -8,6 +8,7 @@ use crate::errors::{Error::*, Result};
 /// Bind or rebase symbol type
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BindSymbolType {
     Pointer,
     TextAbsolute32,
@@ -36,6 +37,7 @@ impl fmt::Display for BindSymbolType {
 
 bitflags! {
     /// Flags for bind symbol
+    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
     pub struct BindSymbolFlags: u8 {
         const WEAK_IMPORT = BIND_SYMBOL_FLAGS_WEAK_IMPORT;
         const NON_WEAK_DEFINITION = BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION;
@@ -50,6 +52,7 @@ impl Default for BindSymbolFlags {
 
 /// `OpCode` for the binding symbol
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BindOpCode {
     Done,
     SetDyLibrary(isize),
@@ -67,6 +70,21 @@ pub enum BindOpCode {
 pub struct BindOpCodes<'a> {
     iter: slice::Iter<'a, u8>,
     ptr_size: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Serialize for BindOpCodes<'a> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // clone the iterator so we don't consume it
+        let this = BindOpCodes {
+            iter: self.iter.clone(),
+            ptr_size: self.ptr_size,
+        };
+        serializer.collect_seq(this)
+    }
 }
 
 impl<'a> Iterator for BindOpCodes<'a> {
@@ -156,6 +174,7 @@ impl<'a> Iterator for BindOpCodes<'a> {
 
 /// The mach binding symbol information
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BindSymbol {
     pub dylib_ordinal: usize,
     pub segment_index: usize,
@@ -167,6 +186,7 @@ pub struct BindSymbol {
 }
 
 /// A stream of BIND opcodes to bind all binding symbols.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Bind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol: BindSymbol,
@@ -253,6 +273,7 @@ impl<'a> Iterator for Bind<'a> {
 
 /// The mach weak binding symbol information
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct WeakBindSymbol {
     pub segment_index: usize,
     pub name: String,
@@ -263,6 +284,7 @@ pub struct WeakBindSymbol {
 }
 
 /// A stream of BIND opcodes to bind all weak binding symbols.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct WeakBind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol: WeakBindSymbol,
@@ -351,6 +373,7 @@ impl<'a> Iterator for WeakBind<'a> {
 
 /// The mach lazy binding symbol information
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct LazyBindSymbol {
     pub dylib_ordinal: usize,
     pub segment_index: usize,
@@ -360,6 +383,7 @@ pub struct LazyBindSymbol {
 }
 
 /// A stream of BIND opcodes to bind all lazy symbols.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct LazyBind<'a> {
     opcodes: BindOpCodes<'a>,
     symbol: LazyBindSymbol,
@@ -433,6 +457,7 @@ impl<'a> Iterator for LazyBind<'a> {
 
 /// `OpCode` for the rebasing symbol
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum RebaseOpCode {
     Done,
     SetSymbolType(BindSymbolType),
@@ -447,6 +472,21 @@ pub enum RebaseOpCode {
 pub struct RebaseOpCodes<'a> {
     iter: slice::Iter<'a, u8>,
     ptr_size: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Serialize for RebaseOpCodes<'a> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // clone the iterator so we don't consume it
+        let this = RebaseOpCodes {
+            iter: self.iter.clone(),
+            ptr_size: self.ptr_size,
+        };
+        serializer.collect_seq(this)
+    }
 }
 
 impl<'a> Iterator for RebaseOpCodes<'a> {
@@ -517,6 +557,7 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
 }
 
 /// A stream of REBASE opcodes
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Rebase<'a> {
     opcodes: RebaseOpCodes<'a>,
     symbol: RebaseSymbol,
@@ -598,6 +639,7 @@ impl<'a> Iterator for Rebase<'a> {
 
 /// The rebase symbol information
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RebaseSymbol {
     pub segment_index: usize,
     pub symbol_offset: isize,

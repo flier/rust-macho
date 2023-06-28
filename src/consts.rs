@@ -597,6 +597,7 @@ pub const LC_DYLD_CHAINED_FIXUPS: u32 = 0x34 | LC_REQ_DYLD;
 
 bitflags! {
     /// Constants for the flags field of the segment_command
+    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
     pub struct SegmentFlags: u32 {
         /// the file contents for this segment is for the high part of the VM space,
         /// the low part is zero filled (for stacks in core files)
@@ -689,6 +690,7 @@ pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS: u32 = 0x15;
 
 bitflags! {
     /// Constants for the section attributes part of the flags field of a section structure.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
     pub struct SectionAttributes: u32 {
         /// User setable attributes
         const SECTION_ATTRIBUTES_USR = 0xff00_0000;
@@ -860,6 +862,7 @@ pub const EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: u8 = 0x02;
 
 bitflags! {
     /// The following are used on the flags byte of a terminal node in the export information.
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
     pub struct ExportSymbolFlags: u32 {
         const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION        = 0x04;
         const EXPORT_SYMBOL_FLAGS_REEXPORT               = 0x08;

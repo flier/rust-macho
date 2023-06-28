@@ -12,6 +12,7 @@ use crate::{
 
 /// the link-edit 4.3BSD "stab" style symbol
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Symbol<'a> {
     Undefined {
         name: Option<&'a str>,
@@ -271,6 +272,28 @@ impl<'a> SymbolIter<'a> {
                 Ok(None)
             }
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'a> serde::Serialize for SymbolIter<'a> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut cursor = self.cur.clone();
+        let mut this = SymbolIter {
+            cur: &mut cursor,
+            sections: self.sections.clone(),
+            nsyms: self.nsyms.clone(),
+            stroff: self.stroff.clone(),
+            strsize: self.stroff.clone(),
+            is_bigend: self.is_bigend,
+            is_64bit: self.is_64bit,
+        };
+        let res = serializer.collect_seq(this);
+
+        res
     }
 }
 

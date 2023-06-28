@@ -7,6 +7,7 @@ use crate::consts::*;
 use crate::errors::{Error::*, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ExportKind {
     Regular,
     ThreadLocal,
@@ -14,6 +15,7 @@ pub enum ExportKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ExportType {
     Regular { address: usize },
     Weak { address: usize },
@@ -22,6 +24,7 @@ pub enum ExportType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 struct Exported {
     symbol: Option<(ExportKind, ExportType)>,
     edges: Vec<(String, Exported)>,
@@ -102,6 +105,7 @@ impl Exported {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ExportTrie<'a> {
     payload: &'a [u8],
     root: Exported,
@@ -123,6 +127,7 @@ impl<'a> ExportTrie<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ExportSymbol {
     pub name: String,
     pub kind: ExportKind,
@@ -140,6 +145,7 @@ impl ExportSymbol {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ExportSymbols<'a> {
     nodes: Vec<(String, &'a Exported)>,
 }

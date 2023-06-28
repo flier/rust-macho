@@ -23,8 +23,10 @@ type gid_t = libc::gid_t;
 type mode_t = libc::mode_t;
 
 /// The 32-bit mach/fat header
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Arch32 {}
 /// The 64-bit mach/fat header
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Arch64 {}
 
 /// The architecture of mach header
@@ -71,6 +73,7 @@ impl MachHeaderParser for Arch64 {
 /// The mach header appears at the very beginning of the object file
 ///
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MachHeader {
     /// mach magic number identifier
     pub magic: u32,
@@ -100,6 +103,7 @@ impl MachHeader {
 
 /// Wrap load command with size in the Mach-O file
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MachCommand(pub LoadCommand, pub usize);
 
 impl MachCommand {
@@ -117,6 +121,7 @@ impl MachCommand {
 /// structures.
 ///
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FatHeader {
     /// fat magic number identifier
     pub magic: u32,
@@ -164,6 +169,7 @@ impl FatArchParser for Arch64 {
 /// in the file of the architecture specific member.
 ///
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FatArch {
     /// cpu specifier (int)
     pub cputype: cpu_type_t,
@@ -185,6 +191,7 @@ impl FatArch {
 
 /// the archive file header
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ArHeader {
     pub ar_name: String,
     /// modification time
@@ -263,6 +270,7 @@ impl ArHeader {
 /// string table whose first byte is numbered 0.
 ///
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RanLib {
     // string table index of
     pub ran_strx: off_t,
@@ -272,6 +280,7 @@ pub struct RanLib {
 /// The abstract file block, including mach-o file, fat/universal file,
 /// archive file and symdef block
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum OFile {
     MachFile {
         header: MachHeader,

@@ -13,6 +13,7 @@ version = "0.1.17"
 default = ["display"]
 display = ["time"]
 integration_tests = []
+serde = ["dep:serde", "uuid/serde"]
 
 [dependencies]
 bitflags = "1.0"
@@ -22,7 +23,8 @@ libc = "0.2"
 log = "0.4"
 thiserror = "1.0"
 uuid = "1.1"
-time = {version = "0.3", features = ["formatting", "macros"], optional = true}
+time = { version = "0.3", features = ["formatting", "macros"], optional = true }
+serde = { version = "1.0", features = ["derive", "rc"], optional = true }
 
 [dev-dependencies]
 anyhow = "1.0"

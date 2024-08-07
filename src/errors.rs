@@ -27,6 +27,8 @@ pub enum Error {
     UnknownMagic(u32),
     #[error("unknown symbol type, {0}.")]
     UnknownSymType(u8),
+    #[error("unknown export symbol kind, {0}.")]
+    UnknownExportSymKind(u8),
     #[error("offset {0} out of range: {1:?}.")]
     OutOfRange(usize, Range<usize>),
     #[error("number overflowing.")]

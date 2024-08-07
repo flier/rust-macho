@@ -3,8 +3,8 @@ use std::io::Cursor;
 use byteorder::ReadBytesExt;
 
 use crate::commands::CursorExt;
-use crate::consts::*;
 use crate::errors::{Error::*, Result};
+use crate::{consts::*, MachError};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExportKind {
@@ -41,7 +41,7 @@ impl Exported {
                 EXPORT_SYMBOL_FLAGS_KIND_REGULAR => ExportKind::Regular,
                 EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL => ExportKind::ThreadLocal,
                 EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE => ExportKind::Absolute,
-                _ => unreachable!(),
+                invalid => return Err(MachError::UnknownExportSymKind(invalid)),
             };
 
             let flags = ExportSymbolFlags::from_bits_truncate(flags as u32);

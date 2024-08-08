@@ -33,6 +33,8 @@ pub enum Error {
     NumberOverflow,
     #[error("buffer overflowing, {0}.")]
     BufferOverflow(usize),
+    #[error("recursive export trie at offset {0}.")]
+    RecursiveExportTrie(u64),
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;

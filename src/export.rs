@@ -32,6 +32,18 @@ impl Exported {
     where
         T: AsRef<[u8]>,
     {
+        Self::parse_inner(cur, &[])
+    }
+
+    fn parse_inner<T>(cur: &mut Cursor<T>, visited_offsets: &[u64]) -> Result<Exported>
+    where
+        T: AsRef<[u8]>,
+    {
+        // add this node to the list of visited offsets that will be passed
+        // to child nodes
+        let mut visited_offsets = visited_offsets.to_owned();
+        visited_offsets.push(cur.position());
+
         let terminal_size = cur.read_uleb128()?;
 
         let symbol = if terminal_size != 0 {
@@ -88,12 +100,17 @@ impl Exported {
                 if offset > payload.len() {
                     return Err(BufferOverflow(offset));
                 }
+                // prevent infinite recursions if the trie is malformed by
+                // checking we don't revisit any of our parents
+                if visited_offsets.contains(&(offset as u64)) {
+                    return Err(RecursiveExportTrie(offset as u64));
+                }
 
                 let mut cur = Cursor::new(payload);
 
                 cur.set_position(offset as u64);
 
-                Ok((name, Exported::parse(&mut cur)?))
+                Ok((name, Exported::parse_inner(&mut cur, &visited_offsets)?))
             })
             .collect::<Result<Vec<(String, Exported)>>>()?;
 

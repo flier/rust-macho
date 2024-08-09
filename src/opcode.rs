@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::fmt;
 use std::slice;
 
@@ -169,8 +168,9 @@ pub struct BindSymbol {
 /// A stream of BIND opcodes to bind all binding symbols.
 pub struct Bind<'a> {
     opcodes: BindOpCodes<'a>,
+    // iterator state
     symbol: BindSymbol,
-    symbols: VecDeque<BindSymbol>,
+    current_opcode: Option<BindOpCode>,
 }
 
 impl<'a> Bind<'a> {
@@ -181,7 +181,7 @@ impl<'a> Bind<'a> {
                 ptr_size,
             },
             symbol: Default::default(),
-            symbols: Default::default(),
+            current_opcode: None,
         }
     }
 
@@ -194,60 +194,61 @@ impl<'a> Iterator for Bind<'a> {
     type Item = BindSymbol;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.symbols.pop_front().or_else(|| {
-            while let Some(opcode) = self.opcodes.next() {
-                trace!("Bind OpCode: {:?}", opcode);
-
-                match opcode {
-                    BindOpCode::Done => {
-                        break;
-                    }
-                    BindOpCode::SetDyLibrary(ordinal) => {
-                        self.symbol.dylib_ordinal = ordinal as usize;
-                    }
-                    BindOpCode::SetSymbol { name, flags } => {
-                        self.symbol.name = name;
-                        self.symbol.flags = flags;
-                    }
-                    BindOpCode::SetSymbolType(symbol_type) => {
-                        self.symbol.symbol_type = symbol_type;
-                    }
-                    BindOpCode::SetAddend(addend) => {
-                        self.symbol.addend = addend;
-                    }
-                    BindOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    } => {
-                        self.symbol.segment_index = segment_index as usize;
-                        self.symbol.symbol_offset = segment_offset as isize;
-                    }
-                    BindOpCode::AddAddress { offset } => {
-                        self.symbol.symbol_offset += offset;
-                    }
-                    BindOpCode::Bind => {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
-                    }
-                    BindOpCode::BindAndAddAddress { offset } => {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
-                    }
-                    BindOpCode::BindAndSkipping { times, skip } => {
-                        for _ in 0..times {
-                            self.symbols.push_back(self.symbol.clone());
-                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                        }
-                    }
-                }
-
-                if !self.symbols.is_empty() {
+        while let Some(opcode) = self.current_opcode.take().or_else(|| {
+            // consume the next opcode from the opcode iterator
+            let opcode = self.opcodes.next();
+            trace!("Bind OpCode: {:?}", opcode);
+            opcode
+        }) {
+            match opcode {
+                BindOpCode::Done => {
                     break;
                 }
+                BindOpCode::SetDyLibrary(ordinal) => {
+                    self.symbol.dylib_ordinal = ordinal as usize;
+                }
+                BindOpCode::SetSymbol { name, flags } => {
+                    self.symbol.name = name;
+                    self.symbol.flags = flags;
+                }
+                BindOpCode::SetSymbolType(symbol_type) => {
+                    self.symbol.symbol_type = symbol_type;
+                }
+                BindOpCode::SetAddend(addend) => {
+                    self.symbol.addend = addend;
+                }
+                BindOpCode::SetSegmentOffset {
+                    segment_index,
+                    segment_offset,
+                } => {
+                    self.symbol.segment_index = segment_index as usize;
+                    self.symbol.symbol_offset = segment_offset as isize;
+                }
+                BindOpCode::AddAddress { offset } => {
+                    self.symbol.symbol_offset += offset;
+                }
+                BindOpCode::Bind => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                BindOpCode::BindAndAddAddress { offset } => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                BindOpCode::BindAndSkipping { times, skip } => {
+                    if times > 0 {
+                        let sym = self.symbol.clone();
+                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        self.current_opcode = Some(BindOpCode::BindAndSkipping { times: times - 1, skip });
+                        return Some(sym);
+                    }
+                }
             }
-
-            self.symbols.pop_front()
-        })
+        }
+        // exhausted the opcode iterator, or found Done opcode
+        None
     }
 }
 
@@ -265,8 +266,9 @@ pub struct WeakBindSymbol {
 /// A stream of BIND opcodes to bind all weak binding symbols.
 pub struct WeakBind<'a> {
     opcodes: BindOpCodes<'a>,
+    // iterator state
     symbol: WeakBindSymbol,
-    symbols: VecDeque<WeakBindSymbol>,
+    current_opcode: Option<BindOpCode>,
 }
 
 impl<'a> WeakBind<'a> {
@@ -277,7 +279,7 @@ impl<'a> WeakBind<'a> {
                 ptr_size,
             },
             symbol: Default::default(),
-            symbols: Default::default(),
+            current_opcode: None,
         }
     }
 
@@ -290,62 +292,63 @@ impl<'a> Iterator for WeakBind<'a> {
     type Item = WeakBindSymbol;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.symbols.pop_front().or_else(|| {
-            while let Some(opcode) = self.opcodes.next() {
-                trace!("Weak Bind OpCode: {:?}", opcode);
-
-                match opcode {
-                    BindOpCode::Done => {
-                        break;
-                    }
-                    BindOpCode::SetSymbol { name, flags } => {
-                        self.symbol.name = name;
-                        self.symbol.flags = flags;
-                    }
-                    BindOpCode::SetSymbolType(symbol_type) => {
-                        self.symbol.symbol_type = symbol_type;
-                    }
-                    BindOpCode::SetAddend(addend) => {
-                        self.symbol.addend = addend;
-                    }
-                    BindOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    } => {
-                        self.symbol.segment_index = segment_index as usize;
-                        self.symbol.symbol_offset = segment_offset as isize;
-                    }
-                    BindOpCode::AddAddress { offset } => {
-                        self.symbol.symbol_offset += offset;
-                    }
-                    BindOpCode::Bind => {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
-                    }
-                    BindOpCode::BindAndAddAddress { offset } => {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
-                    }
-                    BindOpCode::BindAndSkipping { times, skip } => {
-                        for _ in 0..times {
-                            self.symbols.push_back(self.symbol.clone());
-                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                        }
-                    }
-                    _ => {
-                        warn!("unexpected weak bind opcode: {:?}", opcode);
-
-                        break;
+        while let Some(opcode) = self.current_opcode.take().or_else(|| {
+            // consume the next opcode from the opcode iterator
+            let opcode = self.opcodes.next();
+            trace!("Weak Bind OpCode: {:?}", opcode);
+            opcode
+        }) {
+            match opcode {
+                BindOpCode::Done => {
+                    break;
+                }
+                BindOpCode::SetSymbol { name, flags } => {
+                    self.symbol.name = name;
+                    self.symbol.flags = flags;
+                }
+                BindOpCode::SetSymbolType(symbol_type) => {
+                    self.symbol.symbol_type = symbol_type;
+                }
+                BindOpCode::SetAddend(addend) => {
+                    self.symbol.addend = addend;
+                }
+                BindOpCode::SetSegmentOffset {
+                    segment_index,
+                    segment_offset,
+                } => {
+                    self.symbol.segment_index = segment_index as usize;
+                    self.symbol.symbol_offset = segment_offset as isize;
+                }
+                BindOpCode::AddAddress { offset } => {
+                    self.symbol.symbol_offset += offset;
+                }
+                BindOpCode::Bind => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                BindOpCode::BindAndAddAddress { offset } => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                BindOpCode::BindAndSkipping { times, skip } => {
+                    if times > 0 {
+                        let sym = self.symbol.clone();
+                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        self.current_opcode = Some(BindOpCode::BindAndSkipping { times: times - 1, skip });
+                        return Some(sym);
                     }
                 }
+                _ => {
+                    warn!("unexpected weak bind opcode: {:?}", opcode);
 
-                if !self.symbols.is_empty() {
                     break;
                 }
             }
-
-            self.symbols.pop_front()
-        })
+        }
+        // exhausted the opcode iterator, or found Done opcode
+        None
     }
 }
 
@@ -362,8 +365,9 @@ pub struct LazyBindSymbol {
 /// A stream of BIND opcodes to bind all lazy symbols.
 pub struct LazyBind<'a> {
     opcodes: BindOpCodes<'a>,
+    // iterator state
     symbol: LazyBindSymbol,
-    symbols: VecDeque<LazyBindSymbol>,
+    current_opcode: Option<BindOpCode>,
 }
 
 impl<'a> LazyBind<'a> {
@@ -374,7 +378,7 @@ impl<'a> LazyBind<'a> {
                 ptr_size,
             },
             symbol: Default::default(),
-            symbols: Default::default(),
+            current_opcode: None,
         }
     }
 
@@ -387,47 +391,45 @@ impl<'a> Iterator for LazyBind<'a> {
     type Item = LazyBindSymbol;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.symbols.pop_front().or_else(|| {
-            while let Some(opcode) = self.opcodes.next() {
-                trace!("Lazy Bind OpCode: {:?}", opcode);
-
-                match opcode {
-                    BindOpCode::Done => {}
-                    BindOpCode::SetDyLibrary(ordinal) => {
-                        self.symbol.dylib_ordinal = ordinal as usize;
-                    }
-                    BindOpCode::SetSymbol { name, flags } => {
-                        self.symbol.name = name;
-                        self.symbol.flags = flags;
-                    }
-                    BindOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    } => {
-                        self.symbol.segment_index = segment_index as usize;
-                        self.symbol.symbol_offset = segment_offset as isize;
-                    }
-                    BindOpCode::AddAddress { offset } => {
-                        self.symbol.symbol_offset += offset;
-                    }
-                    BindOpCode::Bind => {
-                        self.symbols.push_back(self.symbol.clone());
-                        self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
-                    }
-                    _ => {
-                        warn!("unexpected lazy bind opcode: {:?}", opcode);
-
-                        break;
-                    }
+        while let Some(opcode) = self.current_opcode.take().or_else(|| {
+            // consume the next opcode from the opcode iterator
+            let opcode = self.opcodes.next();
+            trace!("Lazy Bind OpCode: {:?}", opcode);
+            opcode
+        }) {
+            match opcode {
+                BindOpCode::Done => {}
+                BindOpCode::SetDyLibrary(ordinal) => {
+                    self.symbol.dylib_ordinal = ordinal as usize;
                 }
+                BindOpCode::SetSymbol { name, flags } => {
+                    self.symbol.name = name;
+                    self.symbol.flags = flags;
+                }
+                BindOpCode::SetSegmentOffset {
+                    segment_index,
+                    segment_offset,
+                } => {
+                    self.symbol.segment_index = segment_index as usize;
+                    self.symbol.symbol_offset = segment_offset as isize;
+                }
+                BindOpCode::AddAddress { offset } => {
+                    self.symbol.symbol_offset += offset;
+                }
+                BindOpCode::Bind => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                _ => {
+                    warn!("unexpected lazy bind opcode: {:?}", opcode);
 
-                if !self.symbols.is_empty() {
                     break;
                 }
             }
-
-            self.symbols.pop_front()
-        })
+        }
+        // exhausted the opcode iterator
+        None
     }
 }
 
@@ -519,8 +521,9 @@ impl<'a> Iterator for RebaseOpCodes<'a> {
 /// A stream of REBASE opcodes
 pub struct Rebase<'a> {
     opcodes: RebaseOpCodes<'a>,
+    // iterator state
     symbol: RebaseSymbol,
-    symbols: VecDeque<RebaseSymbol>,
+    current_opcode: Option<RebaseOpCode>,
 }
 
 impl<'a> Rebase<'a> {
@@ -531,7 +534,7 @@ impl<'a> Rebase<'a> {
                 ptr_size,
             },
             symbol: Default::default(),
-            symbols: Default::default(),
+            current_opcode: None,
         }
     }
 
@@ -544,55 +547,54 @@ impl<'a> Iterator for Rebase<'a> {
     type Item = RebaseSymbol;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.symbols.pop_front().or_else(|| {
-            while let Some(opcode) = self.opcodes.next() {
-                trace!("Rebase OpCode: {:?}", opcode);
-
-                match opcode {
-                    RebaseOpCode::Done => {
-                        break;
-                    }
-                    RebaseOpCode::SetSymbolType(symbol_type) => {
-                        self.symbol.symbol_type = symbol_type;
-                    }
-                    RebaseOpCode::SetSegmentOffset {
-                        segment_index,
-                        segment_offset,
-                    } => {
-                        self.symbol.segment_index = segment_index as usize;
-                        self.symbol.symbol_offset = segment_offset as isize;
-                    }
-                    RebaseOpCode::AddAddress { offset } => {
-                        self.symbol.symbol_offset += offset;
-                    }
-                    RebaseOpCode::Rebase { times } => {
-                        for _ in 0..times {
-                            self.symbols.push_back(self.symbol.clone());
-
-                            self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
-                        }
-                    }
-                    RebaseOpCode::RebaseAndAddAddress { offset } => {
-                        self.symbols.push_back(self.symbol.clone());
-
-                        self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
-                    }
-                    RebaseOpCode::RebaseAndSkipping { times, skip } => {
-                        for _ in 0..times {
-                            self.symbols.push_back(self.symbol.clone());
-
-                            self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
-                        }
-                    }
-                }
-
-                if !self.symbols.is_empty() {
+        while let Some(opcode) = self.current_opcode.take().or_else(|| {
+            // consume the next opcode from the opcode iterator
+            let opcode = self.opcodes.next();
+            trace!("Rebase OpCode: {:?}", opcode);
+            opcode
+        }) {
+            match opcode {
+                RebaseOpCode::Done => {
                     break;
                 }
+                RebaseOpCode::SetSymbolType(symbol_type) => {
+                    self.symbol.symbol_type = symbol_type;
+                }
+                RebaseOpCode::SetSegmentOffset {
+                    segment_index,
+                    segment_offset,
+                } => {
+                    self.symbol.segment_index = segment_index as usize;
+                    self.symbol.symbol_offset = segment_offset as isize;
+                }
+                RebaseOpCode::AddAddress { offset } => {
+                    self.symbol.symbol_offset += offset;
+                }
+                RebaseOpCode::Rebase { times } => {
+                    if times > 0 {
+                        let sym = self.symbol.clone();
+                        self.symbol.symbol_offset += self.opcodes.ptr_size as isize;
+                        self.current_opcode = Some(RebaseOpCode::Rebase { times: times - 1 });
+                        return Some(sym);
+                    }
+                }
+                RebaseOpCode::RebaseAndAddAddress { offset } => {
+                    let sym = self.symbol.clone();
+                    self.symbol.symbol_offset += offset + self.opcodes.ptr_size as isize;
+                    return Some(sym);
+                }
+                RebaseOpCode::RebaseAndSkipping { times, skip } => {
+                    if times > 0 {
+                        let sym = self.symbol.clone();
+                        self.symbol.symbol_offset += (skip + self.opcodes.ptr_size) as isize;
+                        self.current_opcode = Some(RebaseOpCode::RebaseAndSkipping { times: times - 1, skip });
+                        return Some(sym);
+                    }
+                }
             }
-
-            self.symbols.pop_front()
-        })
+        }
+        // exhausted the opcode iterator, or found Done opcode
+        None
     }
 }
 
